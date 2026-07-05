@@ -5,6 +5,9 @@ import type {
   DriverSeasonStats,
   DriverTrackTypeStats,
   DriverFormRow,
+  SeasonStanding,
+  TrackTypeLeaderRow,
+  FormLeader,
 } from "./types.ts";
 import { POINTS_RACE_TYPE_ID, POINTS_RACE_ID_OVERRIDES } from "./config.ts";
 
@@ -192,6 +195,88 @@ export function trackTypeStatsForDriver(
        ORDER BY season, track_type`,
     )
     .all(driverId, seriesId) as unknown as DriverTrackTypeStats[];
+}
+
+export function standingsForSeason(
+  db: Database,
+  season: number,
+  seriesId: number,
+): SeasonStanding[] {
+  return db
+    .query(
+      `SELECT s.driver_id AS driverId, s.series_id AS seriesId, s.season, s.races, s.wins,
+              s.top5s, s.top10s, s.dnfs, s.avg_start AS avgStart, s.avg_finish AS avgFinish,
+              s.laps_led AS lapsLed, s.points, s.playoff_points AS playoffPoints,
+              s.loop_races AS loopRaces, s.avg_rating AS avgRating,
+              s.top15_lap_pct AS top15LapPct, s.fast_lap_pct AS fastLapPct,
+              s.pass_efficiency AS passEfficiency, s.adj_pass_efficiency AS adjPassEfficiency,
+              s.avg_closing_gain AS avgClosingGain, s.closer_score AS closerScore,
+              d.full_name AS fullName
+       FROM driver_season_stats s
+       JOIN drivers d ON d.driver_id = s.driver_id
+       WHERE s.season = ? AND s.series_id = ?
+       ORDER BY s.points DESC, s.wins DESC, s.avg_finish`,
+    )
+    .all(season, seriesId) as unknown as SeasonStanding[];
+}
+
+export function trackTypeLeaderboard(
+  db: Database,
+  opts: {
+    trackType: string;
+    fromSeason: number;
+    toSeason: number;
+    seriesId: number;
+    minStarts: number;
+  },
+): TrackTypeLeaderRow[] {
+  return db
+    .query(
+      `SELECT t.driver_id AS driverId, d.full_name AS fullName,
+              SUM(t.races) AS starts, SUM(t.wins) AS wins, SUM(t.top5s) AS top5s,
+              SUM(COALESCE(t.avg_finish, 0) * t.races) / NULLIF(SUM(t.races), 0) AS avgFinish,
+              SUM(COALESCE(t.avg_rating, 0) * t.loop_races) / NULLIF(SUM(t.loop_races), 0) AS avgRating,
+              SUM(COALESCE(t.adj_pass_efficiency, 0) * t.loop_races) / NULLIF(SUM(t.loop_races), 0) AS adjPassEfficiency,
+              SUM(COALESCE(t.closer_score, 0) * t.loop_races) / NULLIF(SUM(t.loop_races), 0) AS closerScore
+       FROM driver_track_type_stats t
+       JOIN drivers d ON d.driver_id = t.driver_id
+       WHERE t.track_type = ? AND t.season BETWEEN ? AND ? AND t.series_id = ?
+       GROUP BY t.driver_id
+       HAVING SUM(t.races) >= ?
+       ORDER BY avgFinish`,
+    )
+    .all(
+      opts.trackType,
+      opts.fromSeason,
+      opts.toSeason,
+      opts.seriesId,
+      opts.minStarts,
+    ) as unknown as TrackTypeLeaderRow[];
+}
+
+/** Form rows at the most recent race that has form data, best average finish first. */
+export function formLeaders(db: Database, seriesId: number, limit: number): FormLeader[] {
+  return db
+    .query(
+      `SELECT f.driver_id AS driverId, d.full_name AS fullName, f.race_id AS raceId,
+              f.window_races AS windowRaces, f.avg_finish AS avgFinish, f.avg_rating AS avgRating
+       FROM driver_form f
+       JOIN drivers d ON d.driver_id = f.driver_id
+       WHERE f.series_id = ?
+         AND f.race_id = (SELECT race_id FROM driver_form WHERE series_id = ?
+                          ORDER BY race_date_utc DESC LIMIT 1)
+         AND f.window_races >= 4
+       ORDER BY f.avg_finish
+       LIMIT ?`,
+    )
+    .all(seriesId, seriesId, limit) as unknown as FormLeader[];
+}
+
+export function latestSeasonWithStats(db: Database, seriesId: number): number | null {
+  const row = db
+    .query(`SELECT MAX(season) AS season FROM driver_season_stats WHERE series_id = ?`)
+    .get(seriesId) as { season: number | null };
+  return row.season;
 }
 
 export function formForDriver(db: Database, driverId: number, seriesId: number): DriverFormRow[] {

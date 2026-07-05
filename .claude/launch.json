@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "looplab",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "src/app/index.ts", "serve", "--port", "4310"],
+      "port": 4310
+    }
+  ]
+}

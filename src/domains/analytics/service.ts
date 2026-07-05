@@ -7,6 +7,9 @@ import type {
   DriverTrackTypeStats,
   DriverFormRow,
   ComputeSummary,
+  SeasonStanding,
+  TrackTypeLeaderRow,
+  FormLeader,
 } from "./types.ts";
 import { DEFAULT_SERIES_ID, PS_BUCKET_WIDTH, FORM_WINDOW_RACES } from "./config.ts";
 import * as repo from "./repo.ts";
@@ -319,4 +322,35 @@ export function formForDriver(
   seriesId = DEFAULT_SERIES_ID,
 ): DriverFormRow[] {
   return repo.formForDriver(p.db, driverId, seriesId);
+}
+
+export function standings(p: Db, season: number, seriesId = DEFAULT_SERIES_ID): SeasonStanding[] {
+  return repo.standingsForSeason(p.db, season, seriesId);
+}
+
+export function trackTypeLeaderboard(
+  p: Db,
+  opts: {
+    trackType: string;
+    fromSeason: number;
+    toSeason: number;
+    minStarts?: number;
+    seriesId?: number;
+  },
+): TrackTypeLeaderRow[] {
+  return repo.trackTypeLeaderboard(p.db, {
+    trackType: opts.trackType,
+    fromSeason: opts.fromSeason,
+    toSeason: opts.toSeason,
+    seriesId: opts.seriesId ?? DEFAULT_SERIES_ID,
+    minStarts: opts.minStarts ?? 1,
+  });
+}
+
+export function formLeaders(p: Db, limit = 5, seriesId = DEFAULT_SERIES_ID): FormLeader[] {
+  return repo.formLeaders(p.db, seriesId, limit);
+}
+
+export function currentSeason(p: Db, seriesId = DEFAULT_SERIES_ID): number | null {
+  return repo.latestSeasonWithStats(p.db, seriesId);
 }

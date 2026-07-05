@@ -14,6 +14,9 @@ import type {
   RaceLeaderRow,
   ScheduledRace,
   SeasonCoverage,
+  RaceDetails,
+  RaceResultWithLoop,
+  SeasonRaceListItem,
 } from "./types.ts";
 import {
   scheduleUrl,
@@ -378,4 +381,36 @@ export async function syncLatest(
 
 export function coverage(providers: Providers, seriesId: number): SeasonCoverage[] {
   return repo.coverageBySeason(providers.db, seriesId);
+}
+
+// ---------------------------------------------------------------------------
+// Read-backs for race pages (this domain is the custodian of race tables)
+// ---------------------------------------------------------------------------
+
+export function raceDetails(p: Pick<Providers, "db">, raceId: number): RaceDetails | null {
+  return repo.raceById(p.db, raceId);
+}
+
+export function raceResults(p: Pick<Providers, "db">, raceId: number): RaceResultWithLoop[] {
+  return repo.resultsWithLoopForRace(p.db, raceId);
+}
+
+export function seasonRaces(
+  p: Pick<Providers, "db">,
+  season: number,
+  seriesId: number,
+): SeasonRaceListItem[] {
+  return repo.racesForSeason(p.db, season, seriesId);
+}
+
+export function latestCompletedRace(
+  p: Pick<Providers, "db">,
+  seriesId: number,
+): RaceDetails | null {
+  const raceId = repo.latestCompletedRaceId(p.db, seriesId);
+  return raceId === null ? null : repo.raceById(p.db, raceId);
+}
+
+export function seasonsAvailable(p: Pick<Providers, "db">, seriesId: number): number[] {
+  return repo.seasonsWithRaces(p.db, seriesId);
 }

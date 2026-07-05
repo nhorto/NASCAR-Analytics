@@ -132,6 +132,14 @@ switch (command) {
     }
     break;
   }
+  case "serve": {
+    const p = providers();
+    const port = argValue("--port", 3000);
+    const { createServer } = await import("./server.ts");
+    const server = createServer(p, port);
+    console.log(`Looplab running at ${server.url}`);
+    break;
+  }
   default:
     console.log(`nascar-analytics CLI
 
@@ -140,6 +148,7 @@ Usage:
   bun run src/app/index.ts sync [--series ID]
   bun run src/app/index.ts status [--series ID]
   bun run src/app/index.ts compute [--series ID]
-  bun run src/app/index.ts driver --name "Chase Elliott" | --id 4062 [--series ID]`);
+  bun run src/app/index.ts driver --name "Chase Elliott" | --id 4062 [--series ID]
+  bun run src/app/index.ts serve [--port 3000]`);
     if (command !== undefined) process.exit(1);
 }

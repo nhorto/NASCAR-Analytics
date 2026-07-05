@@ -95,7 +95,7 @@ const ALLOWED: Record<Layer, Layer[]> = {
   ui: ["types", "config"],
   barrel: ["types", "config", "repo", "service", "runtime", "ui"],
   providers: ["providers", "utils", "types"],
-  app: ["utils", "providers", "types", "config", "repo", "service", "runtime", "ui", "barrel"],
+  app: ["app", "utils", "providers", "types", "config", "repo", "service", "runtime", "ui", "barrel"],
 };
 
 // Layers that may not import anything external (npm packages, bun:/node: builtins).

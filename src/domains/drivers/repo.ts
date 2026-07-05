@@ -7,7 +7,7 @@ export function listDriverSummaries(db: Database, seriesId: number): DriverSumma
   return db
     .query(
       `WITH starts AS (
-         SELECT res.driver_id, res.team_name, res.car_number,
+         SELECT res.driver_id, res.team_name, res.car_number, res.car_make,
                 res.finishing_position, r.season,
                 COALESCE(r.race_date_utc, r.race_date) AS race_date
          FROM results res
@@ -15,7 +15,7 @@ export function listDriverSummaries(db: Database, seriesId: number): DriverSumma
          WHERE r.series_id = ? AND r.race_type_id = ?
        ),
        latest AS (
-         SELECT driver_id, team_name, car_number,
+         SELECT driver_id, team_name, car_number, car_make,
                 ROW_NUMBER() OVER (PARTITION BY driver_id ORDER BY race_date DESC) AS rn
          FROM starts
        )
@@ -26,7 +26,8 @@ export function listDriverSummaries(db: Database, seriesId: number): DriverSumma
               COUNT(*) AS races,
               SUM(s.finishing_position = 1) AS wins,
               l.team_name AS latestTeam,
-              l.car_number AS latestCarNumber
+              l.car_number AS latestCarNumber,
+              l.car_make AS latestCarMake
        FROM starts s
        JOIN drivers d ON d.driver_id = s.driver_id
        JOIN latest l ON l.driver_id = s.driver_id AND l.rn = 1

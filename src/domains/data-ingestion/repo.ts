@@ -11,6 +11,9 @@ import type {
   ScheduledRace,
   SeasonCoverage,
   TrackType,
+  RaceDetails,
+  RaceResultWithLoop,
+  SeasonRaceListItem,
 } from "./types.ts";
 
 export function upsertTrack(db: Database, row: TrackRow): void {
@@ -232,6 +235,79 @@ function existsIn(db: Database, table: string, raceId: number): boolean {
     .query(`SELECT 1 AS present FROM ${table} WHERE race_id = ? LIMIT 1`)
     .get(raceId);
   return row !== null;
+}
+
+export function raceById(db: Database, raceId: number): RaceDetails | null {
+  return db
+    .query(
+      `SELECT race_id AS raceId, series_id AS seriesId, season, race_name AS raceName,
+              race_type_id AS raceTypeId, track_id AS trackId, track_type AS trackType,
+              race_date AS raceDate, race_date_utc AS raceDateUtc,
+              scheduled_laps AS scheduledLaps, actual_laps AS actualLaps,
+              cautions, caution_laps AS cautionLaps, lead_changes AS leadChanges,
+              average_speed AS averageSpeed, total_race_time AS totalRaceTime,
+              margin_of_victory AS marginOfVictory
+       FROM races WHERE race_id = ?`,
+    )
+    .get(raceId) as unknown as RaceDetails | null;
+}
+
+export function resultsWithLoopForRace(db: Database, raceId: number): RaceResultWithLoop[] {
+  const rows = db
+    .query(
+      `SELECT res.race_id AS raceId, res.driver_id AS driverId, d.full_name AS fullName,
+              res.car_number AS carNumber, res.team_name AS teamName,
+              res.finishing_position AS finish, res.starting_position AS start,
+              res.finishing_status AS status, res.laps_led AS lapsLed,
+              res.points_earned AS points, res.disqualified AS disqualified,
+              ls.rating AS rating, ls.passes_gf AS passesGf, ls.passed_gf AS passedGf,
+              ls.fast_laps AS fastLaps, ls.closing_laps_diff AS closingLapsDiff
+       FROM results res
+       JOIN drivers d ON d.driver_id = res.driver_id
+       LEFT JOIN loop_stats ls ON ls.race_id = res.race_id AND ls.driver_id = res.driver_id
+       WHERE res.race_id = ?
+       ORDER BY res.finishing_position`,
+    )
+    .all(raceId) as unknown as Array<
+    Omit<RaceResultWithLoop, "disqualified"> & { disqualified: number }
+  >;
+  return rows.map((r) => ({ ...r, disqualified: r.disqualified === 1 }));
+}
+
+export function racesForSeason(db: Database, season: number, seriesId: number): SeasonRaceListItem[] {
+  const rows = db
+    .query(
+      `SELECT r.race_id AS raceId, r.season AS season, r.race_name AS raceName,
+              r.track_type AS trackType, COALESCE(r.race_date_utc, r.race_date) AS raceDateUtc,
+              EXISTS (SELECT 1 FROM results x WHERE x.race_id = r.race_id) AS hasResults,
+              (SELECT d.full_name FROM results w JOIN drivers d ON d.driver_id = w.driver_id
+                WHERE w.race_id = r.race_id AND w.finishing_position = 1) AS winnerName
+       FROM races r
+       WHERE r.season = ? AND r.series_id = ?
+       ORDER BY COALESCE(r.race_date_utc, r.race_date), r.race_id`,
+    )
+    .all(season, seriesId) as unknown as Array<
+    Omit<SeasonRaceListItem, "hasResults"> & { hasResults: number }
+  >;
+  return rows.map((r) => ({ ...r, hasResults: r.hasResults === 1 }));
+}
+
+export function latestCompletedRaceId(db: Database, seriesId: number): number | null {
+  const row = db
+    .query(
+      `SELECT r.race_id AS id FROM races r
+       WHERE r.series_id = ? AND EXISTS (SELECT 1 FROM results x WHERE x.race_id = r.race_id)
+       ORDER BY COALESCE(r.race_date_utc, r.race_date) DESC LIMIT 1`,
+    )
+    .get(seriesId) as { id: number } | null;
+  return row?.id ?? null;
+}
+
+export function seasonsWithRaces(db: Database, seriesId: number): number[] {
+  const rows = db
+    .query(`SELECT DISTINCT season FROM races WHERE series_id = ? ORDER BY season DESC`)
+    .all(seriesId) as Array<{ season: number }>;
+  return rows.map((r) => r.season);
 }
 
 export function coverageBySeason(db: Database, seriesId: number): SeasonCoverage[] {

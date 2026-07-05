@@ -273,3 +273,55 @@ export interface SeasonCoverage {
   racesWithLoopStats: number;
   racesWithLapTimes: number;
 }
+
+// Read-back shapes for race pages (populated fields depend on weekend-feed coverage).
+
+export interface RaceDetails {
+  raceId: number;
+  seriesId: number;
+  season: number;
+  raceName: string;
+  raceTypeId: number | null;
+  trackId: number;
+  trackType: TrackType;
+  raceDate: string | null;
+  raceDateUtc: string | null;
+  scheduledLaps: number | null;
+  actualLaps: number | null;
+  cautions: number | null;
+  cautionLaps: number | null;
+  leadChanges: number | null;
+  averageSpeed: number | null;
+  totalRaceTime: string | null;
+  marginOfVictory: string | null;
+}
+
+/** One finisher joined with driver name and loop stats (loop fields null pre-2019). */
+export interface RaceResultWithLoop {
+  raceId: number;
+  driverId: number;
+  fullName: string;
+  carNumber: string | null;
+  teamName: string | null;
+  finish: number;
+  start: number | null;
+  status: string | null;
+  lapsLed: number;
+  points: number;
+  disqualified: boolean;
+  rating: number | null;
+  passesGf: number | null;
+  passedGf: number | null;
+  fastLaps: number | null;
+  closingLapsDiff: number | null;
+}
+
+export interface SeasonRaceListItem {
+  raceId: number;
+  season: number;
+  raceName: string;
+  trackType: TrackType;
+  raceDateUtc: string | null;
+  hasResults: boolean;
+  winnerName: string | null;
+}

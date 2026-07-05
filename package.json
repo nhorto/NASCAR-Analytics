@@ -8,6 +8,7 @@
     "sync": "bun run src/app/index.ts sync",
     "status": "bun run src/app/index.ts status",
     "compute": "bun run src/app/index.ts compute",
+    "serve": "bun run src/app/index.ts serve",
     "test": "bun test"
   },
   "devDependencies": {

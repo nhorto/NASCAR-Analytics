@@ -8,26 +8,33 @@ NASCAR Analytics is a modern web platform that ingests NASCAR race data (loop da
 
 ```
 src/
-├── app/                     Application wiring and entrypoint
-│   └── index.ts             CLI: backfill / sync / status (HTTP routes come with the UI phase)
+├── app/                     Application wiring, CLI, and the web app
+│   ├── index.ts             CLI: backfill / sync / status / compute / driver / serve
+│   ├── server.ts            Bun.serve(): HTML pages + JSON API route wiring
+│   ├── layout.ts            Page shell (app bar, tab bar), htmlResponse, 404
+│   ├── html.ts              esc/fmt/badge/sparkline/card template helpers
+│   ├── style.css            Design tokens + components (per docs/DESIGN.md)
+│   └── pages/               Page templates (home, drivers, races, compare, tracks)
 ├── domains/
 │   ├── data-ingestion/      NASCAR CDN data fetching and storage  [BUILT]
 │   │   ├── types.ts         CDN feed shapes + normalized row types
 │   │   ├── config.ts        Endpoint URLs, coverage boundaries, track-type classification
-│   │   ├── repo.ts          SQLite upserts + coverage queries
-│   │   ├── service.ts       Pure normalizers + backfill/sync orchestration
+│   │   ├── repo.ts          SQLite upserts + coverage/race read queries
+│   │   ├── service.ts       Pure normalizers + backfill/sync orchestration + race reads
 │   │   └── index.ts         Barrel
 │   ├── drivers/             Driver identity, summaries, race logs  [BUILT]
 │   │   ├── types.ts         DriverSummary, DriverRaceLogEntry, IdentityIssue
 │   │   ├── config.ts        Series/points-race constants
 │   │   ├── repo.ts          Summary/race-log/lookup queries
 │   │   ├── service.ts       Driver index, lookup, identity-integrity check
+│   │   ├── runtime.ts       JSON API handlers (/api/drivers…)
 │   │   └── index.ts         Barrel
 │   └── analytics/           Pre-computed metrics (`bun run compute`)  [BUILT]
 │       ├── types.ts         Source rows, league expectations, computed stat rows
 │       ├── config.ts        Points filter (+ race 5580 override), buckets, form window
 │       ├── repo.ts          Source reads + computed-table writes/reads
 │       ├── service.ts       Metric math (pure) + computeAll orchestration
+│       ├── runtime.ts       JSON API handlers (/api/standings, /api/tracks…)
 │       └── index.ts         Barrel
 ├── providers/
 │   ├── index.ts             Providers interface + factory
@@ -42,7 +49,9 @@ tests/
 data/                        (gitignored) SQLite db + raw JSON archive
 ```
 
-Planned domains not yet built: `odds` (deferred — see exec plan). Check "Current Guarantees" and "What Does NOT Exist" below for actual state.
+Planned domains not yet built: `odds` (deferred — see completed MVP plan). Check "Current Guarantees" and "What Does NOT Exist" below for actual state.
+
+**Where pages live:** every page composes data from ≥2 domains, and cross-domain service imports are forbidden — so page templates and route wiring live in the app layer (`src/app/pages`, `src/app/server.ts`). Domain `ui/` folders stay reserved for future domain-specific components. Domain `runtime.ts` files carry the JSON API handlers.
 
 ## The DDD Layer Model
 
@@ -117,8 +126,8 @@ export interface Providers {
 | Language | TypeScript | Type safety, PAI standard |
 | Database | bun:sqlite (local) → Postgres (production) | Start simple, scale later |
 | HTTP | Bun.serve() | Built-in, no dependencies |
-| Frontend | HTML imports via Bun.serve() | No Vite/webpack needed |
-| Styling | Tailwind CSS | Utility-first, mobile-first |
+| Frontend | Server-rendered HTML (template functions returning strings) | No client framework, no build step |
+| Styling | Hand-written CSS design tokens (src/app/style.css, spec in docs/DESIGN.md) | Replaced the original Tailwind plan — zero tooling |
 | Testing | bun test | Built-in |
 
 ## Data Sources
@@ -142,13 +151,13 @@ export interface Providers {
 - **Architecture tests**: layer dependency rules are enforced by `bun test` (tests/architecture.test.ts).
 - **Computed analytics (2026-07-05)**: `bun run compute` rebuilds `driver_season_stats`, `driver_track_type_stats`, and `driver_form` (trailing-6-race form) from points races (`race_type_id = 1` + the race-5580 override). Includes two proprietary metrics — Adjusted Pass Efficiency and Closer Score, both residuals vs. league-average baselines per running-position bucket. Verified against known history (season wins leaders 2017–2024, SVG road stats, Elliott 2023 injury season).
 - **Drivers domain (2026-07-05)**: driver summaries, race logs, id/name lookup (`driver --name "..."` CLI), and an identity-integrity check. CDN driver_id verified stable across 2017–2026 — no alias table needed.
+- **Web app (2026-07-05)**: `bun run serve` (default port 3000) serves the mobile-first dark UI — home, driver index/profiles, race pages with loop insights, head-to-head compare, track-type explorer — plus JSON API routes (`/api/drivers`, `/api/drivers/:id`, `/api/drivers/:id/stats`, `/api/standings/:season`, `/api/tracks`). All reads hit precomputed tables; measured page renders < 60ms. Look & feel per [the design mockup](docs/design-docs/2026-07-05-phase3-ui-mockup.html).
 - Known data holes are documented in [the re-verification doc](docs/research/2026-07-05_data-sources-reverification.md) (2025 YellaWood 500 results; exhibition heat races).
 
 ## What Does NOT Exist Here
 
 > Honest list of gaps. Must be kept updated.
 
-- No web UI or HTTP API endpoints (Phase 3 of the active exec plan)
 - No Xfinity/Truck series data (Cup only so far)
 - No scheduled automation — sync is run manually after race weekends
 - No odds integration (deferred — see exec plan)

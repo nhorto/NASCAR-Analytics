@@ -109,6 +109,34 @@ export interface DriverFormRow {
   avgClosingGain: number | null;
 }
 
+/** Season stats joined with the driver's name, for standings pages. */
+export interface SeasonStanding extends DriverSeasonStats {
+  fullName: string;
+}
+
+/** Multi-season aggregate for one driver at one track type. */
+export interface TrackTypeLeaderRow {
+  driverId: number;
+  fullName: string;
+  starts: number;
+  wins: number;
+  top5s: number;
+  avgFinish: number | null;
+  avgRating: number | null;
+  adjPassEfficiency: number | null;
+  closerScore: number | null;
+}
+
+/** A driver's trailing-window form as of the most recent race. */
+export interface FormLeader {
+  driverId: number;
+  fullName: string;
+  raceId: number;
+  windowRaces: number;
+  avgFinish: number;
+  avgRating: number | null;
+}
+
 export interface ComputeSummary {
   resultRows: number;
   loopRows: number;

@@ -1,6 +1,6 @@
 # Exec Plan: Fan Analytics Platform MVP
 
-**Status:** ACTIVE
+**Status:** COMPLETED 2026-07-05
 **Created:** 2026-07-05
 **Depends on:** [Data sources re-verification](../../research/2026-07-05_data-sources-reverification.md)
 
@@ -38,7 +38,7 @@ A working, deployed-locally (first) web app where a NASCAR fan can, on their pho
 - ✅ **Phase 0 complete (2026-07-05)** — Bun/TypeScript scaffold, DDD folder structure, architecture dependency tests running under `bun test`
 - ✅ **Phase 1 complete (2026-07-05)** — ingestion domain + providers built; full Cup backfill run: 13.7k results (2017–2026), 10.7k loop-stat rows (2019–2026), 2.24M lap-time rows (2020–2026), cautions + leaders; raw archive 191MB / 1,300+ responses; winner spot-checks and DQ handling verified; idempotent re-runs confirmed
 - ✅ **Phase 2 complete (2026-07-05)** — drivers + analytics domains built. Computed on the real dataset: 633 driver-season rows, 2,022 track-type rows, 13,032 form rows. driver_id verified stable (163 drivers, no duplicate names, no alias table needed). Verified vs. known history: season wins leaders 2017–2024 all correct (incl. the 2018 Harvick/Busch tie at 8 and Larson's 35-race 2024), SVG's 8 road wins since 2023, Elliott's 29-race 2023. `bun run compute`, `driver --name` CLI. 67 tests green.
-- ⬜ Phase 3 — runtime + UI
+- ✅ **Phase 3 complete (2026-07-05)** — design mockup built first (per Nick) and approved direction; DESIGN.md tokens/components filled from it. `bun run serve` serves the full web app: home (last race, standings, form), driver index + profiles (chips, sparkline, track-type splits, loop metrics, race log), race pages with loop insights, head-to-head compare, track-type explorer with 4 sort lenses; JSON API routes per domain runtime. Verified in-browser against the mockup on real data; every page renders in <60ms (target was <1s). 88 tests green. Wordmark "Looplab" is a placeholder — naming still open.
 
 ## Phases
 
@@ -82,9 +82,17 @@ Detailed design (2026-07-05, after data verification against the ingested DB):
 **Phase 2 verification:** all tests green (pure metric math + e2e compute on seeded in-memory db + architecture rules); compute run on the real DB sanity-checked against known history (season wins leaders: 2017 Truex 8, 2020 Harvick 9, 2021 Larson 10, 2022 Elliott 5, 2023 Byron 6, 2024 Larson 6).
 
 ### Phase 3 — Runtime + UI
-- `Bun.serve()` API routes per domain runtime layer
-- Mobile-first dark UI (DESIGN.md): driver profile page, race page, head-to-head comparison, track-type explorer
-- Page load target: < 1s on cached data
+
+**Step 0 — design mockup first (per Nick, 2026-07-05):** a static, self-contained HTML mockup ([docs/design-docs/2026-07-05-phase3-ui-mockup.html](../../design-docs/2026-07-05-phase3-ui-mockup.html)) built with real numbers from the computed tables, defining the design tokens and component patterns. DESIGN.md's TBD sections get filled from whatever the mockup settles. UI code follows the mockup.
+
+**Architecture for the web app:**
+- Server-rendered HTML — no client framework, no build step. `ui/` files are pure template functions (string in → HTML string out, types-only imports, satisfying the UI layer rule); `runtime.ts` per domain exposes JSON API handlers; `src/app/server.ts` runs `Bun.serve()`, wires routes, and composes cross-domain pages (composition lives in app because cross-domain service imports are forbidden).
+- One hand-written CSS file carrying the design tokens (deviation from the original Tailwind plan — no build tooling wanted; ARCHITECTURE.md tech stack updated).
+- All page reads come from precomputed tables → page load target < 1s.
+
+**Pages:** `/` home (latest race, standings, form heat) · `/drivers` index · `/drivers/:id` profile (stat chips, form sparkline, track-type splits, loop metrics, season history) · `/races/:id` race page (results + loop insights) · `/compare?a&b` head-to-head · `/tracks` track-type explorer.
+
+**JSON API (runtime layers):** drivers + analytics read endpoints backing the pages and open for future use.
 
 ### Future (explicitly NOT in this plan)
 - Live race companion (phase 2 product — live-feed polling, gaps, position chart)

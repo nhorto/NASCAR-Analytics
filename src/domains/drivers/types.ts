@@ -9,6 +9,7 @@ export interface DriverSummary {
   wins: number;
   latestTeam: string | null;
   latestCarNumber: string | null;
+  latestCarMake: string | null;
 }
 
 export interface DriverRaceLogEntry {
