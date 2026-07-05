@@ -7,8 +7,8 @@
 | Domain | Types | Config | Repo | Service | Overall |
 |--------|-------|--------|------|---------|---------|
 | data-ingestion | A | A | B | B | **B+** (2026-07-05: pipeline works, tested, verified vs real data; no scheduled automation, Cup-only) |
-| analytics | — | — | — | — | Not started |
-| drivers | — | — | — | — | Not started |
+| analytics | A | A | B | B | **B+** (2026-07-05: metric math unit-tested, e2e compute tested, output verified vs known history; expectations are league-wide buckets — not yet era/track-type-adjusted) |
+| drivers | A | A | B | B | **B+** (2026-07-05: summaries/race log/lookup tested; identity verified stable; no headshots/bio metadata) |
 | odds | — | — | — | — | Deferred (no viable odds source) |
 
 ## Scoring Criteria

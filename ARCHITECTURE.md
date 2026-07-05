@@ -11,25 +11,38 @@ src/
 ├── app/                     Application wiring and entrypoint
 │   └── index.ts             CLI: backfill / sync / status (HTTP routes come with the UI phase)
 ├── domains/
-│   └── data-ingestion/      NASCAR CDN data fetching and storage  [BUILT]
-│       ├── types.ts         CDN feed shapes + normalized row types
-│       ├── config.ts        Endpoint URLs, coverage boundaries, track-type classification
-│       ├── repo.ts          SQLite upserts + coverage queries
-│       ├── service.ts       Pure normalizers + backfill/sync orchestration
+│   ├── data-ingestion/      NASCAR CDN data fetching and storage  [BUILT]
+│   │   ├── types.ts         CDN feed shapes + normalized row types
+│   │   ├── config.ts        Endpoint URLs, coverage boundaries, track-type classification
+│   │   ├── repo.ts          SQLite upserts + coverage queries
+│   │   ├── service.ts       Pure normalizers + backfill/sync orchestration
+│   │   └── index.ts         Barrel
+│   ├── drivers/             Driver identity, summaries, race logs  [BUILT]
+│   │   ├── types.ts         DriverSummary, DriverRaceLogEntry, IdentityIssue
+│   │   ├── config.ts        Series/points-race constants
+│   │   ├── repo.ts          Summary/race-log/lookup queries
+│   │   ├── service.ts       Driver index, lookup, identity-integrity check
+│   │   └── index.ts         Barrel
+│   └── analytics/           Pre-computed metrics (`bun run compute`)  [BUILT]
+│       ├── types.ts         Source rows, league expectations, computed stat rows
+│       ├── config.ts        Points filter (+ race 5580 override), buckets, form window
+│       ├── repo.ts          Source reads + computed-table writes/reads
+│       ├── service.ts       Metric math (pure) + computeAll orchestration
 │       └── index.ts         Barrel
 ├── providers/
 │   ├── index.ts             Providers interface + factory
-│   ├── db.ts                bun:sqlite connection + schema
+│   ├── db.ts                bun:sqlite connection + schema (incl. computed tables)
 │   ├── nascar-cdn.ts        Rate-limited, retrying CDN fetch client
 │   └── raw-archive.ts       Verbatim raw-JSON archival (CDN insurance)
 └── utils/                   Generic reusable helpers
 tests/
 ├── architecture.test.ts     Enforces the layer rules below (part of `bun test`)
+├── seed.ts                  In-memory db + row factories for domain tests
 └── fixtures/                Trimmed real CDN responses
 data/                        (gitignored) SQLite db + raw JSON archive
 ```
 
-Planned domains not yet built: `analytics` (proprietary stats computation), `drivers` (driver profiles), `odds` (deferred — see exec plan). Check "Current Guarantees" and "What Does NOT Exist" below for actual state.
+Planned domains not yet built: `odds` (deferred — see exec plan). Check "Current Guarantees" and "What Does NOT Exist" below for actual state.
 
 ## The DDD Layer Model
 
@@ -127,15 +140,15 @@ export interface Providers {
 - **Raw archival**: every 200 CDN response is stored verbatim under `data/raw/` with a `raw_fetches` index (URL, sha256, status) — the dataset survives any future CDN access change.
 - **Track-type classification**: every 2016–2026 Cup track classified (superspeedway/intermediate/short/road/dirt), including Atlanta's 2022 reprofile via season override.
 - **Architecture tests**: layer dependency rules are enforced by `bun test` (tests/architecture.test.ts).
+- **Computed analytics (2026-07-05)**: `bun run compute` rebuilds `driver_season_stats`, `driver_track_type_stats`, and `driver_form` (trailing-6-race form) from points races (`race_type_id = 1` + the race-5580 override). Includes two proprietary metrics — Adjusted Pass Efficiency and Closer Score, both residuals vs. league-average baselines per running-position bucket. Verified against known history (season wins leaders 2017–2024, SVG road stats, Elliott 2023 injury season).
+- **Drivers domain (2026-07-05)**: driver summaries, race logs, id/name lookup (`driver --name "..."` CLI), and an identity-integrity check. CDN driver_id verified stable across 2017–2026 — no alias table needed.
 - Known data holes are documented in [the re-verification doc](docs/research/2026-07-05_data-sources-reverification.md) (2025 YellaWood 500 results; exhibition heat races).
 
 ## What Does NOT Exist Here
 
 > Honest list of gaps. Must be kept updated.
 
-- No proprietary analytics metrics (Phase 2 of the active exec plan)
-- No drivers domain / driver identity normalization beyond id+name
-- No web UI or HTTP API endpoints (Phase 3)
+- No web UI or HTTP API endpoints (Phase 3 of the active exec plan)
 - No Xfinity/Truck series data (Cup only so far)
 - No scheduled automation — sync is run manually after race weekends
 - No odds integration (deferred — see exec plan)

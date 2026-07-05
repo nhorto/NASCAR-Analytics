@@ -119,6 +119,70 @@ CREATE TABLE IF NOT EXISTS race_leaders (
 );
 CREATE INDEX IF NOT EXISTS idx_race_leaders_race ON race_leaders(race_id);
 
+-- Analytics: pre-computed metrics, fully rebuilt by each compute run.
+CREATE TABLE IF NOT EXISTS driver_season_stats (
+  driver_id INTEGER NOT NULL,
+  series_id INTEGER NOT NULL,
+  season INTEGER NOT NULL,
+  races INTEGER NOT NULL,
+  wins INTEGER NOT NULL,
+  top5s INTEGER NOT NULL,
+  top10s INTEGER NOT NULL,
+  dnfs INTEGER NOT NULL,
+  avg_start REAL,
+  avg_finish REAL,
+  laps_led INTEGER NOT NULL,
+  points INTEGER NOT NULL,
+  playoff_points INTEGER NOT NULL,
+  loop_races INTEGER NOT NULL,
+  avg_rating REAL,
+  top15_lap_pct REAL,
+  fast_lap_pct REAL,
+  pass_efficiency REAL,
+  adj_pass_efficiency REAL,
+  avg_closing_gain REAL,
+  closer_score REAL,
+  PRIMARY KEY (driver_id, series_id, season)
+);
+CREATE INDEX IF NOT EXISTS idx_season_stats_season ON driver_season_stats(season, series_id);
+
+CREATE TABLE IF NOT EXISTS driver_track_type_stats (
+  driver_id INTEGER NOT NULL,
+  series_id INTEGER NOT NULL,
+  season INTEGER NOT NULL,
+  track_type TEXT NOT NULL,
+  races INTEGER NOT NULL,
+  wins INTEGER NOT NULL,
+  top5s INTEGER NOT NULL,
+  top10s INTEGER NOT NULL,
+  dnfs INTEGER NOT NULL,
+  avg_start REAL,
+  avg_finish REAL,
+  laps_led INTEGER NOT NULL,
+  loop_races INTEGER NOT NULL,
+  avg_rating REAL,
+  pass_efficiency REAL,
+  adj_pass_efficiency REAL,
+  avg_closing_gain REAL,
+  closer_score REAL,
+  PRIMARY KEY (driver_id, series_id, season, track_type)
+);
+
+CREATE TABLE IF NOT EXISTS driver_form (
+  driver_id INTEGER NOT NULL,
+  series_id INTEGER NOT NULL,
+  race_id INTEGER NOT NULL,
+  season INTEGER NOT NULL,
+  race_date_utc TEXT,
+  window_races INTEGER NOT NULL,
+  avg_finish REAL NOT NULL,
+  avg_start REAL,
+  avg_rating REAL,
+  avg_closing_gain REAL,
+  PRIMARY KEY (driver_id, race_id)
+);
+CREATE INDEX IF NOT EXISTS idx_driver_form_driver ON driver_form(driver_id, season);
+
 CREATE TABLE IF NOT EXISTS raw_fetches (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   url TEXT NOT NULL,

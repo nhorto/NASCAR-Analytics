@@ -1,5 +1,7 @@
 import { createProviders } from "../providers/index.ts";
 import { ingestionService, ingestionConfig } from "../domains/data-ingestion/index.ts";
+import { analyticsService } from "../domains/analytics/index.ts";
+import { driversService } from "../domains/drivers/index.ts";
 
 const DATA_DIR = "data";
 
@@ -31,6 +33,21 @@ function argValue(flag: string, fallback: number): number {
     process.exit(1);
   }
   return parsed;
+}
+
+function argString(flag: string): string | null {
+  const idx = process.argv.indexOf(flag);
+  if (idx === -1) return null;
+  const raw = process.argv[idx + 1];
+  if (raw === undefined) {
+    console.error(`Missing value for ${flag}`);
+    process.exit(1);
+  }
+  return raw;
+}
+
+function fmt(n: number | null, digits = 1): string {
+  return n === null ? "-" : n.toFixed(digits);
 }
 
 const command = process.argv[2];
@@ -72,12 +89,57 @@ switch (command) {
     }
     break;
   }
+  case "compute": {
+    const p = providers();
+    const s = analyticsService.computeAll(p, argValue("--series", ingestionConfig.SERIES.cup), log);
+    console.log(
+      `computed: ${s.seasonStatsRows} season rows, ${s.trackTypeStatsRows} track-type rows, ` +
+        `${s.formRows} form rows (from ${s.resultRows} results, ${s.loopRows} loop rows)`,
+    );
+    break;
+  }
+  case "driver": {
+    const p = providers();
+    const seriesId = argValue("--series", ingestionConfig.SERIES.cup);
+    const name = argString("--name");
+    const query = name ?? argValue("--id", -1);
+    if (query === -1) {
+      console.error(`Usage: driver --name "Chase Elliott" | --id 4062 [--series ID]`);
+      process.exit(1);
+    }
+    const d = driversService.findDriver(p, query, seriesId);
+    if (!d) {
+      console.error(`No driver found for: ${query}`);
+      process.exit(1);
+    }
+    console.log(
+      `${d.fullName} (#${d.latestCarNumber ?? "?"}, ${d.latestTeam ?? "?"}) — ` +
+        `${d.races} points races ${d.firstSeason}–${d.lastSeason}, ${d.wins} wins\n`,
+    );
+    const seasons = analyticsService.seasonStatsForDriver(p, d.driverId, seriesId);
+    if (seasons.length === 0) {
+      console.log("No computed stats yet. Run: bun run compute");
+      break;
+    }
+    console.log("season  races  wins  top5  top10  avgFin  rating  adjPE  closer");
+    for (const s of seasons) {
+      console.log(
+        `${String(s.season).padEnd(7)} ${String(s.races).padEnd(6)} ${String(s.wins).padEnd(5)} ` +
+          `${String(s.top5s).padEnd(5)} ${String(s.top10s).padEnd(6)} ` +
+          `${fmt(s.avgFinish).padEnd(7)} ${fmt(s.avgRating).padEnd(7)} ` +
+          `${fmt(s.adjPassEfficiency).padEnd(6)} ${fmt(s.closerScore, 2)}`,
+      );
+    }
+    break;
+  }
   default:
-    console.log(`nascar-analytics ingestion CLI
+    console.log(`nascar-analytics CLI
 
 Usage:
   bun run src/app/index.ts backfill [--from YEAR] [--to YEAR] [--series ID] [--force]
   bun run src/app/index.ts sync [--series ID]
-  bun run src/app/index.ts status [--series ID]`);
+  bun run src/app/index.ts status [--series ID]
+  bun run src/app/index.ts compute [--series ID]
+  bun run src/app/index.ts driver --name "Chase Elliott" | --id 4062 [--series ID]`);
     if (command !== undefined) process.exit(1);
 }

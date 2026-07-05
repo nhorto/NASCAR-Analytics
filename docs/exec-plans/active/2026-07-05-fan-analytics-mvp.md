@@ -37,7 +37,7 @@ A working, deployed-locally (first) web app where a NASCAR fan can, on their pho
 
 - ✅ **Phase 0 complete (2026-07-05)** — Bun/TypeScript scaffold, DDD folder structure, architecture dependency tests running under `bun test`
 - ✅ **Phase 1 complete (2026-07-05)** — ingestion domain + providers built; full Cup backfill run: 13.7k results (2017–2026), 10.7k loop-stat rows (2019–2026), 2.24M lap-time rows (2020–2026), cautions + leaders; raw archive 191MB / 1,300+ responses; winner spot-checks and DQ handling verified; idempotent re-runs confirmed
-- ⬜ Phase 2 — drivers + analytics domains
+- ✅ **Phase 2 complete (2026-07-05)** — drivers + analytics domains built. Computed on the real dataset: 633 driver-season rows, 2,022 track-type rows, 13,032 form rows. driver_id verified stable (163 drivers, no duplicate names, no alias table needed). Verified vs. known history: season wins leaders 2017–2024 all correct (incl. the 2018 Harvick/Busch tie at 8 and Larson's 35-race 2024), SVG's 8 road wins since 2023, Elliott's 29-race 2023. `bun run compute`, `driver --name` CLI. 67 tests green.
 - ⬜ Phase 3 — runtime + UI
 
 ## Phases
@@ -55,9 +55,31 @@ A working, deployed-locally (first) web app where a NASCAR fan can, on their pho
 - Update command: idempotent "sync latest" run after each race weekend
 
 ### Phase 2 — Drivers + analytics domains
-- Driver identity normalization across seasons (driver_id from CDN is stable — verify)
-- Base computed metrics: season aggregates, rolling N-race averages, track-type splits
-- 1–2 proprietary metrics to start (e.g., pass efficiency adjusted for position, closing-laps performance) — computed in service layer, pre-computed/cached per core belief #5 (speed)
+
+Detailed design (2026-07-05, after data verification against the ingested DB):
+
+**Data facts established up front:**
+- `driver_id` is stable across seasons: 163 drivers, zero duplicate names across different ids, long-tenure drivers hold one id across all 10 seasons. **No alias table needed.**
+- `race_type_id`: 1 = points (341), 2 = exhibition (28), 3 = exhibition variant (1 — the 2025 Cook Out Clash at Bowman Gray). Points filter = `race_type_id = 1`.
+- One data-bearing race has NULL `race_type_id`: the 2025 YellaWood 500 (race 5580, loop stats only — its weekend feed is null upstream). It IS a points race → analytics config carries a `POINTS_RACE_ID_OVERRIDES = [5580]` so its loop stats count.
+- `closing_laps_diff = closing_ps − finish_ps` (verified on all 10,716 rows): positive = positions gained over the closing laps.
+- `finishing_status`: `"Running"` = finished; failure reason = DNF; blank / `"Stage N Winner"` oddities = treated as unknown (not DNF).
+
+**drivers domain** (identity + race log; reads ingestion-owned tables via its own repo):
+- `types.ts`: `DriverSummary` (id, name, first/last season, race counts, latest team/car number), `DriverRaceLogEntry` (per-race result + loop rating)
+- `repo.ts`: driver summaries, race log (results × races × loop_stats join), lookup by id or case-insensitive name
+- `service.ts`: driver index, race log, identity-integrity check (duplicate-name detection so future ingests surface id instability)
+
+**analytics domain** (pre-computed metrics, per core belief #5 — computed by `bun run compute`, stored in SQLite, read instantly in Phase 3):
+- New tables in the db provider: `driver_season_stats`, `driver_track_type_stats`, `driver_form`
+- Base metrics per (driver, season) and per (driver, season, track_type): races, wins, top-5s, top-10s, DNFs, avg start/finish, laps led, points, playoff points; loop-derived: avg Driver Rating, top-15 lap %, fast-lap %, green-flag pass efficiency
+- Rolling form (`driver_form`): per (driver, race), trailing-6-points-races avg finish / avg rating / avg closing gain — powers Phase 3 trend sparklines
+- **Proprietary metric 1 — Adjusted Pass Efficiency (adjPE):** raw pass efficiency = `passes_gf / (passes_gf + passed_gf)` (share of green-flag passing encounters won). Mid-pack cars see more passing chances than leaders, so we compute the league-average efficiency per average-running-position bucket (width 5) across all points-race loop rows, then score each driver-race as *actual − expected*. Season adjPE = mean residual × 100 (percentage points above position-expected).
+- **Proprietary metric 2 — Closer Score:** same expectation mechanism applied to closing laps: league-average `closing_laps_diff` per closing-position bucket (a P2 car can't gain much; a P25 car can), residual = actual − expected. Season Closer Score = mean residual (positions gained in closing laps vs. expectation).
+- Full recompute each run (dataset is small; delete + insert in a transaction, idempotent)
+- CLI: `bun run compute` (recompute all), `bun run src/app/index.ts driver --name "..."` (quick profile lookup for verification)
+
+**Phase 2 verification:** all tests green (pure metric math + e2e compute on seeded in-memory db + architecture rules); compute run on the real DB sanity-checked against known history (season wins leaders: 2017 Truex 8, 2020 Harvick 9, 2021 Larson 10, 2022 Elliott 5, 2023 Byron 6, 2024 Larson 6).
 
 ### Phase 3 — Runtime + UI
 - `Bun.serve()` API routes per domain runtime layer
