@@ -1,8 +1,39 @@
 # Live Race Day Companion (MVP)
 
-**Status:** PROPOSED — awaiting owner approval before implementation
+**Status:** ACTIVE — owner-approved 2026-07-05. Phase 0 complete; Phase 1 in progress.
 **Started:** 2026-07-05
 **Research:** [docs/research/2026-07-05_live-race-companion.md](../../research/2026-07-05_live-race-companion.md)
+
+## Phase 0 findings (confirmed locally 2026-07-05)
+
+Ran the confirm-locally checklist from a local machine (the cloud env that wrote
+this plan could not reach `cf.nascar.com`). All feeds reachable with a browser
+`User-Agent`; fixtures captured to `tests/fixtures/`.
+
+- **`live-feed.json`** — 200, ~88KB, 38 vehicles. Captured (last session at capture
+  time: Xfinity Cuervo 300, Chicagoland, checkered). `vehicles[]` schema matches the
+  research doc with **zero missing fields**; extras present (`average_restart_speed`,
+  `best_lap`, `vehicle_elapsed_time`, `qualifying_status`).
+- **Two schema corrections** the parser must honor:
+  1. `laps_led` is a `{start_lap,end_lap}[]` **array of ranges**, not an int counter
+     (laps led = Σ(end−start+1)).
+  2. `vehicles[].pit_stops[]` uses `pit_in_lap_count` + `pit_out_elapsed_time`
+     (no `pit_out_lap_count`). Entries carry **leading zero-padding** then the real
+     pit-in laps (e.g. `[0,0,0,0,0,48,94,134,157]` = 4 stops), so the parser counts
+     only entries with `pit_in_lap_count > 0` — those real laps drive the pit-cycle
+     model directly. The separate `live-pit-data.json` (248 rows) adds richer
+     timing/duration for Phase 2.
+- **CORS absent** (`Access-Control-Allow-Origin` not set) → browsers cannot fetch the
+  CDN directly → the one-poll-fan-out proxy architecture is **required**, as designed.
+- **No `Cache-Control`** on the feed → we own the polling cadence (~5s).
+- **`live-flag-data.json`** (array[18]) and **`live-pit-data.json`** (array[248]) — both 200; captured.
+- **`loopstats/prod/2026/{series}/{race_id}.json`** — populated for the finished race
+  (array[1]) → confirms the post-race authoritative-swap path.
+- **Schedule detector:** both `cacher/2026/race_list_basic.json` (series-keyed object)
+  and `cacher/2026/{series}/schedule-feed.json` (per-series array) return data; the
+  latter carries `start_time_utc` per race — usable to detect the current/next session.
+- **Live validation window:** a Cup race ("eero 400") is scheduled 2026-07-05 22:00 UTC;
+  owner opted to run a live capture during it for realistic alert/pit test data.
 
 ## Problem
 
@@ -83,17 +114,24 @@ Client  fetch('/api/live') every ~5s  →  live page render
 
 ## Phases
 
-**Phase 0 — Confirm-locally (owner or a local run; BLOCKS the parser).**
-Run the [confirm-locally checklist](../../research/2026-07-05_live-race-companion.md#confirm-locally-checklist)
-against a real live session: capture a `live-feed.json` payload, verify the
-`vehicles[]` keys, `Cache-Control` TTL, CORS absence, when `loopstats/prod`
-populates, and the schedule-detector file. *This cloud environment cannot reach
-`cf.nascar.com` (egress policy) — must be done locally.*
+**Phase 0 — Confirm-locally. ✅ DONE (2026-07-05).** Ran the checklist locally; all
+feeds reachable, `vehicles[]` schema confirmed, CORS absent, no `Cache-Control`,
+`loopstats/prod` populated post-race, both schedule detectors return data. Two
+parser corrections found (`laps_led` range array; pit zero-padding). Fixtures saved
+to `tests/fixtures/`. See the **Phase 0 findings** section above.
 
-**Phase 1 — Live domain, pure + tested (no network).** Types/config/service against
-a captured fixture (`tests/fixtures/live-feed.json`). Unit-test `normalizeFeed`,
-`computeLiveMetrics`, `deriveAlerts`, `pitCycleModel`. Emit `baselines.json` from
-the batch. Architecture tests stay green.
+**Phase 1 — Live domain, pure + tested (no network). ✅ DONE (2026-07-05).** Built the
+Workers-safe `live` domain (`types` → `config` → `service`, barrel `index.ts`) with
+`normalizeFeed`, `computeLiveMetrics` (live pass efficiency + adjusted residual vs
+baseline, closer estimate gated to closing laps), `deriveAlerts` (lead change, flag,
+stage end, big movers / focus-driver moves, pit, out), and a `pitCycleModel` that
+infers stint length from a car's own pit laps. 22 unit tests in
+`tests/live.service.test.ts` (fixture + synthesized snapshots); architecture tests
+green (zero external imports in types/config, pure service). Weekly batch now emits
+per-series `dist/data/baselines-{series}.json` (`analyticsService.leagueBaselines`).
+Added a `bun run capture` CLI (`src/app/capture.ts`) to record live snapshots
+(feed+flag+pit) for realistic fixtures / live validation — smoke-tested against the
+CDN. **Next:** run a capture during tonight's Cup race (22:00 UTC), then Phase 2 (edge DO).
 
 **Phase 2 — Edge runtime.** `LiveCoordinator` DO (alarm loop, idle backoff, UA
 fetch, KV write), `GET /api/live` Pages Function (KV read + `s-maxage`), wrangler

@@ -6,7 +6,7 @@
 
 | Plan | Status | Description |
 |------|--------|-------------|
-| [Live Race Day Companion](exec-plans/active/2026-07-05-live-race-companion.md) | PROPOSED | Free, in-app, mobile-first live companion: live loop-data leaderboard, my-driver in-app alerts, strategy/pit-cycle tracker. Cloudflare Durable Object polls the NASCAR CDN live feed → edge-cached `/api/live`. Backed by [research](research/2026-07-05_live-race-companion.md). Awaiting owner approval. |
+| [Live Race Day Companion](exec-plans/active/2026-07-05-live-race-companion.md) | ACTIVE | Free, in-app, mobile-first live companion: live loop-data leaderboard, my-driver in-app alerts, strategy/pit-cycle tracker. Cloudflare Durable Object polls the NASCAR CDN live feed → edge-cached `/api/live`. Backed by [research](research/2026-07-05_live-race-companion.md). Owner-approved 2026-07-05; Phase 0 confirmed locally (feeds reachable, schema verified); Phase 1 DONE (pure `live` domain + tests, `baselines.json`, `bun run capture` CLI). Phase 2 (edge Durable Object) next. |
 | _Other candidates_ | | Connect the Cloudflare deploy + add the two CI secrets (owner login), SEO/OpenGraph metadata + sitemap, real playoff-format model for the recap. |
 
 ## Completed Plans

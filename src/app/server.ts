@@ -8,7 +8,7 @@ import { analyticsRuntime } from "../domains/analytics/index.ts";
 import { driversRuntime } from "../domains/drivers/index.ts";
 import { htmlResponse } from "./layout.ts";
 import * as render from "./render.ts";
-import { seasonStatsPayload, trackTypePayload } from "./data.ts";
+import { seasonStatsPayload, trackTypePayload, baselinesPayload } from "./data.ts";
 
 const STYLE_URL = new URL("./style.css", import.meta.url);
 const COMPARE_JS_URL = new URL("./client/compare.js", import.meta.url);
@@ -61,6 +61,11 @@ export function createServer(p: Providers, port: number) {
       if (m) {
         const s = Number(m[1]);
         return VALID_SERIES.has(s) ? json(trackTypePayload(p, s)) : json([]);
+      }
+      m = path.match(/^\/data\/baselines-(\d+)\.json$/);
+      if (m) {
+        const s = Number(m[1]);
+        return VALID_SERIES.has(s) ? json(baselinesPayload(p, s)) : json(null);
       }
 
       // --- JSON API (dev convenience; not part of the static export) ---

@@ -150,6 +150,18 @@ switch (command) {
     console.log(`Exported ${pages} pages to dist/`);
     break;
   }
+  case "capture": {
+    // Live-feed capture for the race companion. Poll the CDN live feed and save
+    // raw snapshots (feed + flag + pit) for parser validation / fixtures.
+    const series = process.argv.includes("--series") ? argValue("--series", 1) : undefined;
+    const intervalMs = argValue("--interval", 5) * 1000;
+    const ticks = argValue("--ticks", 0); // 0 = until Ctrl-C
+    const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+    const outDir = argString("--out") ?? `${DATA_DIR}/captures/${stamp}`;
+    const { captureLive } = await import("./capture.ts");
+    await captureLive({ series, intervalMs, ticks, outDir, log });
+    break;
+  }
   case "refresh": {
     // The portable weekend loop: backfill -> compute (all series) -> export ->
     // deploy. This is the single command any scheduler runs (GitHub Actions now,
@@ -212,6 +224,7 @@ Usage:
   bun run src/app/index.ts driver --name "Chase Elliott" | --id 4062 [--series ID]
   bun run src/app/index.ts serve [--port 3000]
   bun run src/app/index.ts export
+  bun run src/app/index.ts capture [--series ID] [--interval SEC] [--ticks N] [--out DIR]  # capture live feed
   bun run src/app/index.ts refresh [--no-deploy]   # backfill+compute+export+deploy, all series
 
 Env: NASCAR_DATA_DIR (default data), NASCAR_PAGES_PROJECT (default looplab),

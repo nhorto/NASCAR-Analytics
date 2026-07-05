@@ -8,7 +8,7 @@ import { createDb } from "../providers/db.ts";
 import { ingestionService, ingestionConfig } from "../domains/data-ingestion/index.ts";
 import { driversService } from "../domains/drivers/index.ts";
 import * as render from "./render.ts";
-import { seasonStatsPayload, trackTypePayload } from "./data.ts";
+import { seasonStatsPayload, trackTypePayload, baselinesPayload } from "./data.ts";
 
 const DIST = "dist";
 const SERIES_PREFIX: Record<number, string> = { 1: "", 2: "/xfinity", 3: "/trucks" };
@@ -82,6 +82,7 @@ export async function exportSite(dbPath = "data/nascar.db", log?: Log): Promise<
 
     await Bun.write(join(DIST, `data/season-stats-${s}.json`), JSON.stringify(seasonStatsPayload(p, s)));
     await Bun.write(join(DIST, `data/tracktype-${s}.json`), JSON.stringify(trackTypePayload(p, s)));
+    await Bun.write(join(DIST, `data/baselines-${s}.json`), JSON.stringify(baselinesPayload(p, s)));
     log?.info(`series ${s}: pages so far ${pages}`);
   }
 
