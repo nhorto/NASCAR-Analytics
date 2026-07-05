@@ -18,14 +18,20 @@ import type {
   SeasonPointsResultRow,
   StandingsMovementRow,
   RaceFormCallouts,
+  RaceSlot,
+  PlayoffPictureRow,
+  PlayoffPicture,
+  PlayoffStatus,
 } from "./types.ts";
+import type { PlayoffFormat } from "./config.ts";
 import {
   DEFAULT_SERIES_ID,
   PS_BUCKET_WIDTH,
   FORM_WINDOW_RACES,
   FORM_LEADER_MIN_SEASON_SHARE,
   METRIC_LEADER_MIN_LOOP_SHARE,
-  PLAYOFF_CUT_BY_SERIES,
+  PLAYOFF_FORMAT_BY_SERIES,
+  PLAYOFF_WIN_ELIGIBILITY_RANK,
   RECAP_STANDOUT_COUNT,
   RECAP_FORM_MIN_WINDOW,
 } from "./config.ts";
@@ -401,6 +407,261 @@ export function pickFormCallouts(
   return { over, under };
 }
 
+// ---- Playoff picture (pure, season-phase-aware) ----
+
+/** Per-driver season totals through a race. */
+export interface DriverSeasonAgg {
+  driverId: number;
+  fullName: string;
+  points: number;
+  wins: number;
+  playoffPoints: number;
+}
+
+function positionMap(sequence: RaceSlot[]): Map<number, number> {
+  const m = new Map<number, number>();
+  sequence.forEach((s, i) => m.set(s.raceId, i + 1));
+  return m;
+}
+
+/** Season points / wins / playoff points per driver, counting races through `throughRaceId`. */
+export function seasonAggregates(
+  rows: SeasonPointsResultRow[],
+  throughRaceId: number,
+  pos: Map<number, number>,
+): DriverSeasonAgg[] {
+  const throughPos = pos.get(throughRaceId) ?? Number.POSITIVE_INFINITY;
+  const m = new Map<number, DriverSeasonAgg>();
+  for (const r of rows) {
+    if ((pos.get(r.raceId) ?? Number.POSITIVE_INFINITY) > throughPos) continue;
+    const cur =
+      m.get(r.driverId) ??
+      { driverId: r.driverId, fullName: r.fullName, points: 0, wins: 0, playoffPoints: 0 };
+    cur.points += r.points;
+    cur.playoffPoints += r.playoffPoints;
+    if (r.finish === 1) cur.wins += 1;
+    m.set(r.driverId, cur);
+  }
+  return [...m.values()];
+}
+
+function mkRow(a: DriverSeasonAgg, status: PlayoffStatus, pointsToCut: number | null, points = a.points): PlayoffPictureRow {
+  return {
+    driverId: a.driverId,
+    fullName: a.fullName,
+    wins: a.wins,
+    points,
+    playoffPoints: a.playoffPoints,
+    status,
+    pointsToCut,
+  };
+}
+
+/**
+ * Regular-season playoff field: race winners in the top-`eligibilityRank` points
+ * are locked in (win and in); remaining spots go to winless drivers by points.
+ * Rows are ordered locked-winners (by playoff points) → in-on-points → cut → out,
+ * each carrying its points-behind-the-cut for the bubble.
+ */
+export function regularSeasonField(
+  aggs: DriverSeasonAgg[],
+  format: PlayoffFormat,
+  eligibilityRank = PLAYOFF_WIN_ELIGIBILITY_RANK,
+): PlayoffPictureRow[] {
+  const byPoints = [...aggs].sort(
+    (a, b) => b.points - a.points || a.fullName.localeCompare(b.fullName),
+  );
+  const pointsRank = new Map(byPoints.map((a, i) => [a.driverId, i + 1]));
+  const eligible = (a: DriverSeasonAgg) => a.wins >= 1 && (pointsRank.get(a.driverId) ?? Infinity) <= eligibilityRank;
+
+  const winners = aggs
+    .filter(eligible)
+    .sort((a, b) => b.playoffPoints - a.playoffPoints || b.wins - a.wins || b.points - a.points);
+  const winless = aggs
+    .filter((a) => !eligible(a))
+    .sort((a, b) => b.points - a.points || a.fullName.localeCompare(b.fullName));
+
+  const F = format.fieldSize;
+  const rows: PlayoffPictureRow[] = [];
+
+  // Edge: more locked winners than spots — the field is the top F winners by
+  // playoff points; lower winners and all winless are out.
+  if (winners.length >= F) {
+    winners.forEach((a, i) =>
+      rows.push(mkRow(a, i < F ? "in-win" : i === F ? "bubble" : "out", null)),
+    );
+    winless.forEach((a) => rows.push(mkRow(a, "out", null)));
+    return rows;
+  }
+
+  const spots = F - winners.length;
+  const inPoints = winless.slice(0, spots);
+  const rest = winless.slice(spots);
+  const cutPoints = inPoints.length > 0 ? inPoints[inPoints.length - 1]!.points : 0;
+
+  winners.forEach((a) => rows.push(mkRow(a, "in-win", null)));
+  inPoints.forEach((a) => rows.push(mkRow(a, "in-points", null)));
+  rest.forEach((a, i) => rows.push(mkRow(a, i === 0 ? "bubble" : "out", cutPoints - a.points)));
+  return rows;
+}
+
+/**
+ * Playoff-round standings as of a playoff race: seeds the field from the
+ * regular-season finale, plays each completed round (round-race points + carried
+ * playoff points, race winners auto-advance), eliminates to the cut, and reports
+ * the current round's standing. Eliminated drivers trail with `eliminated`.
+ */
+export function playoffStandings(
+  rows: SeasonPointsResultRow[],
+  sequence: RaceSlot[],
+  format: PlayoffFormat,
+  throughRaceId: number,
+): PlayoffPicture {
+  const pos = positionMap(sequence);
+  const playoffRaceCount = format.roundRaces.reduce((a, b) => a + b, 0);
+  const playoffSlots = sequence.slice(-playoffRaceCount);
+  const startPos = sequence.length - playoffRaceCount; // 0-based; playoff race 1 sits at index startPos
+  const finaleId = sequence[startPos - 1]?.raceId;
+
+  const aggThrough = new Map(
+    seasonAggregates(rows, throughRaceId, pos).map((a) => [a.driverId, a]),
+  );
+
+  // The 16/12/10 who qualified at the finale.
+  const field =
+    finaleId !== undefined
+      ? regularSeasonField(seasonAggregates(rows, finaleId, pos), format).filter(
+          (r) => r.status === "in-win" || r.status === "in-points",
+        )
+      : [];
+  let survivors = field.map((r) => r.driverId);
+
+  // Round boundaries (cumulative race counts) and which round `throughRace` is in.
+  const cum: number[] = [];
+  format.roundRaces.reduce((acc, n, i) => ((cum[i] = acc + n), acc + n), 0);
+  const throughPlayoffPos = (pos.get(throughRaceId) ?? 0) - startPos; // 1-based within the playoffs
+  let currentRound = format.roundRaces.length - 1;
+  for (let i = 0; i < cum.length; i++) {
+    if (throughPlayoffPos <= cum[i]!) {
+      currentRound = i;
+      break;
+    }
+  }
+
+  const roundRaceIds = (i: number) =>
+    new Set(playoffSlots.slice(i === 0 ? 0 : cum[i - 1]!, cum[i]!).map((s) => s.raceId));
+  const globalPosOf = (playoffPos: number) => startPos + playoffPos; // 1-based global pos of playoff race k
+  const ppThroughPos = (driverId: number, globalPos: number) => {
+    let s = 0;
+    for (const r of rows) if (r.driverId === driverId && (pos.get(r.raceId) ?? 0) <= globalPos) s += r.playoffPoints;
+    return s;
+  };
+  const pointsIn = (driverId: number, ids: Set<number>) => {
+    let s = 0;
+    for (const r of rows) if (r.driverId === driverId && ids.has(r.raceId)) s += r.points;
+    return s;
+  };
+  const wonIn = (driverId: number, ids: Set<number>) =>
+    rows.some((r) => r.driverId === driverId && ids.has(r.raceId) && r.finish === 1);
+
+  // Play out every round fully completed before the current one.
+  for (let i = 0; i < currentRound; i++) {
+    const ids = roundRaceIds(i);
+    const cutoffPos = globalPosOf(cum[i]!);
+    const scored = survivors.map((d) => ({
+      d,
+      won: wonIn(d, ids),
+      score: ppThroughPos(d, cutoffPos) + pointsIn(d, ids),
+    }));
+    const winners = scored.filter((x) => x.won).map((x) => x.d);
+    const rest = scored
+      .filter((x) => !x.won)
+      .sort((a, b) => b.score - a.score)
+      .map((x) => x.d);
+    survivors = [...winners, ...rest].slice(0, format.roundCuts[i]!);
+  }
+
+  // Current round standing.
+  const isChampionship = currentRound === format.roundRaces.length - 1;
+  const sizes = [format.fieldSize, ...format.roundCuts];
+  const startSize = sizes[currentRound]!;
+  const cutSize = isChampionship ? startSize : format.roundCuts[currentRound]!;
+  const completedThisRound = new Set(
+    playoffSlots
+      .slice(currentRound === 0 ? 0 : cum[currentRound - 1]!, Math.min(cum[currentRound]!, throughPlayoffPos))
+      .map((s) => s.raceId),
+  );
+  const throughGlobalPos = globalPosOf(throughPlayoffPos);
+
+  const standing = survivors
+    .map((d) => {
+      const agg = aggThrough.get(d) ?? { driverId: d, fullName: `#${d}`, points: 0, wins: 0, playoffPoints: 0 };
+      const roundPoints = pointsIn(d, completedThisRound);
+      return {
+        agg,
+        clinched: wonIn(d, completedThisRound),
+        roundPoints,
+        seed: ppThroughPos(d, throughGlobalPos) + roundPoints,
+      };
+    })
+    .sort((a, b) => b.seed - a.seed || b.agg.playoffPoints - a.agg.playoffPoints || a.agg.fullName.localeCompare(b.agg.fullName));
+
+  const clinchedCount = standing.filter((x) => x.clinched).length;
+  const advanceSlots = Math.max(0, cutSize - clinchedCount);
+  let nonClinchedSeen = 0;
+  const cutSeed =
+    !isChampionship && standing.length > cutSize
+      ? [...standing].filter((x) => !x.clinched).sort((a, b) => b.seed - a.seed)[advanceSlots - 1]?.seed ?? null
+      : null;
+
+  const rows_: PlayoffPictureRow[] = standing.map((x) => {
+    let status: PlayoffStatus;
+    if (isChampionship) status = "advancing";
+    else if (x.clinched) status = "clinched";
+    else {
+      const advancing = nonClinchedSeen < advanceSlots;
+      nonClinchedSeen += 1;
+      status = advancing ? "advancing" : "below-cut";
+    }
+    const toCut =
+      status === "below-cut" && cutSeed !== null ? cutSeed - x.seed : null;
+    return mkRow(x.agg, status, toCut, x.roundPoints);
+  });
+
+  // Eliminated drivers (qualified, no longer surviving) trail the standing.
+  const survivorSet = new Set(survivors);
+  for (const r of field) {
+    if (!survivorSet.has(r.driverId)) {
+      const agg = aggThrough.get(r.driverId) ?? { driverId: r.driverId, fullName: r.fullName, points: 0, wins: 0, playoffPoints: 0 };
+      rows_.push(mkRow(agg, "eliminated", null, 0));
+    }
+  }
+
+  const roundLabel = isChampionship ? `Championship ${startSize}` : `Round of ${startSize}`;
+  return { phase: "playoff", roundLabel, cutSize, rows: rows_ };
+}
+
+/** Season-phase-aware playoff picture as of a race: regular-season field or playoff round. */
+export function playoffPicture(
+  rows: SeasonPointsResultRow[],
+  sequence: RaceSlot[],
+  format: PlayoffFormat,
+  throughRaceId: number,
+): PlayoffPicture {
+  const pos = positionMap(sequence);
+  const playoffRaceCount = format.roundRaces.reduce((a, b) => a + b, 0);
+  const playoffIds = new Set(sequence.slice(-playoffRaceCount).map((s) => s.raceId));
+  if (sequence.length >= playoffRaceCount && playoffIds.has(throughRaceId)) {
+    return playoffStandings(rows, sequence, format, throughRaceId);
+  }
+  return {
+    phase: "regular",
+    roundLabel: "Regular Season",
+    cutSize: format.fieldSize,
+    rows: regularSeasonField(seasonAggregates(rows, throughRaceId, pos), format),
+  };
+}
+
 // ---- Orchestration ----
 
 /** Full recompute of every analytics table for one series. Idempotent. */
@@ -588,8 +849,20 @@ export function standingsMovement(
   opts: { seriesId: number; season: number; raceId: number },
 ): StandingsMovementRow[] {
   const rows = repo.seasonPointsResultsWithNames(p.db, opts.seriesId, opts.season);
-  const cut = PLAYOFF_CUT_BY_SERIES[opts.seriesId] ?? PLAYOFF_CUT_BY_SERIES[DEFAULT_SERIES_ID]!;
-  return computeStandingsMovement(rows, opts.raceId, cut);
+  const format = PLAYOFF_FORMAT_BY_SERIES[opts.seriesId] ?? PLAYOFF_FORMAT_BY_SERIES[DEFAULT_SERIES_ID]!;
+  return computeStandingsMovement(rows, opts.raceId, format.fieldSize);
+}
+
+/** Season-phase-aware playoff picture as of one race (regular-season field or playoff round). */
+export function playoffPictureFor(
+  p: Db,
+  opts: { seriesId: number; season: number; raceId: number },
+): PlayoffPicture {
+  const rows = repo.seasonPointsResultsWithNames(p.db, opts.seriesId, opts.season);
+  const sequence = repo.seasonRaceSequence(p.db, opts.seriesId, opts.season);
+  const format =
+    PLAYOFF_FORMAT_BY_SERIES[opts.seriesId] ?? PLAYOFF_FORMAT_BY_SERIES[DEFAULT_SERIES_ID]!;
+  return playoffPicture(rows, sequence, format, opts.raceId);
 }
 
 /** Over/under-performers vs. form coming into one race. */

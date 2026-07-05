@@ -187,7 +187,7 @@ describe("web app", () => {
     expect(status).toBe(200);
     expect(body).toContain("Weekend Recap");
     expect(body).toContain("Road Grand Prix"); // latest completed Cup race
-    expect(body).toContain("Championship Picture");
+    expect(body).toContain("Playoff Picture");
     expect(body).toContain("What the Loop Data Saw"); // moat-metric standouts
   });
 
@@ -213,6 +213,8 @@ describe("web app", () => {
     expect(Array.isArray(recap.standouts)).toBe(true);
     expect(Array.isArray(recap.movement)).toBe(true);
     expect(recap.movement[0]).toHaveProperty("rank", 1);
+    expect(recap.playoff).toHaveProperty("phase");
+    expect(recap.playoff).toHaveProperty("rows");
     expect(recap.callouts).toHaveProperty("over");
     const missing = await fetch(`${base}/api/recap/9999`);
     expect(missing.status).toBe(404);
