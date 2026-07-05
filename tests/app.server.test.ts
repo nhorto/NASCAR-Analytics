@@ -102,6 +102,42 @@ describe("web app", () => {
     expect(body).toContain("Test 400");
   });
 
+  test("driver profile shows metric rank context", async () => {
+    const { body } = await get("/drivers/10");
+    // Rank line: "Nth of M · Pth pctl" against the qualified field.
+    expect(body).toContain("pctl");
+    expect(body).toContain("Leaderboards →");
+  });
+
+  test("metrics leaderboard page ranks the qualified field", async () => {
+    const { status, body } = await get("/metrics");
+    expect(status).toBe(200);
+    expect(body).toContain("Beyond the Box Score");
+    expect(body).toContain("Adjusted Pass Efficiency");
+    expect(body).toContain("Closer Score");
+    expect(body).toContain("Alpha Driver");
+    expect(body).toContain("Beta Racer");
+  });
+
+  test("home surfaces the moat card", async () => {
+    const { body } = await get("/");
+    expect(body).toContain("Beyond the Box Score");
+    expect(body).toContain("Full leaderboards →");
+  });
+
+  test("metrics API is series-aware", async () => {
+    const cup = (await fetch(`${base}/api/metrics`).then((r) => r.json())) as any;
+    expect(cup.seriesId).toBe(1);
+    expect(cup.season).toBe(2024);
+    expect(Array.isArray(cup.adjPass)).toBe(true);
+    expect(cup.adjPass[0]).toHaveProperty("rank", 1);
+    expect(cup.adjPass[0]).toHaveProperty("field");
+
+    const xf = (await fetch(`${base}/api/metrics?series=2`).then((r) => r.json())) as any;
+    expect(xf.seriesId).toBe(2);
+    expect(xf.adjPass.some((m: any) => m.fullName === "Xfinity Only")).toBe(true);
+  });
+
   test("unknown driver 404s", async () => {
     const { status } = await get("/drivers/9999");
     expect(status).toBe(404);

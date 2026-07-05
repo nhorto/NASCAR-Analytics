@@ -6,12 +6,13 @@
 
 | Plan | Status | Description |
 |------|--------|-------------|
-| _None_ | | Next candidates: connect the Cloudflare deploy (owner login), weekly auto-refresh CI, live race companion, cross-series driver career pages. |
+| _None_ | | Next candidates: cross-series driver career pages, connect the Cloudflare deploy (owner login), weekly auto-refresh CI, live race companion. |
 
 ## Completed Plans
 
 | Plan | Completed | Description |
 |------|-----------|-------------|
+| [Surface the Moat Metrics](exec-plans/completed/2026-07-05-surface-moat-metrics.md) | 2026-07-05 | Made adjPE + Closer Score first-class: a `/metrics` leaderboard page (new nav tab) ranking the season's loop-data regulars, rank/percentile context on driver profiles, and a "Beyond the Box Score" home card. |
 | [Fan Analytics Platform MVP](exec-plans/completed/2026-07-05-fan-analytics-mvp.md) | 2026-07-05 | Full MVP: CDN ingestion pipeline + raw archival (Phase 0/1), drivers + analytics domains with proprietary metrics (Phase 2), mobile-first dark web app — profiles, race pages, compare, track explorer (Phase 3). |
 | [Multi-Series (Xfinity + Trucks)](exec-plans/completed/2026-07-05-multi-series.md) | 2026-07-05 | Backfilled all 3 national series with loop data; added a Cup/Xfinity/Trucks series switcher threaded through the whole app and JSON API. |
 | [Polish Pass + Deployment Prep](exec-plans/completed/2026-07-05-polish-and-deploy-prep.md) | 2026-07-05 | In Form regular filter + track-explorer on-screen filters; researched hosting, chose Cloudflare Pages. |

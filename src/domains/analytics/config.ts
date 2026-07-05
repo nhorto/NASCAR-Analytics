@@ -23,3 +23,10 @@ export const FORM_WINDOW_RACES = 6;
  * top the board.
  */
 export const FORM_LEADER_MIN_SEASON_SHARE = 0.5;
+
+/**
+ * Proprietary-metric leaderboards restrict to loop-data regulars: drivers who
+ * ran at least this share of the season's max loop-data race count. Keeps a
+ * part-timer's few strong runs from topping the adjPE / Closer boards.
+ */
+export const METRIC_LEADER_MIN_LOOP_SHARE = 0.5;

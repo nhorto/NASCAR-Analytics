@@ -72,6 +72,7 @@ export function createServer(p: Providers, port: number) {
       m = path.match(/^\/api\/standings\/(\d+)$/);
       if (m) return analyticsRuntime.handleStandings(p, m[1]!, url);
       if (path === "/api/tracks") return analyticsRuntime.handleTrackLeaderboard(p, url);
+      if (path === "/api/metrics") return analyticsRuntime.handleMetrics(p, url);
 
       // --- race pages: un-prefixed, series derived from the race ---
       m = path.match(/^\/race\/(\d+)$/);
@@ -98,6 +99,10 @@ export function createServer(p: Providers, port: number) {
       if (m) {
         const html = render.renderRacesIndex(p, seriesId, Number(m[1]));
         return html ? htmlResponse(html) : notFound(seriesId, "Season");
+      }
+      if (rest === "/metrics") {
+        const html = render.renderMetrics(p, seriesId);
+        return html ? htmlResponse(html) : notFound(seriesId, "Metrics");
       }
       if (rest === "/compare") return htmlResponse(render.renderCompare(p, seriesId));
       if (rest === "/tracks") return htmlResponse(render.renderTracks(p, seriesId));

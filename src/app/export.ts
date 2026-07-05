@@ -59,6 +59,8 @@ export async function exportSite(dbPath = "data/nascar.db", log?: Log): Promise<
       if (html) await write(`${prefix}/races/${yr}`, html);
     }
 
+    const metrics = render.renderMetrics(p, s);
+    if (metrics) await write(`${prefix}/metrics`, metrics);
     await write(`${prefix}/compare`, render.renderCompare(p, s));
     await write(`${prefix}/tracks`, render.renderTracks(p, s));
 
