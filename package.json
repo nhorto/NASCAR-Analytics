@@ -1,0 +1,15 @@
+{
+  "name": "nascar-analytics",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "backfill": "bun run src/app/index.ts backfill",
+    "sync": "bun run src/app/index.ts sync",
+    "status": "bun run src/app/index.ts status",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.0"
+  }
+}

@@ -9,38 +9,27 @@ NASCAR Analytics is a modern web platform that ingests NASCAR race data (loop da
 ```
 src/
 ├── app/                     Application wiring and entrypoint
-│   ├── index.ts             Creates Providers, wires domains
-│   └── routes.ts            Collects all domain runtime routes
+│   └── index.ts             CLI: backfill / sync / status (HTTP routes come with the UI phase)
 ├── domains/
-│   ├── data-ingestion/      NASCAR CDN data fetching and storage
-│   │   ├── types.ts
-│   │   ├── config.ts
-│   │   ├── repo.ts
-│   │   ├── service.ts
-│   │   └── runtime.ts
-│   ├── analytics/           Proprietary stats computation
-│   │   ├── types.ts
-│   │   ├── config.ts
-│   │   ├── service.ts
-│   │   └── runtime.ts
-│   ├── drivers/             Driver profiles and historical data
-│   │   ├── types.ts
-│   │   ├── config.ts
-│   │   ├── repo.ts
-│   │   ├── service.ts
-│   │   └── runtime.ts
-│   └── odds/                Betting odds integration and value scoring
-│       ├── types.ts
-│       ├── config.ts
-│       ├── repo.ts
-│       ├── service.ts
-│       └── runtime.ts
+│   └── data-ingestion/      NASCAR CDN data fetching and storage  [BUILT]
+│       ├── types.ts         CDN feed shapes + normalized row types
+│       ├── config.ts        Endpoint URLs, coverage boundaries, track-type classification
+│       ├── repo.ts          SQLite upserts + coverage queries
+│       ├── service.ts       Pure normalizers + backfill/sync orchestration
+│       └── index.ts         Barrel
 ├── providers/
-│   └── index.ts             Database, external API clients
+│   ├── index.ts             Providers interface + factory
+│   ├── db.ts                bun:sqlite connection + schema
+│   ├── nascar-cdn.ts        Rate-limited, retrying CDN fetch client
+│   └── raw-archive.ts       Verbatim raw-JSON archival (CDN insurance)
 └── utils/                   Generic reusable helpers
+tests/
+├── architecture.test.ts     Enforces the layer rules below (part of `bun test`)
+└── fixtures/                Trimmed real CDN responses
+data/                        (gitignored) SQLite db + raw JSON archive
 ```
 
-> **Note:** This is the planned domain structure. Domains will be added incrementally. Check "Current Guarantees" and "What Does NOT Exist" below for actual state.
+Planned domains not yet built: `analytics` (proprietary stats computation), `drivers` (driver profiles), `odds` (deferred — see exec plan). Check "Current Guarantees" and "What Does NOT Exist" below for actual state.
 
 ## The DDD Layer Model
 
@@ -123,8 +112,8 @@ export interface Providers {
 
 | Source | Type | What We Get |
 |--------|------|------------|
-| `cf.nascar.com/cacher/{year}/{series}/{race_id}/` | Public CDN (free, no auth) | Schedules/results 2016+, loop data 2016+ (2018 missing), lap times 2020+, pit data, live race data. Verified working 2026-07-05 — see [re-verification](docs/research/2026-07-05_data-sources-reverification.md) |
-| `cf.nascar.com/loopstats/prod/{year}/{series}/{race_id}.json` | Public CDN (free, no auth) | Full official loop data per race (Driver Rating, quality passes, fast laps, etc.) |
+| `cf.nascar.com/cacher/{year}/{series}/{race_id}/` | Public CDN (free, no auth) | Schedules 2016+, results 2017+, lap times 2020+, pit data, live race data. Payload-verified 2026-07-05 — see [re-verification](docs/research/2026-07-05_data-sources-reverification.md) |
+| `cf.nascar.com/loopstats/prod/{year}/{series}/{race_id}.json` | Public CDN (free, no auth) | Full official loop data per race (Driver Rating, quality passes, fast laps, etc.), 2019+ |
 | nascaR.data (R package) | Free, CRAN | Historical results 1949-present (v3.1.0, actively maintained) |
 | ~~The Odds API~~ | ❌ Does NOT cover NASCAR | Verified 2026-07-05. Odds source TBD — betting/odds domain deferred |
 | rNascar23.Sdk reference | GitHub | Documents all NASCAR CDN endpoint patterns including LoopData |
@@ -133,19 +122,24 @@ export interface Providers {
 
 > What the system currently does reliably. Updated as features ship.
 
-- Nothing yet. Project is in research/planning phase.
+- **Data ingestion pipeline (2026-07-05)**: `bun run backfill` / `bun run sync` ingest Cup Series data from the NASCAR CDN into `data/nascar.db` (SQLite). Idempotent — re-runs fetch only missing races. Rate-limited and retrying.
+- **Ingested dataset (verified against known history)**: schedules 2016–2026, results 2017–2026 (13.7k rows, incl. DQ handling), loop stats 2019–2026 (10.7k rows), lap-by-lap times 2020–2026 (2.24M rows), cautions, race leaders. Winner spot-checks pass for 2017/2019/2020/2022/2024 marquee races.
+- **Raw archival**: every 200 CDN response is stored verbatim under `data/raw/` with a `raw_fetches` index (URL, sha256, status) — the dataset survives any future CDN access change.
+- **Track-type classification**: every 2016–2026 Cup track classified (superspeedway/intermediate/short/road/dirt), including Atlanta's 2022 reprofile via season override.
+- **Architecture tests**: layer dependency rules are enforced by `bun test` (tests/architecture.test.ts).
+- Known data holes are documented in [the re-verification doc](docs/research/2026-07-05_data-sources-reverification.md) (2025 YellaWood 500 results; exhibition heat races).
 
 ## What Does NOT Exist Here
 
 > Honest list of gaps. Must be kept updated.
 
-- No data ingestion pipeline yet
-- No database schema
-- No proprietary analytics metrics
-- No web UI
-- No API endpoints
-- No odds integration
-- No user authentication
+- No proprietary analytics metrics (Phase 2 of the active exec plan)
+- No drivers domain / driver identity normalization beyond id+name
+- No web UI or HTTP API endpoints (Phase 3)
+- No Xfinity/Truck series data (Cup only so far)
+- No scheduled automation — sync is run manually after race weekends
+- No odds integration (deferred — see exec plan)
+- No user authentication (deliberately out of MVP scope)
 - No deployment infrastructure
 
 ## Documentation Map

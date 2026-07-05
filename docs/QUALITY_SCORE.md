@@ -6,10 +6,10 @@
 
 | Domain | Types | Config | Repo | Service | Overall |
 |--------|-------|--------|------|---------|---------|
-| data-ingestion | — | — | — | — | Not started |
+| data-ingestion | A | A | B | B | **B+** (2026-07-05: pipeline works, tested, verified vs real data; no scheduled automation, Cup-only) |
 | analytics | — | — | — | — | Not started |
 | drivers | — | — | — | — | Not started |
-| odds | — | — | — | — | Not started |
+| odds | — | — | — | — | Deferred (no viable odds source) |
 
 ## Scoring Criteria
 

@@ -1,0 +1,54 @@
+[
+ {
+  "start_time": "2026-06-27T11:00:00",
+  "end_time": "2026-06-27T12:00:00",
+  "event_name": "Practice",
+  "race_id": 5617,
+  "track_id": 99,
+  "track_name": "Sonoma Raceway",
+  "race_name": "Toyota / Save Mart 350",
+  "series_id": 1,
+  "run_type": 1,
+  "start_time_utc": "2026-06-27T18:00:00",
+  "end_time_utc": "2026-06-27T19:00:00"
+ },
+ {
+  "start_time": "2026-06-27T12:10:00",
+  "end_time": "2026-06-27T13:00:00",
+  "event_name": "Qualifying (Impound)",
+  "race_id": 5617,
+  "track_id": 99,
+  "track_name": "Sonoma Raceway",
+  "race_name": "Toyota / Save Mart 350",
+  "series_id": 1,
+  "run_type": 2,
+  "start_time_utc": "2026-06-27T19:10:00",
+  "end_time_utc": "2026-06-27T20:00:00"
+ },
+ {
+  "start_time": "2026-06-28T12:30:00",
+  "end_time": "0001-01-01T00:00:00",
+  "event_name": "Race",
+  "race_id": 5617,
+  "track_id": 99,
+  "track_name": "Sonoma Raceway",
+  "race_name": "Toyota / Save Mart 350",
+  "series_id": 1,
+  "run_type": 3,
+  "start_time_utc": "2026-06-28T19:30:00",
+  "end_time_utc": "0001-01-01T00:00:00"
+ },
+ {
+  "start_time": "2026-11-08T15:00:00",
+  "end_time": "0001-01-01T00:00:00",
+  "event_name": "Race",
+  "race_id": 5601,
+  "track_id": 40,
+  "track_name": "Homestead-Miami Speedway",
+  "race_name": "NASCAR Championship Race",
+  "series_id": 1,
+  "run_type": 3,
+  "start_time_utc": "2026-11-08T20:00:00",
+  "end_time_utc": "0001-01-01T00:00:00"
+ }
+]

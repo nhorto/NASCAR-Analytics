@@ -25,12 +25,20 @@ A working, deployed-locally (first) web app where a NASCAR fan can, on their pho
 - Compare two drivers head-to-head
 - Explore track-type splits (superspeedway / intermediate / short track / road course)
 
-## Data Reality (verified 2026-07-05)
+## Data Reality (payload-verified during ingestion, 2026-07-05)
 
-- Loop stats: CDN, 2016–present (2018 missing — known gap, note in UI or backfill later from another source)
+- Results: CDN, 2017–present (2016 has schedule only; per-race feeds 403)
+- Loop stats: CDN, 2019–present (2016–2017 serve HTTP 200 with `null` bodies; 2018 403s)
 - Lap-by-lap times: CDN, 2020–present
-- Results/schedules: CDN, 2016–present
+- Known holes: 2025 YellaWood 500 results (null feed; loop stats/laps fine); exhibition heat races
 - Raw JSON archival from day one (CDN is unofficial — the archived data IS the long-term asset)
+
+## Progress
+
+- ✅ **Phase 0 complete (2026-07-05)** — Bun/TypeScript scaffold, DDD folder structure, architecture dependency tests running under `bun test`
+- ✅ **Phase 1 complete (2026-07-05)** — ingestion domain + providers built; full Cup backfill run: 13.7k results (2017–2026), 10.7k loop-stat rows (2019–2026), 2.24M lap-time rows (2020–2026), cautions + leaders; raw archive 191MB / 1,300+ responses; winner spot-checks and DQ handling verified; idempotent re-runs confirmed
+- ⬜ Phase 2 — drivers + analytics domains
+- ⬜ Phase 3 — runtime + UI
 
 ## Phases
 

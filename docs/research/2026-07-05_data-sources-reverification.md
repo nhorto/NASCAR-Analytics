@@ -36,16 +36,25 @@ Per-driver fields: `driver_id`, `start_ps`, `mid_ps`, `ps` (finish), `closing_ps
 
 This is the complete official loop data set — everything the old research hoped for, direct from the CDN.
 
-### Historical coverage boundaries (tested by year)
+### Historical coverage boundaries
+
+> **REVISED after full backfill ingestion (2026-07-05).** The initial probe checked HTTP status codes only; the actual ingestion revealed that some older endpoints return **HTTP 200 with a literal `null` body**. Payload-verified boundaries:
 
 | Data | Coverage on CDN | Notes |
 |------|----------------|-------|
-| Schedule feeds | **2016 → present** | 2015 and earlier: 403 |
-| weekend-feed (results) | **2016 → present** | |
-| loopstats (loop data) | **2016 → present, EXCEPT 2018** | 2018 returns 403 (tested 3 races); 2016, 2017, 2019–2026 all 200 |
+| Schedule feeds | **2016 → present** | 2015 and earlier: 403. 2016–2018 feeds have `start_time_utc: null` (local `start_time` only) |
+| weekend-feed (results) | **2017 → present** | 2016 per-race feeds all 403 (schedule exists, race data doesn't) |
+| loopstats (loop data) | **2019 → present** | 2016–2017: HTTP 200 but body is `null`; 2018: 403 |
 | lap-times (lap-by-lap) | **2020 → present** | 2016–2019: 403 |
 
-**Implication:** The March research's "20 years of loop data (2005+)" is NOT available via the CDN — that depth exists only on Racing-Reference (Cloudflare-blocked to bots). The CDN gives ~10 seasons of loop data and ~6.5 seasons of lap-by-lap, which fully covers the Next Gen car era (2022+) — the most analytically relevant era anyway. Deeper history (results only, 1949+) is available via nascaR.data.
+Known holes found during ingestion (raw responses archived as proof):
+- **2025 YellaWood 500 (race 5580)**: weekend-feed returns 200 with `weekend_race: null` — the one missing points-race result in 2017–2026. Its loop stats and lap times ARE available; official results recoverable from nascaR.data if needed.
+- **Exhibition heat races** (Clash heats, All-Star heats/Open): often no weekend-feed; some have lap times anyway.
+- **On-track vs official**: loop stats record on-track finish; results record official rulings (verified via the 2022 Pocono Hamlin/Kyle Busch DQ — results show Chase Elliott P1, loop stats show Hamlin P1, DQ flags correct).
+
+**Implication:** The March research's "20 years of loop data (2005+)" is NOT available via the CDN — that depth exists only on Racing-Reference (Cloudflare-blocked to bots). The CDN gives ~7.5 seasons of loop data and ~6.5 seasons of lap-by-lap, fully covering the Next Gen car era (2022+) — the most analytically relevant era anyway. Deeper history (results only, 1949+) is available via nascaR.data.
+
+**Process lesson:** verify CDN coverage against payloads, not status codes — this CDN serves `null`/empty bodies with HTTP 200 for some missing data.
 
 ---
 
