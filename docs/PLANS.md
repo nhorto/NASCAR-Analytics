@@ -6,7 +6,7 @@
 
 | Plan | Status | Description |
 |------|--------|-------------|
-| _None_ | | Next candidates: connect the Cloudflare deploy (owner login), weekly auto-refresh CI, SEO/OpenGraph metadata + sitemap, live race companion. |
+| [Weekly Race Recap](exec-plans/active/2026-07-05-weekly-recap.md) | ACTIVE | Auto-generated post-race recap per series (result summary, moat-metric standouts, standings/playoff movement, driver callouts), surfaced on the front door. Reuses ingested + computed data — no live feed. Next candidates: connect the Cloudflare deploy (owner login), weekly auto-refresh CI, SEO/OpenGraph metadata + sitemap, live race companion. |
 
 ## Completed Plans
 
