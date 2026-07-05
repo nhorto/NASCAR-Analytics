@@ -13,6 +13,11 @@ import type {
   MetricKey,
   MetricRank,
   SeasonMetricBoard,
+  RaceMetricStandout,
+  RaceStandout,
+  SeasonPointsResultRow,
+  StandingsMovementRow,
+  RaceFormCallouts,
 } from "./types.ts";
 import {
   DEFAULT_SERIES_ID,
@@ -20,6 +25,9 @@ import {
   FORM_WINDOW_RACES,
   FORM_LEADER_MIN_SEASON_SHARE,
   METRIC_LEADER_MIN_LOOP_SHARE,
+  PLAYOFF_CUT_BY_SERIES,
+  RECAP_STANDOUT_COUNT,
+  RECAP_FORM_MIN_WINDOW,
 } from "./config.ts";
 import * as repo from "./repo.ts";
 
@@ -270,6 +278,129 @@ export function computeForm(
   return out;
 }
 
+// ---- Weekly recap (pure) ----
+
+/**
+ * Single-race residuals for both proprietary metrics, one row per loop row. This
+ * is the per-race analogue of the season aggregate: the same baselines, applied
+ * to one race instead of averaged over a season. adjPE is null when a driver had
+ * no green-flag passing encounters in the race.
+ */
+export function computeRaceStandouts(
+  loops: PointsLoopRow[],
+  exp: LeagueExpectations,
+): RaceMetricStandout[] {
+  return loops.map((l) => {
+    const eff = passEfficiency(l.passesGf, l.passedGf);
+    const expEff = exp.passEfficiencyByAvgPs.get(bucketOf(l.avgPs));
+    const expClosing = exp.closingGainByClosingPs.get(bucketOf(l.closingPs));
+    return {
+      raceId: l.raceId,
+      seriesId: l.seriesId,
+      season: l.season,
+      driverId: l.driverId,
+      adjPassEfficiency: eff !== null && expEff !== undefined ? (eff - expEff) * 100 : null,
+      closerScore: expClosing !== undefined ? l.closingLapsDiff - expClosing : null,
+      rating: l.rating,
+    };
+  });
+}
+
+/** Rank driver tallies by points, then wins, then name — 1-based. */
+function rankTally(m: Map<number, { name: string; points: number; wins: number }>): Map<number, number> {
+  const order = [...m.entries()].sort(
+    (a, b) =>
+      b[1].points - a[1].points || b[1].wins - a[1].wins || a[1].name.localeCompare(b[1].name),
+  );
+  return new Map(order.map(([id], i) => [id, i + 1]));
+}
+
+/**
+ * Championship standings after `raceId`, with movement vs. the prior race. Rows
+ * come date-ordered (a race's rows are contiguous). Drivers who hadn't scored
+ * before this race have `prevRank = null`; on the season's first race every
+ * `rankDelta` is null.
+ */
+export function computeStandingsMovement(
+  rows: SeasonPointsResultRow[],
+  raceId: number,
+  playoffCut: number,
+): StandingsMovementRow[] {
+  const firstIdx = rows.findIndex((r) => r.raceId === raceId);
+  if (firstIdx === -1) return [];
+  let lastIdx = firstIdx;
+  while (lastIdx + 1 < rows.length && rows[lastIdx + 1]!.raceId === raceId) lastIdx++;
+
+  const tally = (list: SeasonPointsResultRow[]) => {
+    const m = new Map<number, { name: string; points: number; wins: number }>();
+    for (const r of list) {
+      const cur = m.get(r.driverId) ?? { name: r.fullName, points: 0, wins: 0 };
+      cur.points += r.points;
+      if (r.finish === 1) cur.wins += 1;
+      m.set(r.driverId, cur);
+    }
+    return m;
+  };
+
+  const beforeRows = rows.slice(0, firstIdx);
+  const throughRows = rows.slice(0, lastIdx + 1);
+  const before = tally(beforeRows);
+  const through = tally(throughRows);
+  const prevRanks = rankTally(before);
+  const ranks = rankTally(through);
+
+  const thisRacePoints = new Map<number, number>();
+  for (let i = firstIdx; i <= lastIdx; i++) {
+    const r = rows[i]!;
+    thisRacePoints.set(r.driverId, (thisRacePoints.get(r.driverId) ?? 0) + r.points);
+  }
+
+  const out: StandingsMovementRow[] = [];
+  for (const [driverId, agg] of through) {
+    const rank = ranks.get(driverId)!;
+    const prevRank = prevRanks.get(driverId) ?? null;
+    out.push({
+      driverId,
+      fullName: agg.name,
+      points: agg.points,
+      pointsThisRace: thisRacePoints.get(driverId) ?? 0,
+      wins: agg.wins,
+      rank,
+      prevRank,
+      rankDelta: prevRank === null ? null : prevRank - rank,
+      inPlayoff: rank <= playoffCut,
+    });
+  }
+  return out.sort((a, b) => a.rank - b.rank);
+}
+
+/**
+ * Over- and under-performers vs. their form coming in: `delta = formAvgFinish −
+ * finish` (positive = beat their recent form). Only drivers with a prior-form
+ * baseline are eligible. Each side is capped at `count`, strongest first.
+ */
+export function pickFormCallouts(
+  results: Array<{ driverId: number; fullName: string; finish: number }>,
+  priorForm: Map<number, number>,
+  count: number,
+): RaceFormCallouts {
+  const scored = results
+    .filter((r) => priorForm.has(r.driverId))
+    .map((r) => {
+      const formAvgFinish = priorForm.get(r.driverId)!;
+      return { driverId: r.driverId, fullName: r.fullName, finish: r.finish, formAvgFinish, delta: formAvgFinish - r.finish };
+    });
+  const over = scored
+    .filter((c) => c.delta > 0)
+    .sort((a, b) => b.delta - a.delta)
+    .slice(0, count);
+  const under = scored
+    .filter((c) => c.delta < 0)
+    .sort((a, b) => a.delta - b.delta)
+    .slice(0, count);
+  return { over, under };
+}
+
 // ---- Orchestration ----
 
 /** Full recompute of every analytics table for one series. Idempotent. */
@@ -282,12 +413,15 @@ export function computeAll(p: Db, seriesId = DEFAULT_SERIES_ID, log?: Log): Comp
   const seasonStats = computeSeasonStats(results, loops, exp);
   const trackTypeStats = computeTrackTypeStats(results, loops, exp);
   const form = computeForm(results, loops);
+  const raceStandouts = computeRaceStandouts(loops, exp);
 
   repo.replaceSeasonStats(p.db, seriesId, seasonStats);
   repo.replaceTrackTypeStats(p.db, seriesId, trackTypeStats);
   repo.replaceForm(p.db, seriesId, form);
+  repo.replaceRaceStandouts(p.db, seriesId, raceStandouts);
   log?.info(
-    `computed ${seasonStats.length} season rows, ${trackTypeStats.length} track-type rows, ${form.length} form rows`,
+    `computed ${seasonStats.length} season rows, ${trackTypeStats.length} track-type rows, ` +
+      `${form.length} form rows, ${raceStandouts.length} race-standout rows`,
   );
 
   return {
@@ -296,6 +430,7 @@ export function computeAll(p: Db, seriesId = DEFAULT_SERIES_ID, log?: Log): Comp
     seasonStatsRows: seasonStats.length,
     trackTypeStatsRows: trackTypeStats.length,
     formRows: form.length,
+    raceStandoutRows: raceStandouts.length,
   };
 }
 
@@ -430,6 +565,55 @@ export function driverMetricRanks(
 
 export function currentSeason(p: Db, seriesId = DEFAULT_SERIES_ID): number | null {
   return repo.latestSeasonWithStats(p.db, seriesId);
+}
+
+// ---- Weekly recap reads ----
+
+/** Series/season/date for a race — for the recap runtime, which can't reach the ingestion domain. */
+export function raceContext(
+  p: Db,
+  raceId: number,
+): { seriesId: number; season: number; raceDateUtc: string | null } | null {
+  return repo.raceContext(p.db, raceId);
+}
+
+/** Per-race proprietary-metric standouts for one race, name-joined (adjPE first). */
+export function raceStandouts(p: Db, raceId: number): RaceStandout[] {
+  return repo.raceStandoutsForRace(p.db, raceId);
+}
+
+/** Championship standings + movement after one race. */
+export function standingsMovement(
+  p: Db,
+  opts: { seriesId: number; season: number; raceId: number },
+): StandingsMovementRow[] {
+  const rows = repo.seasonPointsResultsWithNames(p.db, opts.seriesId, opts.season);
+  const cut = PLAYOFF_CUT_BY_SERIES[opts.seriesId] ?? PLAYOFF_CUT_BY_SERIES[DEFAULT_SERIES_ID]!;
+  return computeStandingsMovement(rows, opts.raceId, cut);
+}
+
+/** Over/under-performers vs. form coming into one race. */
+export function formCallouts(
+  p: Db,
+  opts: { seriesId: number; season: number; raceId: number; raceDateUtc: string | null },
+  count = RECAP_STANDOUT_COUNT,
+): RaceFormCallouts {
+  if (opts.raceDateUtc === null) return { over: [], under: [] };
+  const prior = new Map(
+    repo
+      .priorFormForRace(p.db, {
+        seriesId: opts.seriesId,
+        season: opts.season,
+        beforeDate: opts.raceDateUtc,
+        minWindow: RECAP_FORM_MIN_WINDOW,
+      })
+      .map((r) => [r.driverId, r.avgFinish] as const),
+  );
+  const results = repo
+    .seasonPointsResultsWithNames(p.db, opts.seriesId, opts.season)
+    .filter((r) => r.raceId === opts.raceId)
+    .map((r) => ({ driverId: r.driverId, fullName: r.fullName, finish: r.finish }));
+  return pickFormCallouts(results, prior, count);
 }
 
 /** All season stats for a series (every driver, every season) — for the client compare page. */

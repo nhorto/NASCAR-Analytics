@@ -29,6 +29,17 @@ The site is generated from `data/nascar.db` — a ~160MB SQLite file that is **g
 
 ## Every update (after a race weekend)
 
+One command does the whole loop — backfill + compute (all three series) + export
++ deploy:
+
+```sh
+bun run refresh              # add --no-deploy to build dist/ without deploying
+```
+
+`refresh` deploys only when `CLOUDFLARE_API_TOKEN` is set; otherwise it stops
+after building `dist/`. The equivalent long-hand, if you want the steps
+separately:
+
 ```sh
 bun run sync                 # pull the latest completed races (all series: also --series 2 / 3)
 bun run compute              # recompute (also --series 2 / 3)
@@ -36,7 +47,30 @@ bun run export               # regenerate dist/  (~1,800 pages, ~30s)
 bunx wrangler pages deploy dist --project-name=looplab
 ```
 
-That's the whole loop. A GitHub Action could automate it later, but it would need to run the full backfill in CI (the DB isn't in the repo) — tracked as a future item.
+## Automated weekly refresh (CI)
+
+`.github/workflows/weekly-refresh.yml` runs `bun run refresh` every Monday at
+12:00 UTC (and on manual dispatch), so the site refreshes itself after each race
+weekend. It caches the ~160MB SQLite DB across runs (via `actions/cache`) so the
+weekly run is incremental; a cold cache self-heals by rebuilding full history
+from the CDN. Every run uploads `dist/` as a downloadable artifact.
+
+**The deploy step self-gates on secrets.** Until you add them, the workflow still
+runs green and builds the site (artifact only) — it just skips the upload. To
+turn on automated deploys after the one-time project connect above:
+
+1. In Cloudflare: create an API token with the **Pages → Edit** permission, and
+   note your **Account ID** (Workers & Pages → account home).
+2. In GitHub → repo **Settings → Secrets and variables → Actions**, add:
+   - `CLOUDFLARE_API_TOKEN`
+   - `CLOUDFLARE_ACCOUNT_ID`
+
+That's it — the next scheduled (or manually dispatched) run deploys to `looplab`.
+
+> Portability: `refresh` is a single runner-agnostic command. It reads
+> `NASCAR_DATA_DIR` (default `data`) and `NASCAR_PAGES_PROJECT` (default
+> `looplab`), so the exact same command can later run in a Cloudflare Container
+> with the DB synced from R2 — GitHub Actions is just the scheduler for now.
 
 ## What gets deployed
 

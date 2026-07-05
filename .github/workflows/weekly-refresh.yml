@@ -1,0 +1,72 @@
+name: Weekly Refresh
+
+# Refreshes all three series and redeploys the static site after each race
+# weekend. The whole pipeline is one portable command (`bun run refresh`) so the
+# same contract can later move to a Cloudflare Container — this workflow is just
+# the scheduler that calls it. See docs/DEPLOY.md.
+
+on:
+  schedule:
+    # Mondays 12:00 UTC. Sunday Cup races have long cleared the ingestion's 6h
+    # finality buffer by then, so results/loop data are final.
+    - cron: "0 12 * * 1"
+  workflow_dispatch: {}
+
+# Never let two refreshes overlap; let a running one finish (don't cancel a
+# long cold-cache backfill).
+concurrency:
+  group: weekly-refresh
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      # When these secrets are set (after the one-time Cloudflare connect in
+      # docs/DEPLOY.md), `bun run refresh` deploys. When absent, it still builds
+      # dist/ and exits 0 — so this workflow is green and verifiable beforehand.
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Persist the ~160MB SQLite DB across runs so the weekly backfill is
+      # incremental. The key is unique per run (always saves a fresh cache); the
+      # restore-keys prefix restores the most recent prior one. Only the DB is
+      # cached — data/raw/ (CDN insurance) isn't needed to build the site. On a
+      # cold/evicted cache the refresh's full backfill rebuilds correct history.
+      - name: Restore database cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/nascar.db
+            data/nascar.db-wal
+            data/nascar.db-shm
+          key: nascar-db-v1-${{ github.run_id }}
+          restore-keys: |
+            nascar-db-v1-
+
+      - name: Refresh (backfill → compute → export → deploy)
+        run: bun run refresh
+
+      - name: Upload built site
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist
+          if-no-files-found: warn
+          retention-days: 14

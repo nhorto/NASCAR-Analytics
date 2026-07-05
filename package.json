@@ -10,6 +10,7 @@
     "compute": "bun run src/app/index.ts compute",
     "serve": "bun run src/app/index.ts serve",
     "export": "bun run src/app/index.ts export",
+    "refresh": "bun run src/app/index.ts refresh",
     "test": "bun test"
   },
   "devDependencies": {

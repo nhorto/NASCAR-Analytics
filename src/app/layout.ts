@@ -1,9 +1,10 @@
 import { esc, withSeries } from "./html.ts";
 
-export type Tab = "home" | "metrics" | "drivers" | "races" | "compare" | "tracks";
+export type Tab = "home" | "recap" | "metrics" | "drivers" | "races" | "compare" | "tracks";
 
 const TABS: Array<{ id: Tab; href: string; icon: string; label: string }> = [
   { id: "home", href: "/", icon: "⌂", label: "Home" },
+  { id: "recap", href: "/recap", icon: "❑", label: "Recap" },
   { id: "metrics", href: "/metrics", icon: "◈", label: "Metrics" },
   { id: "drivers", href: "/drivers", icon: "◔", label: "Drivers" },
   { id: "races", href: "/races", icon: "⚑", label: "Races" },

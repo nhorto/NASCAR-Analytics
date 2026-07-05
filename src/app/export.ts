@@ -66,6 +66,20 @@ export async function exportSite(dbPath = "data/nascar.db", log?: Log): Promise<
     await write(`${prefix}/compare`, render.renderCompare(p, s));
     await write(`${prefix}/tracks`, render.renderTracks(p, s));
 
+    // Weekly recap: the series' "this week" entry point, plus one per current-season
+    // race with results (un-prefixed, race_id is global). Bounded to the current
+    // season so the page count stays modest.
+    const recap = render.renderLatestRecap(p, s);
+    if (recap) await write(`${prefix}/recap`, recap);
+    const curSeason = render.currentSeason(p, s);
+    if (curSeason !== null) {
+      for (const race of ingestionService.seasonRaces(p, curSeason, s)) {
+        if (!race.hasResults) continue;
+        const html = render.renderRecap(p, race.raceId);
+        if (html) await write(`/recap/${race.raceId}`, html);
+      }
+    }
+
     await Bun.write(join(DIST, `data/season-stats-${s}.json`), JSON.stringify(seasonStatsPayload(p, s)));
     await Bun.write(join(DIST, `data/tracktype-${s}.json`), JSON.stringify(trackTypePayload(p, s)));
     log?.info(`series ${s}: pages so far ${pages}`);

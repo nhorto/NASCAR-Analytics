@@ -182,6 +182,49 @@ describe("web app", () => {
     expect(body).toContain("Loop Insights");
   });
 
+  test("recap page (/recap) renders the latest race with its sections", async () => {
+    const { status, body } = await get("/recap");
+    expect(status).toBe(200);
+    expect(body).toContain("Weekend Recap");
+    expect(body).toContain("Road Grand Prix"); // latest completed Cup race
+    expect(body).toContain("Championship Picture");
+    expect(body).toContain("What the Loop Data Saw"); // moat-metric standouts
+  });
+
+  test("recap page (/recap/:id) renders a specific race", async () => {
+    const { status, body } = await get("/recap/100");
+    expect(status).toBe(200);
+    expect(body).toContain("Test 400");
+    expect(body).toContain("Weekend Recap");
+  });
+
+  test("home links into the weekend recap and the recap nav tab is present", async () => {
+    const { body } = await get("/");
+    expect(body).toContain("Weekend recap →");
+    expect(body).toContain("/recap/101"); // latest race permalink
+    expect(body).toContain('href="/recap"'); // nav tab
+  });
+
+  test("recap API returns standouts, movement, and callouts", async () => {
+    const recap = (await fetch(`${base}/api/recap/101`).then((r) => r.json())) as any;
+    expect(recap.raceId).toBe(101);
+    expect(recap.seriesId).toBe(1);
+    expect(recap.season).toBe(2024);
+    expect(Array.isArray(recap.standouts)).toBe(true);
+    expect(Array.isArray(recap.movement)).toBe(true);
+    expect(recap.movement[0]).toHaveProperty("rank", 1);
+    expect(recap.callouts).toHaveProperty("over");
+    const missing = await fetch(`${base}/api/recap/9999`);
+    expect(missing.status).toBe(404);
+  });
+
+  test("recap is series-aware (/xfinity/recap shows the Xfinity race)", async () => {
+    const { status, body } = await get("/xfinity/recap");
+    expect(status).toBe(200);
+    expect(body).toContain("Xfinity 250");
+    expect(body).toContain("/xfinity/drivers"); // switcher reflects Xfinity
+  });
+
   test("races index and per-season path both list the season", async () => {
     const latest = await get("/races");
     expect(latest.status).toBe(200);

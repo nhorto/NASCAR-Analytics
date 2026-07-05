@@ -8,6 +8,9 @@ import type {
   SeasonStanding,
   TrackTypeLeaderRow,
   FormLeader,
+  RaceMetricStandout,
+  RaceStandout,
+  SeasonPointsResultRow,
 } from "./types.ts";
 import { POINTS_RACE_TYPE_ID, POINTS_RACE_ID_OVERRIDES } from "./config.ts";
 
@@ -108,6 +111,28 @@ export function replaceTrackTypeStats(
         s.driverId, s.seriesId, s.season, s.trackType, s.races, s.wins, s.top5s, s.top10s,
         s.dnfs, s.avgStart, s.avgFinish, s.lapsLed, s.loopRaces, s.avgRating,
         s.passEfficiency, s.adjPassEfficiency, s.avgClosingGain, s.closerScore,
+      );
+    }
+  });
+  run();
+}
+
+export function replaceRaceStandouts(
+  db: Database,
+  seriesId: number,
+  rows: RaceMetricStandout[],
+): void {
+  const stmt = db.query(
+    `INSERT INTO race_metric_standouts (
+       race_id, series_id, season, driver_id, adj_pass_efficiency, closer_score, rating
+     ) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  );
+  const run = db.transaction(() => {
+    db.query(`DELETE FROM race_metric_standouts WHERE series_id = ?`).run(seriesId);
+    for (const s of rows) {
+      stmt.run(
+        s.raceId, s.seriesId, s.season, s.driverId,
+        s.adjPassEfficiency, s.closerScore, s.rating,
       );
     }
   });
@@ -339,6 +364,85 @@ export function latestSeasonWithStats(db: Database, seriesId: number): number | 
     .query(`SELECT MAX(season) AS season FROM driver_season_stats WHERE series_id = ?`)
     .get(seriesId) as { season: number | null };
   return row.season;
+}
+
+// ---- Weekly recap reads ----
+
+/** Per-race standouts for one race, name-joined, best adjPE first. */
+export function raceStandoutsForRace(db: Database, raceId: number): RaceStandout[] {
+  return db
+    .query(
+      `SELECT s.race_id AS raceId, s.series_id AS seriesId, s.season, s.driver_id AS driverId,
+              s.adj_pass_efficiency AS adjPassEfficiency, s.closer_score AS closerScore,
+              s.rating, d.full_name AS fullName
+       FROM race_metric_standouts s
+       JOIN drivers d ON d.driver_id = s.driver_id
+       WHERE s.race_id = ?
+       ORDER BY s.adj_pass_efficiency DESC`,
+    )
+    .all(raceId) as unknown as RaceStandout[];
+}
+
+/** Series/season/date for a race — lets the recap runtime derive context without the ingestion domain. */
+export function raceContext(
+  db: Database,
+  raceId: number,
+): { seriesId: number; season: number; raceDateUtc: string | null } | null {
+  const row = db
+    .query(
+      `SELECT series_id AS seriesId, season,
+              COALESCE(race_date_utc, race_date) AS raceDateUtc
+       FROM races WHERE race_id = ?`,
+    )
+    .get(raceId) as { seriesId: number; season: number; raceDateUtc: string | null } | null;
+  return row ?? null;
+}
+
+/** Every points-race finish for a season, name-joined, date-ordered — powers standings movement. */
+export function seasonPointsResultsWithNames(
+  db: Database,
+  seriesId: number,
+  season: number,
+): SeasonPointsResultRow[] {
+  return db
+    .query(
+      `SELECT res.race_id AS raceId, res.driver_id AS driverId, d.full_name AS fullName,
+              res.finishing_position AS finish, res.points_earned AS points,
+              COALESCE(r.race_date_utc, r.race_date) AS raceDateUtc
+       FROM results res
+       JOIN races r ON r.race_id = res.race_id
+       JOIN drivers d ON d.driver_id = res.driver_id
+       WHERE r.series_id = ? AND r.season = ? AND ${POINTS_FILTER}
+       ORDER BY COALESCE(r.race_date_utc, r.race_date), res.race_id`,
+    )
+    .all(seriesId, season, POINTS_RACE_TYPE_ID, ...POINTS_RACE_ID_OVERRIDES) as unknown as SeasonPointsResultRow[];
+}
+
+/**
+ * Each driver's trailing-form average finish as of the most recent race strictly
+ * before `beforeDate` in `season` — the "form coming in" baseline for callouts.
+ * Restricted to windows of at least `minWindow` races so the baseline is stable.
+ */
+export function priorFormForRace(
+  db: Database,
+  opts: { seriesId: number; season: number; beforeDate: string; minWindow: number },
+): Array<{ driverId: number; avgFinish: number }> {
+  return db
+    .query(
+      `SELECT f.driver_id AS driverId, f.avg_finish AS avgFinish
+       FROM driver_form f
+       JOIN (
+         SELECT driver_id, MAX(race_date_utc) AS md
+         FROM driver_form
+         WHERE series_id = ? AND season = ? AND race_date_utc < ?
+         GROUP BY driver_id
+       ) last ON last.driver_id = f.driver_id AND last.md = f.race_date_utc
+       WHERE f.series_id = ? AND f.season = ? AND f.window_races >= ?`,
+    )
+    .all(
+      opts.seriesId, opts.season, opts.beforeDate,
+      opts.seriesId, opts.season, opts.minWindow,
+    ) as unknown as Array<{ driverId: number; avgFinish: number }>;
 }
 
 export function formForDriver(db: Database, driverId: number, seriesId: number): DriverFormRow[] {

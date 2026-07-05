@@ -14,6 +14,7 @@ import { compareShell } from "./pages/compare.ts";
 import { tracksShell } from "./pages/tracks.ts";
 import { metricsContent } from "./pages/metrics.ts";
 import { careerContent } from "./pages/career.ts";
+import { recapContent } from "./pages/recap.ts";
 
 type P = Pick<Providers, "db">;
 
@@ -127,6 +128,44 @@ export function renderRacePage(p: P, raceId: number): string | null {
     season: currentSeason(p, race.seriesId),
     content: racePageContent(race, ingestionService.raceResults(p, race.raceId), race.seriesId),
   });
+}
+
+/**
+ * Weekly recap for one race. Un-prefixed like `/race/{id}` (race_id is global);
+ * series is derived from the race. Null when the race doesn't exist (→ 404).
+ */
+export function renderRecap(p: P, raceId: number): string | null {
+  const race = ingestionService.raceDetails(p, raceId);
+  if (!race) return null;
+  return page({
+    title: `${race.raceName} · Recap`,
+    active: "recap",
+    seriesId: race.seriesId,
+    season: currentSeason(p, race.seriesId),
+    content: recapContent({
+      seriesId: race.seriesId,
+      race,
+      results: ingestionService.raceResults(p, race.raceId),
+      standouts: analyticsService.raceStandouts(p, race.raceId),
+      movement: analyticsService.standingsMovement(p, {
+        seriesId: race.seriesId,
+        season: race.season,
+        raceId: race.raceId,
+      }),
+      callouts: analyticsService.formCallouts(p, {
+        seriesId: race.seriesId,
+        season: race.season,
+        raceId: race.raceId,
+        raceDateUtc: race.raceDateUtc,
+      }),
+    }),
+  });
+}
+
+/** The current series' latest completed race, as a recap. Null when the series has no races. */
+export function renderLatestRecap(p: P, seriesId: number): string | null {
+  const latest = ingestionService.latestCompletedRace(p, seriesId);
+  return latest ? renderRecap(p, latest.raceId) : null;
 }
 
 /** Null when the series has no computed stats yet (→ 404). */

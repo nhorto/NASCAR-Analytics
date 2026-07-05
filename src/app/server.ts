@@ -75,6 +75,8 @@ export function createServer(p: Providers, port: number) {
       if (m) return analyticsRuntime.handleStandings(p, m[1]!, url);
       if (path === "/api/tracks") return analyticsRuntime.handleTrackLeaderboard(p, url);
       if (path === "/api/metrics") return analyticsRuntime.handleMetrics(p, url);
+      m = path.match(/^\/api\/recap\/(\d+)$/);
+      if (m) return analyticsRuntime.handleRecap(p, m[1]!);
 
       // --- career + race pages: un-prefixed (driver_id / race_id are global) ---
       m = path.match(/^\/driver\/(\d+)$/);
@@ -86,6 +88,11 @@ export function createServer(p: Providers, port: number) {
       if (m) {
         const html = render.renderRacePage(p, Number(m[1]));
         return html ? htmlResponse(html) : notFound(SERIES.cup, "Race");
+      }
+      m = path.match(/^\/recap\/(\d+)$/);
+      if (m) {
+        const html = render.renderRecap(p, Number(m[1]));
+        return html ? htmlResponse(html) : notFound(SERIES.cup, "Recap");
       }
 
       // --- series-prefixed HTML pages ---
@@ -106,6 +113,10 @@ export function createServer(p: Providers, port: number) {
       if (m) {
         const html = render.renderRacesIndex(p, seriesId, Number(m[1]));
         return html ? htmlResponse(html) : notFound(seriesId, "Season");
+      }
+      if (rest === "/recap") {
+        const html = render.renderLatestRecap(p, seriesId);
+        return html ? htmlResponse(html) : notFound(seriesId, "Recap");
       }
       if (rest === "/metrics") {
         const html = render.renderMetrics(p, seriesId);

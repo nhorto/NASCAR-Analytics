@@ -3,11 +3,14 @@ import { ingestionService, ingestionConfig } from "../domains/data-ingestion/ind
 import { analyticsService } from "../domains/analytics/index.ts";
 import { driversService } from "../domains/drivers/index.ts";
 
-const DATA_DIR = "data";
+// Where the DB + raw archive live. Overridable so a Cloudflare Container (or any
+// other runner) can point at an R2-synced volume without code changes.
+const DATA_DIR = process.env.NASCAR_DATA_DIR ?? "data";
+const DB_PATH = `${DATA_DIR}/nascar.db`;
 
 function providers() {
   return createProviders({
-    dbPath: `${DATA_DIR}/nascar.db`,
+    dbPath: DB_PATH,
     archiveDir: `${DATA_DIR}/raw`,
     cdn: {
       delayMs: ingestionConfig.FETCH_DELAY_MS,
@@ -94,7 +97,8 @@ switch (command) {
     const s = analyticsService.computeAll(p, argValue("--series", ingestionConfig.SERIES.cup), log);
     console.log(
       `computed: ${s.seasonStatsRows} season rows, ${s.trackTypeStatsRows} track-type rows, ` +
-        `${s.formRows} form rows (from ${s.resultRows} results, ${s.loopRows} loop rows)`,
+        `${s.formRows} form rows, ${s.raceStandoutRows} race-standout rows ` +
+        `(from ${s.resultRows} results, ${s.loopRows} loop rows)`,
     );
     break;
   }
@@ -142,8 +146,59 @@ switch (command) {
   }
   case "export": {
     const { exportSite } = await import("./export.ts");
-    const { pages } = await exportSite(`${DATA_DIR}/nascar.db`, log);
+    const { pages } = await exportSite(DB_PATH, log);
     console.log(`Exported ${pages} pages to dist/`);
+    break;
+  }
+  case "refresh": {
+    // The portable weekend loop: backfill -> compute (all series) -> export ->
+    // deploy. This is the single command any scheduler runs (GitHub Actions now,
+    // a Cloudflare Container later). Deploy self-gates on CLOUDFLARE_API_TOKEN.
+    const allSeries = [
+      ingestionConfig.SERIES.cup,
+      ingestionConfig.SERIES.xfinity,
+      ingestionConfig.SERIES.trucks,
+    ];
+    const toSeason = new Date().getUTCFullYear();
+    const p = providers();
+
+    for (const seriesId of allSeries) {
+      log.info(`\n▶ backfill series ${seriesId} (${ingestionConfig.BACKFILL_FIRST_SEASON}–${toSeason})`);
+      await ingestionService.backfill(
+        p,
+        { fromSeason: ingestionConfig.BACKFILL_FIRST_SEASON, toSeason, seriesId },
+        log,
+      );
+    }
+    for (const seriesId of allSeries) {
+      const s = analyticsService.computeAll(p, seriesId, log);
+      log.info(`▶ computed series ${seriesId}: ${s.seasonStatsRows} season, ${s.raceStandoutRows} standout rows`);
+    }
+
+    const { exportSite } = await import("./export.ts");
+    const { pages } = await exportSite(DB_PATH, log);
+    log.info(`▶ exported ${pages} pages to dist/`);
+
+    if (process.argv.includes("--no-deploy")) {
+      console.log("--no-deploy set — skipping deploy (dist/ is ready).");
+      break;
+    }
+    if (!process.env.CLOUDFLARE_API_TOKEN) {
+      console.log("CLOUDFLARE_API_TOKEN not set — skipping deploy (dist/ is ready to upload).");
+      break;
+    }
+    const project = process.env.NASCAR_PAGES_PROJECT ?? "looplab";
+    log.info(`▶ deploying dist/ to Cloudflare Pages project "${project}"`);
+    const proc = Bun.spawn(
+      ["bunx", "wrangler", "pages", "deploy", "dist", `--project-name=${project}`],
+      { stdout: "inherit", stderr: "inherit", env: process.env },
+    );
+    const code = await proc.exited;
+    if (code !== 0) {
+      console.error(`wrangler deploy exited ${code}`);
+      process.exit(code || 1);
+    }
+    console.log("✓ deployed");
     break;
   }
   default:
@@ -156,6 +211,10 @@ Usage:
   bun run src/app/index.ts compute [--series ID]
   bun run src/app/index.ts driver --name "Chase Elliott" | --id 4062 [--series ID]
   bun run src/app/index.ts serve [--port 3000]
-  bun run src/app/index.ts export`);
+  bun run src/app/index.ts export
+  bun run src/app/index.ts refresh [--no-deploy]   # backfill+compute+export+deploy, all series
+
+Env: NASCAR_DATA_DIR (default data), NASCAR_PAGES_PROJECT (default looplab),
+     CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID (enable the deploy step)`);
     if (command !== undefined) process.exit(1);
 }

@@ -170,4 +170,76 @@ export interface ComputeSummary {
   seasonStatsRows: number;
   trackTypeStatsRows: number;
   formRows: number;
+  raceStandoutRows: number;
+}
+
+// ---- Weekly recap ----
+
+/** A points-race finish with driver name, date-ordered — input to standings movement. */
+export interface SeasonPointsResultRow {
+  raceId: number;
+  driverId: number;
+  fullName: string;
+  finish: number;
+  points: number;
+  raceDateUtc: string | null;
+}
+
+/**
+ * One driver's single-race residuals for the two proprietary metrics, computed
+ * per race (the per-race analogue of the season adjPE / Closer Score). Persisted
+ * so the recap page reads precomputed values. Null when the race lacked the loop
+ * inputs to score that metric.
+ */
+export interface RaceMetricStandout {
+  raceId: number;
+  seriesId: number;
+  season: number;
+  driverId: number;
+  /** Single-race adjusted pass efficiency (residual ×100), null if no encounters. */
+  adjPassEfficiency: number | null;
+  /** Single-race closer score (closing-laps residual). */
+  closerScore: number | null;
+  rating: number | null;
+}
+
+/** A per-race standout joined with the driver's name, for the recap page. */
+export interface RaceStandout extends RaceMetricStandout {
+  fullName: string;
+}
+
+/** One driver's championship-standings position after a race, with movement. */
+export interface StandingsMovementRow {
+  driverId: number;
+  fullName: string;
+  /** Season-to-date points through this race. */
+  points: number;
+  /** Points scored in this race. */
+  pointsThisRace: number;
+  wins: number;
+  /** 1-based rank after this race. */
+  rank: number;
+  /** Rank after the previous race; null if the driver hadn't scored before. */
+  prevRank: number | null;
+  /** prevRank − rank: positive = moved up. Null on the season's first race. */
+  rankDelta: number | null;
+  /** Inside the (simplified) points cut line for this series. */
+  inPlayoff: boolean;
+}
+
+/** A driver whose finish beat (or missed) their trailing form coming in. */
+export interface FormCallout {
+  driverId: number;
+  fullName: string;
+  finish: number;
+  /** Trailing-form average finish as of the previous race. */
+  formAvgFinish: number;
+  /** formAvgFinish − finish: positive = overperformed their recent form. */
+  delta: number;
+}
+
+/** Both sides of the form-vs-result callouts for a race. */
+export interface RaceFormCallouts {
+  over: FormCallout[];
+  under: FormCallout[];
 }
