@@ -15,20 +15,27 @@ import {
   sparkline,
   deltaArrow,
   fmtDate,
+  withSeries,
   TRACK_TYPE_LABELS,
 } from "../html.ts";
 
-export function driversIndexContent(drivers: DriverSummary[], q: string | null): string {
+export function driversIndexContent(
+  drivers: DriverSummary[],
+  q: string | null,
+  seriesId: number,
+): string {
   const filtered = q
     ? drivers.filter((d) => d.fullName.toLowerCase().includes(q.toLowerCase()))
     : drivers;
   const rows = filtered
     .map(
       (d) =>
-        `<tr><td><a href="/drivers/${d.driverId}">${esc(d.fullName)}</a></td><td class="r mut">${d.firstSeason}–${d.lastSeason}</td><td class="r">${d.races}</td><td class="r">${d.wins > 0 ? `<b>${d.wins}</b>` : `<span class="mut">0</span>`}</td></tr>`,
+        `<tr><td><a href="${withSeries(`/drivers/${d.driverId}`, seriesId)}">${esc(d.fullName)}</a></td><td class="r mut">${d.firstSeason}–${d.lastSeason}</td><td class="r">${d.races}</td><td class="r">${d.wins > 0 ? `<b>${d.wins}</b>` : `<span class="mut">0</span>`}</td></tr>`,
     )
     .join("");
+  const seriesField = seriesId === 1 ? "" : `<input type="hidden" name="series" value="${seriesId}">`;
   const search = `<form class="inline" method="get" action="/drivers">
+    ${seriesField}
     <input type="search" name="q" placeholder="Search drivers…" value="${esc(q ?? "")}" style="flex:1">
     <button type="submit">Search</button>
   </form>`;
@@ -40,6 +47,7 @@ export function driversIndexContent(drivers: DriverSummary[], q: string | null):
 }
 
 export function driverProfileContent(data: {
+  seriesId: number;
   driver: DriverSummary;
   seasons: DriverSeasonStats[];
   splits: DriverTrackTypeStats[];

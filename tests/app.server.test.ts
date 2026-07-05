@@ -37,12 +37,25 @@ beforeAll(() => {
   seedLoop(db, { raceId: 101, driverId: 10, avgPs: 4, passesGf: 6, passedGf: 2, rating: 95 });
   seedLoop(db, { raceId: 101, driverId: 20, avgPs: 2, passesGf: 7, passedGf: 1, rating: 130, fastLaps: 12 });
 
+  // A second series (Xfinity = 2) with its own race + driver, to exercise the switcher.
+  seedDriver(db, 30, "Xfinity Only");
+  seedRace(db, {
+    raceId: 200,
+    season: 2024,
+    seriesId: 2,
+    raceDateUtc: "2024-03-05T18:00:00",
+    raceName: "Xfinity 250",
+  });
+  seedResult(db, { raceId: 200, driverId: 30, finish: 1, start: 2, lapsLed: 60, points: 48, teamName: "JR Motorsports", carNumber: "88" });
+  seedLoop(db, { raceId: 200, driverId: 30, avgPs: 3, passesGf: 5, passedGf: 4, rating: 110 });
+
   const providers: Providers = {
     db,
     cdn: createNascarCdnClient({ delayMs: 0, retries: 0, retryBaseDelayMs: 0, userAgent: "test" }),
     archive: createNullArchive(),
   };
-  analyticsService.computeAll(providers);
+  analyticsService.computeAll(providers); // Cup
+  analyticsService.computeAll(providers, 2); // Xfinity
   server = createServer(providers, 0);
   base = server.url.toString().replace(/\/$/, "");
 });
@@ -126,6 +139,47 @@ describe("web app", () => {
   test("unknown path returns styled 404", async () => {
     const { status } = await get("/nope");
     expect(status).toBe(404);
+  });
+
+  test("series switcher renders all three series", async () => {
+    const { body } = await get("/");
+    expect(body).toContain("series-switch");
+    expect(body).toContain("Xfinity");
+    expect(body).toContain("Trucks");
+  });
+
+  test("?series=2 shows Xfinity data, not Cup data", async () => {
+    const cup = await get("/drivers");
+    expect(cup.body).toContain("Alpha Driver");
+    expect(cup.body).not.toContain("Xfinity Only");
+
+    const xf = await get("/drivers?series=2");
+    expect(xf.body).toContain("Xfinity Only");
+    expect(xf.body).not.toContain("Alpha Driver");
+    // Bottom tabs and internal links carry the series through.
+    expect(xf.body).toContain("/drivers?series=2");
+  });
+
+  test("Xfinity home surfaces the Xfinity race and standings", async () => {
+    const { status, body } = await get("/?series=2");
+    expect(status).toBe(200);
+    expect(body).toContain("Xfinity 250");
+    expect(body).toContain("Xfinity Only");
+  });
+
+  test("race page derives its own series for the switcher", async () => {
+    const { status, body } = await get("/races/200");
+    expect(status).toBe(200);
+    expect(body).toContain("Xfinity 250");
+    // Switcher shows Xfinity active even without ?series in the URL.
+    expect(body).toContain("/drivers?series=2");
+  });
+
+  test("JSON API is series-aware", async () => {
+    const xf = (await fetch(`${base}/api/drivers?series=2`).then((r) => r.json())) as any;
+    expect(xf.seriesId).toBe(2);
+    expect(xf.drivers.some((d: any) => d.fullName === "Xfinity Only")).toBe(true);
+    expect(xf.drivers.some((d: any) => d.fullName === "Alpha Driver")).toBe(false);
   });
 
   test("JSON API: drivers, driver, stats, standings, tracks", async () => {

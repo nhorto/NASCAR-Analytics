@@ -135,7 +135,7 @@ export interface Providers {
 | Source | Type | What We Get |
 |--------|------|------------|
 | `cf.nascar.com/cacher/{year}/{series}/{race_id}/` | Public CDN (free, no auth) | Schedules 2016+, results 2017+, lap times 2020+, pit data, live race data. Payload-verified 2026-07-05 — see [re-verification](docs/research/2026-07-05_data-sources-reverification.md) |
-| `cf.nascar.com/loopstats/prod/{year}/{series}/{race_id}.json` | Public CDN (free, no auth) | Full official loop data per race (Driver Rating, quality passes, fast laps, etc.), 2019+ |
+| `cf.nascar.com/loopstats/prod/{year}/{series}/{race_id}.json` | Public CDN (free, no auth) | Full official loop data per race (Driver Rating, quality passes, fast laps, etc.), 2019+ for Cup/Xfinity, 2018+ for Trucks. Feed is a JSON array of race objects. |
 | nascaR.data (R package) | Free, CRAN | Historical results 1949-present (v3.1.0, actively maintained) |
 | ~~The Odds API~~ | ❌ Does NOT cover NASCAR | Verified 2026-07-05. Odds source TBD — betting/odds domain deferred |
 | rNascar23.Sdk reference | GitHub | Documents all NASCAR CDN endpoint patterns including LoopData |
@@ -144,21 +144,22 @@ export interface Providers {
 
 > What the system currently does reliably. Updated as features ship.
 
-- **Data ingestion pipeline (2026-07-05)**: `bun run backfill` / `bun run sync` ingest Cup Series data from the NASCAR CDN into `data/nascar.db` (SQLite). Idempotent — re-runs fetch only missing races. Rate-limited and retrying.
-- **Ingested dataset (verified against known history)**: schedules 2016–2026, results 2017–2026 (13.7k rows, incl. DQ handling), loop stats 2019–2026 (10.7k rows), lap-by-lap times 2020–2026 (2.24M rows), cautions, race leaders. Winner spot-checks pass for 2017/2019/2020/2022/2024 marquee races.
+- **Data ingestion pipeline (2026-07-05)**: `bun run backfill [--series N]` / `bun run sync` ingest all three national series from the NASCAR CDN into `data/nascar.db` (SQLite). Idempotent — re-runs fetch only missing races. Rate-limited and retrying.
+- **Ingested dataset — all three series (verified against known history)**: Cup (series 1), Xfinity (2), Trucks (3). Results 2017–2026, loop stats 2019–2026 (2018+ for Trucks — a bonus year), lap-by-lap times 2020–2026, cautions, race leaders. Payload-verified coverage in [the multi-series plan](docs/exec-plans/completed/2026-07-05-multi-series.md). driver_id confirmed global across series (one drivers row per person; stats separated by series_id). Sanity checks pass (Cup wins leaders 2017–2024, Xfinity 2026 Allgaier, Trucks 2024 Heim/Majeski).
 - **Raw archival**: every 200 CDN response is stored verbatim under `data/raw/` with a `raw_fetches` index (URL, sha256, status) — the dataset survives any future CDN access change.
-- **Track-type classification**: every 2016–2026 Cup track classified (superspeedway/intermediate/short/road/dirt), including Atlanta's 2022 reprofile via season override.
+- **Track-type classification**: every 2016–2026 track across all three series classified (superspeedway/intermediate/short/road/dirt), including Atlanta's 2022 reprofile via season override; zero unknown types after the Xfinity/Truck track audit.
 - **Architecture tests**: layer dependency rules are enforced by `bun test` (tests/architecture.test.ts).
 - **Computed analytics (2026-07-05)**: `bun run compute` rebuilds `driver_season_stats`, `driver_track_type_stats`, and `driver_form` (trailing-6-race form) from points races (`race_type_id = 1` + the race-5580 override). Includes two proprietary metrics — Adjusted Pass Efficiency and Closer Score, both residuals vs. league-average baselines per running-position bucket. Verified against known history (season wins leaders 2017–2024, SVG road stats, Elliott 2023 injury season).
 - **Drivers domain (2026-07-05)**: driver summaries, race logs, id/name lookup (`driver --name "..."` CLI), and an identity-integrity check. CDN driver_id verified stable across 2017–2026 — no alias table needed.
 - **Web app (2026-07-05)**: `bun run serve` (default port 3000) serves the mobile-first dark UI — home, driver index/profiles, race pages with loop insights, head-to-head compare, track-type explorer — plus JSON API routes (`/api/drivers`, `/api/drivers/:id`, `/api/drivers/:id/stats`, `/api/standings/:season`, `/api/tracks`). All reads hit precomputed tables; measured page renders < 60ms. Look & feel per [the design mockup](docs/design-docs/2026-07-05-phase3-ui-mockup.html).
+- **Series switching (2026-07-05)**: a Cup/Xfinity/Trucks segmented switcher (top-level nav axis, under the app bar) carried via the `?series=` URL param, threaded through every page, query, and internal link. Pages and the JSON API are all series-aware; a race page derives its series from the race itself.
 - Known data holes are documented in [the re-verification doc](docs/research/2026-07-05_data-sources-reverification.md) (2025 YellaWood 500 results; exhibition heat races).
 
 ## What Does NOT Exist Here
 
 > Honest list of gaps. Must be kept updated.
 
-- No Xfinity/Truck series data (Cup only so far)
+- No cross-series views (comparing a Cup season to an Xfinity season; a unified career timeline across a driver's Cup+Xfinity+Truck record) — each view stays within one series
 - No scheduled automation — sync is run manually after race weekends
 - No odds integration (deferred — see exec plan)
 - No user authentication (deliberately out of MVP scope)

@@ -12,6 +12,7 @@ import {
   barRow,
   deltaArrow,
   fmtDate,
+  withSeries,
   TRACK_TYPE_LABELS,
 } from "../html.ts";
 
@@ -19,11 +20,14 @@ export function racesIndexContent(
   races: SeasonRaceListItem[],
   season: number,
   seasons: number[],
+  seriesId: number,
 ): string {
   const options = seasons
     .map((s) => `<option value="${s}" ${s === season ? "selected" : ""}>${s}</option>`)
     .join("");
+  const seriesField = seriesId === 1 ? "" : `<input type="hidden" name="series" value="${seriesId}">`;
   const picker = `<form class="inline" method="get" action="/races">
+    ${seriesField}
     <label class="note" for="season">Season</label>
     <select id="season" name="season" onchange="this.form.submit()">${options}</select>
     <noscript><button type="submit">Go</button></noscript>
@@ -31,7 +35,7 @@ export function racesIndexContent(
   const rows = races
     .map((r) => {
       const name = r.hasResults
-        ? `<a href="/races/${r.raceId}">${esc(r.raceName)}</a>`
+        ? `<a href="${withSeries(`/races/${r.raceId}`, seriesId)}">${esc(r.raceName)}</a>`
         : `<span class="mut">${esc(r.raceName)}</span>`;
       return `<tr><td class="mut">${fmtDate(r.raceDateUtc)}</td><td>${name}</td><td class="r mut">${esc(TRACK_TYPE_LABELS[r.trackType] ?? r.trackType)}</td><td class="r">${r.winnerName ? esc(r.winnerName) : "<span class='mut'>—</span>"}</td></tr>`;
     })
@@ -42,7 +46,11 @@ export function racesIndexContent(
   )}`;
 }
 
-export function racePageContent(race: RaceDetails, results: RaceResultWithLoop[]): string {
+export function racePageContent(
+  race: RaceDetails,
+  results: RaceResultWithLoop[],
+  seriesId: number,
+): string {
   const parts: string[] = [];
   parts.push(`<div>
     <div class="h-title">${esc(race.raceName)}</div>
@@ -63,7 +71,7 @@ export function racePageContent(race: RaceDetails, results: RaceResultWithLoop[]
     parts.push(`<div class="hero">
       ${badge(winner.carNumber, winner.teamName, 40)}
       <div>
-        <div class="big"><a href="/drivers/${winner.driverId}">${esc(winner.fullName)}</a></div>
+        <div class="big"><a href="${withSeries(`/drivers/${winner.driverId}`, seriesId)}">${esc(winner.fullName)}</a></div>
         <div class="meta">${winner.start !== null ? `P${winner.start} → P1 · ` : ""}led ${winner.lapsLed} laps${winner.fastLaps ? ` · ${winner.fastLaps} fast laps` : ""}</div>
       </div>
       ${winner.rating !== null ? `<div class="rating"><b class="num">${fmt(winner.rating)}</b><span>Rating</span></div>` : ""}
@@ -74,7 +82,7 @@ export function racePageContent(race: RaceDetails, results: RaceResultWithLoop[]
     const rows = results
       .map(
         (r) =>
-          `<tr><td><b>${r.finish}</b>${r.disqualified ? `<span class="neg"> DQ</span>` : ""}</td><td>${deltaArrow(r.start, r.finish)}</td><td><a href="/drivers/${r.driverId}">${esc(r.fullName)}</a></td><td class="r mut">${r.start ?? "—"}</td><td class="r">${fmt(r.rating)}</td></tr>`,
+          `<tr><td><b>${r.finish}</b>${r.disqualified ? `<span class="neg"> DQ</span>` : ""}</td><td>${deltaArrow(r.start, r.finish)}</td><td><a href="${withSeries(`/drivers/${r.driverId}`, seriesId)}">${esc(r.fullName)}</a></td><td class="r mut">${r.start ?? "—"}</td><td class="r">${fmt(r.rating)}</td></tr>`,
       )
       .join("");
     parts.push(

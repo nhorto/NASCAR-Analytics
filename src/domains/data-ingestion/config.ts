@@ -15,6 +15,9 @@ export const SERIES = {
 export const SCHEDULE_FIRST_SEASON = 2016;
 export const BACKFILL_FIRST_SEASON = 2017;
 export const LOOPSTATS_FIRST_SEASON = 2019;
+// Trucks (series 3) loop data starts a year earlier than Cup/Xfinity —
+// verified 2026-07-05: full loop rows for sampled 2018 Truck races.
+export const TRUCKS_LOOPSTATS_FIRST_SEASON = 2018;
 export const LAPTIMES_FIRST_SEASON = 2020;
 
 // Polite fetch behavior against the public CDN.
@@ -87,6 +90,17 @@ export const TRACK_TYPES: Record<number, { name: string; type: TrackType }> = {
   217: { name: "Los Angeles Memorial Coliseum", type: "short" },
   218: { name: "Chicago Street Race", type: "road" },
   221: { name: "San Diego Street Course", type: "road" },
+  // Tracks that appear in the Xfinity/Truck schedules (2018-2026) but not Cup's.
+  47: { name: "Lucas Oil Indianapolis Raceway Park", type: "short" },
+  51: { name: "The Milwaukee Mile", type: "short" },
+  72: { name: "Mid-Ohio Sports Car Course", type: "road" },
+  175: { name: "Rockingham Speedway", type: "short" },
+  204: { name: "Portland International Raceway", type: "road" },
+  208: { name: "Eldora Speedway", type: "dirt" },
+  209: { name: "Canadian Tire Motorsport Park", type: "road" },
+  215: { name: "Knoxville Raceway", type: "dirt" },
+  220: { name: "Lime Rock Park", type: "road" },
+  222: { name: "Grand Prix of St. Petersburg", type: "road" },
 };
 
 // Atlanta was reprofiled ahead of the 2022 season into a drafting track.

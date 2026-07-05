@@ -1,13 +1,15 @@
 import type { RaceDetails, RaceResultWithLoop } from "../../domains/data-ingestion/types.ts";
 import type { SeasonStanding, FormLeader } from "../../domains/analytics/types.ts";
-import { esc, fmt, badge, card, fmtDate, TRACK_TYPE_LABELS } from "../html.ts";
+import { esc, fmt, badge, card, fmtDate, withSeries, TRACK_TYPE_LABELS } from "../html.ts";
 
 export function homeContent(data: {
+  seriesId: number;
   latestRace: RaceDetails | null;
   latestResults: RaceResultWithLoop[];
   standings: SeasonStanding[];
   formLeaders: FormLeader[];
 }): string {
+  const s = data.seriesId;
   const parts: string[] = [];
 
   if (data.latestRace) {
@@ -29,7 +31,7 @@ export function homeContent(data: {
         `<div class="h-title">${esc(r.raceName)}</div>
          <div class="h-sub">${esc(TRACK_TYPE_LABELS[r.trackType] ?? r.trackType)}${r.actualLaps ? ` · ${r.actualLaps} laps` : ""}${r.cautions !== null ? ` · ${r.cautions} cautions` : ""}${r.leadChanges !== null ? ` · ${r.leadChanges} lead changes` : ""}</div>
          ${winnerHtml}`,
-        { href: `/races/${r.raceId}`, label: "Full breakdown →" },
+        { href: withSeries(`/races/${r.raceId}`, s), label: "Full breakdown →" },
       ),
     );
   }
@@ -37,8 +39,8 @@ export function homeContent(data: {
   if (data.standings.length > 0) {
     const rows = data.standings
       .map(
-        (s, i) =>
-          `<tr><td class="mut">${i + 1}</td><td><a href="/drivers/${s.driverId}">${esc(s.fullName)}</a></td><td class="r">${s.wins}</td><td class="r">${fmt(s.avgFinish)}</td><td class="r"><b>${s.points}</b></td></tr>`,
+        (row, i) =>
+          `<tr><td class="mut">${i + 1}</td><td><a href="${withSeries(`/drivers/${row.driverId}`, s)}">${esc(row.fullName)}</a></td><td class="r">${row.wins}</td><td class="r">${fmt(row.avgFinish)}</td><td class="r"><b>${row.points}</b></td></tr>`,
       )
       .join("");
     parts.push(
@@ -53,7 +55,7 @@ export function homeContent(data: {
     const rows = data.formLeaders
       .map(
         (f) =>
-          `<tr><td><a href="/drivers/${f.driverId}">${esc(f.fullName)}</a></td><td class="r">${fmt(f.avgFinish)}</td><td class="r">${fmt(f.avgRating)}</td></tr>`,
+          `<tr><td><a href="${withSeries(`/drivers/${f.driverId}`, s)}">${esc(f.fullName)}</a></td><td class="r">${fmt(f.avgFinish)}</td><td class="r">${fmt(f.avgRating)}</td></tr>`,
       )
       .join("");
     parts.push(

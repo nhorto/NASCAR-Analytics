@@ -25,6 +25,8 @@ import {
   loopStatsUrl,
   trackTypeFor,
   LOOPSTATS_FIRST_SEASON,
+  TRUCKS_LOOPSTATS_FIRST_SEASON,
+  SERIES,
   LAPTIMES_FIRST_SEASON,
 } from "./config.ts";
 import * as repo from "./repo.ts";
@@ -180,9 +182,12 @@ export function normalizeLapTimes(raceId: number, feed: CdnLapTimesFeed): LapTim
   return rows;
 }
 
-/** Loop stats exist on the CDN from 2019 (2016-2017 serve null bodies, 2018 403s). */
-export function loopStatsExpected(season: number): boolean {
-  return season >= LOOPSTATS_FIRST_SEASON;
+/** Loop stats exist on the CDN from 2019 for Cup/Xfinity (2016-2017 serve null
+ * bodies, 2018 403s), and from 2018 for Trucks. */
+export function loopStatsExpected(season: number, seriesId: number): boolean {
+  const first =
+    seriesId === SERIES.trucks ? TRUCKS_LOOPSTATS_FIRST_SEASON : LOOPSTATS_FIRST_SEASON;
+  return season >= first;
 }
 
 export function lapTimesExpected(season: number): boolean {
@@ -279,7 +284,7 @@ export async function ingestRaceData(
     }
   }
 
-  if (loopStatsExpected(season)) {
+  if (loopStatsExpected(season, seriesId)) {
     const loopJson = await fetchAndArchive(
       providers,
       loopStatsUrl(season, seriesId, raceId),
@@ -331,7 +336,8 @@ function raceHasHappened(race: ScheduledRace, nowUtc: string): boolean {
 
 function raceFullyCovered(providers: Providers, race: ScheduledRace): boolean {
   if (!repo.hasResults(providers.db, race.raceId)) return false;
-  if (loopStatsExpected(race.season) && !repo.hasLoopStats(providers.db, race.raceId)) return false;
+  if (loopStatsExpected(race.season, race.seriesId) && !repo.hasLoopStats(providers.db, race.raceId))
+    return false;
   if (lapTimesExpected(race.season) && !repo.hasLapTimes(providers.db, race.raceId)) return false;
   return true;
 }

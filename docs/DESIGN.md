@@ -44,6 +44,14 @@ Established in the mockup; UI code must reuse these rather than invent new ones:
 - **Segmented control** — pill container, active segment filled with accent
 - **Trend pill** — small rounded badge, ▲/▼ with tinted background
 - **Phone chrome** — top app bar (wordmark + season pill), bottom 5-tab bar (Home / Drivers / Races / Compare / Tracks)
+- **Series switcher** — a segmented control (Cup / Xfinity / Trucks) directly under the app bar. This is the *primary* navigation axis (which garage), orthogonal to the section tabs (which view). Reuses `.seg`; active segment filled with accent. Carried in the URL via `?series=`.
+
+## Two navigation axes
+
+The app has two independent axes, and the layout keeps them visually separate so neither is mistaken for the other:
+- **Series** (Cup / Xfinity / Trucks) — top, segmented, under the app bar.
+- **Section** (Home / Drivers / Races / Compare / Tracks) — bottom tab bar.
+Switching series lands on the same section's index for the new series; switching section preserves the current series.
 
 ## Layout Rules
 

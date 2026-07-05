@@ -133,11 +133,18 @@ describe("normalizeLapTimes", () => {
 });
 
 describe("coverage expectations", () => {
-  test("loop stats expected from 2019 (earlier seasons null/403 on the CDN)", () => {
-    expect(loopStatsExpected(2016)).toBe(false);
-    expect(loopStatsExpected(2018)).toBe(false);
-    expect(loopStatsExpected(2019)).toBe(true);
-    expect(loopStatsExpected(2026)).toBe(true);
+  test("loop stats expected from 2019 for Cup/Xfinity (earlier seasons null/403 on the CDN)", () => {
+    expect(loopStatsExpected(2016, 1)).toBe(false);
+    expect(loopStatsExpected(2018, 1)).toBe(false);
+    expect(loopStatsExpected(2019, 1)).toBe(true);
+    expect(loopStatsExpected(2026, 1)).toBe(true);
+    expect(loopStatsExpected(2018, 2)).toBe(false); // Xfinity: 2019+
+  });
+
+  test("Trucks loop stats expected a year earlier, from 2018", () => {
+    expect(loopStatsExpected(2017, 3)).toBe(false);
+    expect(loopStatsExpected(2018, 3)).toBe(true);
+    expect(loopStatsExpected(2019, 3)).toBe(true);
   });
 
   test("lap times expected from 2020", () => {

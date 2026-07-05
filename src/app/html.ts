@@ -1,5 +1,12 @@
 // Shared HTML-building helpers for app-level page templates.
 
+/** Append the series query param, keeping Cup (the default) as clean URLs. */
+export function withSeries(href: string, seriesId: number): string {
+  if (seriesId === 1) return href;
+  const sep = href.includes("?") ? "&" : "?";
+  return `${href}${sep}series=${seriesId}`;
+}
+
 export function esc(s: string | null | undefined): string {
   if (s === null || s === undefined) return "";
   return s

@@ -1,6 +1,7 @@
 import type { DriverSummary } from "../../domains/drivers/types.ts";
 import type { DriverSeasonStats } from "../../domains/analytics/types.ts";
 import { esc, fmt, signed, pct, badge, card } from "../html.ts";
+// Series is carried via a hidden form field so the GET submit preserves it.
 
 interface Metric {
   label: string;
@@ -51,6 +52,7 @@ function cmpRow(m: Metric, a: DriverSeasonStats, b: DriverSeasonStats): string {
 }
 
 export function compareContent(data: {
+  seriesId: number;
   drivers: DriverSummary[];
   a: DriverSummary | null;
   b: DriverSummary | null;
@@ -60,6 +62,8 @@ export function compareContent(data: {
   seasons: number[];
 }): string {
   const parts: string[] = [];
+  const seriesField =
+    data.seriesId === 1 ? "" : `<input type="hidden" name="series" value="${data.seriesId}">`;
 
   const options = (selected: number | null) =>
     data.drivers
@@ -72,6 +76,7 @@ export function compareContent(data: {
     .map((s) => `<option value="${s}" ${s === data.season ? "selected" : ""}>${s}</option>`)
     .join("");
   parts.push(`<form class="inline" method="get" action="/compare">
+    ${seriesField}
     <select name="a" style="flex:1"><option value="">Driver A…</option>${options(data.a?.driverId ?? null)}</select>
     <select name="b" style="flex:1"><option value="">Driver B…</option>${options(data.b?.driverId ?? null)}</select>
     <select name="season">${seasonOptions}</select>

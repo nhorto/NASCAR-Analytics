@@ -1,11 +1,12 @@
 import type { TrackTypeLeaderRow } from "../../domains/analytics/types.ts";
-import { esc, fmt, signed, card } from "../html.ts";
+import { esc, fmt, signed, card, withSeries } from "../html.ts";
 
 const SEGMENTS: Array<{ type: string; label: string }> = [
-  { type: "superspeedway", label: "Superspdwy" },
-  { type: "intermediate", label: "Intermediate" },
+  { type: "superspeedway", label: "Super" },
+  { type: "intermediate", label: "Interm" },
   { type: "short", label: "Short" },
   { type: "road", label: "Road" },
+  { type: "dirt", label: "Dirt" },
 ];
 
 export type TrackSort = "avgFinish" | "avgRating" | "adjPassEfficiency" | "closerScore";
@@ -18,6 +19,7 @@ const SORTS: Array<{ key: TrackSort; label: string }> = [
 ];
 
 export function tracksContent(data: {
+  seriesId: number;
   leaders: TrackTypeLeaderRow[];
   trackType: string;
   fromSeason: number;
@@ -26,17 +28,18 @@ export function tracksContent(data: {
   sort: TrackSort;
 }): string {
   const parts: string[] = [];
+  const sid = data.seriesId;
 
   const seg = SEGMENTS.map(
     (s) =>
-      `<a href="/tracks?type=${s.type}&from=${data.fromSeason}&sort=${data.sort}" class="${s.type === data.trackType ? "on" : ""}">${s.label}</a>`,
+      `<a href="${withSeries(`/tracks?type=${s.type}&from=${data.fromSeason}&sort=${data.sort}`, sid)}" class="${s.type === data.trackType ? "on" : ""}">${s.label}</a>`,
   ).join("");
-  parts.push(`<div class="seg">${seg}</div>`);
+  parts.push(`<div class="seg seg-tracks">${seg}</div>`);
 
   const sortLinks = SORTS.map((s) =>
     s.key === data.sort
       ? `<b style="color:var(--accent)">${s.label}</b>`
-      : `<a href="/tracks?type=${data.trackType}&from=${data.fromSeason}&sort=${s.key}">${s.label}</a>`,
+      : `<a href="${withSeries(`/tracks?type=${data.trackType}&from=${data.fromSeason}&sort=${s.key}`, sid)}">${s.label}</a>`,
   ).join(" · ");
   parts.push(
     `<div class="filter-row"><span class="note num">${data.fromSeason}–${data.toSeason} · points races · min ${data.minStarts} starts</span><span class="note">${sortLinks}</span></div>`,
@@ -64,7 +67,7 @@ export function tracksContent(data: {
           : data.sort === "avgRating"
             ? fmt(l.avgRating)
             : signed(l[data.sort], data.sort === "closerScore" ? 2 : 1);
-      return `<tr><td class="mut">${i + 1}</td><td><a href="/drivers/${l.driverId}">${esc(l.fullName)}</a></td><td class="r">${l.starts}</td><td class="r">${l.wins > 0 ? `<b class="pos">${l.wins}</b>` : `<span class="mut">0</span>`}</td><td class="r"><b>${metric}</b></td></tr>`;
+      return `<tr><td class="mut">${i + 1}</td><td><a href="${withSeries(`/drivers/${l.driverId}`, sid)}">${esc(l.fullName)}</a></td><td class="r">${l.starts}</td><td class="r">${l.wins > 0 ? `<b class="pos">${l.wins}</b>` : `<span class="mut">0</span>`}</td><td class="r"><b>${metric}</b></td></tr>`;
     })
     .join("");
   const sortLabel = SORTS.find((s) => s.key === data.sort)!.label;

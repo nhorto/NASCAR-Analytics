@@ -6,13 +6,14 @@
 
 | Plan | Status | Description |
 |------|--------|-------------|
-| _None_ | | Next candidates: live race companion, Xfinity/Trucks backfill, scheduled sync automation, deployment. |
+| _None_ | | Next candidates: live race companion, scheduled sync automation, deployment/hosting, cross-series driver career pages. |
 
 ## Completed Plans
 
 | Plan | Completed | Description |
 |------|-----------|-------------|
 | [Fan Analytics Platform MVP](exec-plans/completed/2026-07-05-fan-analytics-mvp.md) | 2026-07-05 | Full MVP: CDN ingestion pipeline + raw archival (Phase 0/1), drivers + analytics domains with proprietary metrics (Phase 2), mobile-first dark web app — profiles, race pages, compare, track explorer (Phase 3). |
+| [Multi-Series (Xfinity + Trucks)](exec-plans/completed/2026-07-05-multi-series.md) | 2026-07-05 | Backfilled all 3 national series with loop data; added a Cup/Xfinity/Trucks series switcher threaded through the whole app and JSON API. |
 
 ## Tech Debt
 
