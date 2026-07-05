@@ -65,6 +65,7 @@ export async function exportSite(dbPath = "data/nascar.db", log?: Log): Promise<
     if (metrics) await write(`${prefix}/metrics`, metrics);
     await write(`${prefix}/compare`, render.renderCompare(p, s));
     await write(`${prefix}/tracks`, render.renderTracks(p, s));
+    await write(`${prefix}/live`, render.renderLive(p, s));
 
     // Weekly recap: the series' "this week" entry point, plus one per current-season
     // race with results (un-prefixed, race_id is global). Bounded to the current
@@ -107,6 +108,8 @@ export async function exportSite(dbPath = "data/nascar.db", log?: Log): Promise<
   await Bun.write(join(DIST, "style.css"), Bun.file(new URL("./style.css", import.meta.url)));
   await Bun.write(join(DIST, "compare.js"), Bun.file(new URL("./client/compare.js", import.meta.url)));
   await Bun.write(join(DIST, "tracks.js"), Bun.file(new URL("./client/tracks.js", import.meta.url)));
+  await Bun.write(join(DIST, "live.js"), Bun.file(new URL("./client/live.js", import.meta.url)));
+  await Bun.write(join(DIST, "home-live.js"), Bun.file(new URL("./client/home-live.js", import.meta.url)));
   await Bun.write(join(DIST, "404.html"), render.render404(1, render.currentSeason(p, 1), "Page"));
 
   // Cloudflare Pages reads _headers from the output root. Data + assets change

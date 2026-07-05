@@ -40,22 +40,24 @@ export class LiveCoordinator {
   }
 
   async fetch(req: Request): Promise<Response> {
-    const path = new URL(req.url).pathname;
-    if (path === "/snapshot") {
-      await this.ensureRunning();
+    const url = new URL(req.url);
+    const series = clampSeries(url.searchParams.get("series"));
+    if (url.pathname === "/snapshot") {
+      await this.ensureRunning(series);
       const latest = await this.state.storage.get<LivePayload>("latest");
       return jsonResponse(latest ?? warming());
     }
-    if (path === "/kick") {
-      await this.ensureRunning();
+    if (url.pathname === "/kick") {
+      await this.ensureRunning(series);
       return jsonResponse({ ok: true });
     }
     return new Response("not found", { status: 404 });
   }
 
-  /** Record client interest and make sure the alarm loop is ticking. */
-  private async ensureRunning(): Promise<void> {
+  /** Record client interest, remember which series to poll, and keep the loop ticking. */
+  private async ensureRunning(series: number): Promise<void> {
     await this.state.storage.put("lastClientAt", Date.now());
+    await this.state.storage.put("series", series);
     const alarm = await this.state.storage.getAlarm();
     if (alarm == null) {
       await this.state.storage.setAlarm(Date.now() + 50); // fetch almost immediately
@@ -64,8 +66,9 @@ export class LiveCoordinator {
 
   async alarm(): Promise<void> {
     let live = false;
+    const series = (await this.state.storage.get<number>("series")) ?? 1;
     try {
-      const feed = await fetchLiveFeed(this.env);
+      const feed = await fetchLiveFeed(this.env, series);
       if (feed) {
         const prevSnapshot = (await this.state.storage.get<LiveSnapshot>("prevSnapshot")) ?? null;
         const prevAlerts = (await this.state.storage.get<LiveAlertEvent[]>("alerts")) ?? [];
@@ -83,7 +86,7 @@ export class LiveCoordinator {
         live = payload.live;
 
         // Only the idle state needs "Next Up"; skip the schedule fetch while racing.
-        if (!live) payload.nextRace = await this.getNextRace(feed.series_id);
+        if (!live) payload.nextRace = await this.getNextRace(feed.series_id || series);
 
         await this.state.storage.put("latest", payload);
         await this.state.storage.put("prevSnapshot", snapshot);
@@ -165,8 +168,21 @@ function pickNextRace(races: unknown[], seriesId: number): NextRace | null {
 
 // ---- upstream fetch ----
 
-async function fetchLiveFeed(env: Env): Promise<LiveFeed | null> {
-  const url = env.LIVE_FEED_URL || DEFAULT_FEED_URL;
+/** Base feed = current on-track session (series 1); series_2/3 target that series. */
+function liveFeedUrl(series: number): string {
+  return series > 1
+    ? `https://cf.nascar.com/live/feeds/series_${series}/live-feed.json`
+    : DEFAULT_FEED_URL;
+}
+
+/** Coerce a request's ?series to 1/2/3 (default 1). */
+function clampSeries(raw: string | null): number {
+  const n = Number(raw);
+  return n === 2 || n === 3 ? n : 1;
+}
+
+async function fetchLiveFeed(env: Env, series: number): Promise<LiveFeed | null> {
+  const url = env.LIVE_FEED_URL || liveFeedUrl(series);
   const res = await fetch(url, {
     headers: { "User-Agent": liveConfig.BROWSER_UA, Accept: "application/json" },
     // The feed sends no Cache-Control; bypass Cloudflare's default subrequest cache
@@ -230,10 +246,39 @@ export default {
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
 
     if (url.pathname === "/api/live") {
-      const stub = env.LIVE.get(env.LIVE.idFromName("global"));
-      const r = await stub.fetch("https://do/snapshot");
+      const series = clampSeries(url.searchParams.get("series"));
+      const stub = env.LIVE.get(env.LIVE.idFromName(`live-${series}`));
+      const r = await stub.fetch(`https://do/snapshot?series=${series}`);
       const body = await r.text();
       return new Response(body, {
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          "Cache-Control": "public, s-maxage=3, max-age=0",
+          ...CORS,
+        },
+      });
+    }
+
+    // Slim liveness probe for the nav dot / home banner headline (no driver rows).
+    if (url.pathname === "/api/live/status") {
+      const series = clampSeries(url.searchParams.get("series"));
+      const stub = env.LIVE.get(env.LIVE.idFromName(`live-${series}`));
+      const r = await stub.fetch(`https://do/snapshot?series=${series}`);
+      const full = (await r.json()) as LivePayload & { warming?: boolean };
+      const s = full.snapshot;
+      const status = {
+        ok: true,
+        live: full.live,
+        warming: full.warming ?? false,
+        seriesId: s.seriesId,
+        runName: s.runName,
+        trackName: s.trackName,
+        flag: s.flag,
+        lap: s.lap,
+        lapsInRace: s.lapsInRace,
+        stage: s.stage,
+      };
+      return new Response(JSON.stringify(status), {
         headers: {
           "Content-Type": "application/json; charset=utf-8",
           "Cache-Control": "public, s-maxage=3, max-age=0",

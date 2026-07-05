@@ -93,5 +93,7 @@ export function homeContent(data: {
       ),
     );
   }
-  return parts.join("\n");
+  // Live banner mount (revealed client-side by /home-live.js only when a session
+  // is on track) sits above everything; the digest renders under it.
+  return `<div id="live-home"></div>\n${parts.join("\n")}\n<script src="/home-live.js"></script>`;
 }
