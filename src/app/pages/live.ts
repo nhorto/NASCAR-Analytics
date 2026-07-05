@@ -4,6 +4,8 @@
 // renders the board, race overview, strategy, and my-driver views client-side.
 // Kept client-rendered (like compare/tracks) so the site stays static-hostable.
 
+import { ASSET_VERSION } from "../html.ts";
+
 export function liveShell(seriesId: number): string {
   return `<div id="live-status"></div>
   <nav class="subtabs" id="live-subtabs" hidden>
@@ -15,5 +17,5 @@ export function liveShell(seriesId: number): string {
   <div id="live-body"><div class="card"><p class="note">Connecting to the live feed…</p></div></div>
   <p class="live-foot" id="live-foot"></p>
   <script>window.__SERIES__=${seriesId};</script>
-  <script src="/live.js"></script>`;
+  <script src="/live.js?v=${ASSET_VERSION}"></script>`;
 }

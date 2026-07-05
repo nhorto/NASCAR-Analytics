@@ -1,6 +1,6 @@
 import type { RaceDetails, RaceResultWithLoop } from "../../domains/data-ingestion/types.ts";
 import type { SeasonStanding, FormLeader, SeasonMetricBoard } from "../../domains/analytics/types.ts";
-import { esc, fmt, signed, badge, card, fmtDate, withSeries, TRACK_TYPE_LABELS } from "../html.ts";
+import { esc, fmt, signed, badge, card, fmtDate, withSeries, TRACK_TYPE_LABELS, ASSET_VERSION } from "../html.ts";
 
 export function homeContent(data: {
   seriesId: number;
@@ -95,5 +95,5 @@ export function homeContent(data: {
   }
   // Live banner mount (revealed client-side by /home-live.js only when a session
   // is on track) sits above everything; the digest renders under it.
-  return `<div id="live-home"></div>\n${parts.join("\n")}\n<script src="/home-live.js"></script>`;
+  return `<div id="live-home"></div>\n${parts.join("\n")}\n<script src="/home-live.js?v=${ASSET_VERSION}"></script>`;
 }

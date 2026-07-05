@@ -1,4 +1,29 @@
 // Shared HTML-building helpers for app-level page templates.
+import { readFileSync } from "node:fs";
+
+/**
+ * Content-hash of the client assets, appended as `?v=` to CSS/JS URLs so a new
+ * deploy busts the browser cache (the `_headers` cache-control lets browsers hold
+ * `style.css` for an hour, which otherwise serves stale styles after a redeploy).
+ * Computed once at startup from the asset contents, so it changes automatically
+ * when the CSS or live client changes — no manual bumping. The dev server and the
+ * static export compute the same value from the same files.
+ */
+function computeAssetVersion(): string {
+  try {
+    let combined = "";
+    for (const rel of ["./style.css", "./client/live.js", "./client/home-live.js"]) {
+      combined += readFileSync(new URL(rel, import.meta.url), "utf8");
+    }
+    let h = 5381;
+    for (let i = 0; i < combined.length; i++) h = ((h << 5) + h + combined.charCodeAt(i)) >>> 0;
+    return h.toString(36);
+  } catch {
+    return "0";
+  }
+}
+
+export const ASSET_VERSION = computeAssetVersion();
 
 /**
  * Series lives in the URL PATH (not a query param) so each series is its own

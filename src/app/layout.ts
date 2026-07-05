@@ -1,4 +1,4 @@
-import { esc, withSeries } from "./html.ts";
+import { esc, withSeries, ASSET_VERSION } from "./html.ts";
 
 /** Origin of the live-companion Worker (Phase 2/3). The static site fetches its
  *  /api/live cross-origin (CORS is open on the Worker). */
@@ -56,7 +56,7 @@ export function page(opts: {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
 <title>${esc(opts.title)} · Looplab</title>
-<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/style.css?v=${ASSET_VERSION}">
 <script>window.__LIVE_API__=${JSON.stringify(LIVE_API_BASE)};window.__SERIES__=${opts.seriesId};</script>
 </head>
 <body>
