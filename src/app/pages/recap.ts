@@ -1,7 +1,8 @@
 import type { RaceDetails, RaceResultWithLoop } from "../../domains/data-ingestion/types.ts";
 import type {
   RaceStandout,
-  StandingsMovementRow,
+  PlayoffPicture,
+  PlayoffPictureRow,
   RaceFormCallouts,
 } from "../../domains/analytics/types.ts";
 import {
@@ -16,13 +17,72 @@ import {
   TRACK_TYPE_LABELS,
 } from "../html.ts";
 
-/** Rank-movement chip: ▲n up, ▼n down, · new, – held. */
-function movementChip(row: StandingsMovementRow): string {
-  if (row.prevRank === null) return `<span class="acc">NEW</span>`;
-  const d = row.rankDelta ?? 0;
-  if (d > 0) return `<span class="pos">▲${d}</span>`;
-  if (d < 0) return `<span class="neg">▼${-d}</span>`;
-  return `<span class="mut">–</span>`;
+/** Short status badge for a playoff-picture row. */
+function statusBadge(status: PlayoffPictureRow["status"]): string {
+  switch (status) {
+    case "in-win":
+      return `<span class="pos" title="Locked in on a win">WIN</span>`;
+    case "clinched":
+      return `<span class="pos" title="Advanced — won this round">▲ IN</span>`;
+    case "in-points":
+    case "advancing":
+      return `<span class="acc">IN</span>`;
+    case "bubble":
+      return `<span class="mut">BUBBLE</span>`;
+    case "below-cut":
+      return `<span class="neg">OUT</span>`;
+    case "eliminated":
+      return `<span class="neg">✕</span>`;
+    default:
+      return `<span class="mut">–</span>`;
+  }
+}
+
+/** The phase-aware Playoff Picture card. */
+function playoffCard(pic: PlayoffPicture, seriesId: number): string {
+  const s = seriesId;
+  const isPlayoff = pic.phase === "playoff";
+  const ptsHeader = isPlayoff ? "Rnd" : "Pts";
+  // Regular season: show the field + the cut line + a couple bubble rows.
+  // Playoffs: show all survivors, then eliminated.
+  const survivorRows = pic.rows.filter((r) => r.status !== "eliminated");
+  const eliminated = pic.rows.filter((r) => r.status === "eliminated");
+  const shown = isPlayoff ? survivorRows : survivorRows.slice(0, pic.cutSize + 3);
+
+  const bodyRows: string[] = [];
+  shown.forEach((r, i) => {
+    const behind =
+      r.pointsToCut !== null && r.pointsToCut > 0
+        ? ` <span class="mut">(−${r.pointsToCut})</span>`
+        : "";
+    bodyRows.push(
+      `<tr><td class="mut">${i + 1}</td><td><a href="${withSeries(`/drivers/${r.driverId}`, s)}">${esc(r.fullName)}</a>${behind}</td><td class="r">${statusBadge(r.status)}</td><td class="r mut">${r.wins}</td><td class="r mut">${r.playoffPoints}</td><td class="r"><b>${r.points}</b></td></tr>`,
+    );
+    // Cut-line divider after the last advancing/in row.
+    const next = shown[i + 1];
+    const inField = r.status === "in-win" || r.status === "in-points" || r.status === "advancing" || r.status === "clinched";
+    const nextOut = next && (next.status === "bubble" || next.status === "below-cut" || next.status === "out");
+    if (inField && nextOut) {
+      bodyRows.push(
+        `<tr><td colspan="6" class="mut" style="text-align:center;font-size:11px;letter-spacing:.05em">— cut line: top ${pic.cutSize} advance —</td></tr>`,
+      );
+    }
+  });
+
+  const elimNote =
+    eliminated.length > 0
+      ? `<p class="note" style="margin-top:8px">Eliminated: ${eliminated
+          .map((r) => `<a href="${withSeries(`/drivers/${r.driverId}`, s)}">${esc(r.fullName)}</a>`)
+          .join(", ")}.</p>`
+      : "";
+  const explain = isPlayoff
+    ? `<p class="note" style="margin-top:8px">${esc(pic.roundLabel)} standings — round points + carried playoff points; race winners (▲ IN) auto-advance.</p>`
+    : `<p class="note" style="margin-top:8px">Win and in: race winners (top 30 in points) are locked; the rest of the field is by points. Playoff points (PP) are the seeding tiebreak.</p>`;
+
+  return card(
+    `Playoff Picture${isPlayoff ? ` · ${esc(pic.roundLabel)}` : ""}`,
+    `<table><tr><th>#</th><th>Driver</th><th class="r"></th><th class="r">W</th><th class="r">PP</th><th class="r">${ptsHeader}</th></tr>${bodyRows.join("")}</table>${explain}${elimNote}`,
+  );
 }
 
 export function recapContent(data: {
@@ -30,7 +90,7 @@ export function recapContent(data: {
   race: RaceDetails;
   results: RaceResultWithLoop[];
   standouts: RaceStandout[];
-  movement: StandingsMovementRow[];
+  playoff: PlayoffPicture;
   callouts: RaceFormCallouts;
 }): string {
   const s = data.seriesId;
@@ -109,29 +169,9 @@ export function recapContent(data: {
     }
   }
 
-  // --- 3. Playoff / standings movement ---
-  if (data.movement.length > 0) {
-    const shown = data.movement.slice(0, Math.min(data.movement.length, 12));
-    const rows: string[] = [];
-    shown.forEach((row, i) => {
-      rows.push(
-        `<tr><td class="mut">${row.rank}</td><td>${movementChip(row)}</td><td><a href="${withSeries(`/drivers/${row.driverId}`, s)}">${esc(row.fullName)}</a></td><td class="r mut">+${row.pointsThisRace}</td><td class="r"><b>${row.points}</b></td></tr>`,
-      );
-      // Playoff cut divider: after the last in-playoff row that has a follower.
-      const next = shown[i + 1];
-      if (row.inPlayoff && next && !next.inPlayoff) {
-        rows.push(
-          `<tr><td colspan="5" class="mut" style="text-align:center;font-size:11px;letter-spacing:.05em">— playoff cut line —</td></tr>`,
-        );
-      }
-    });
-    parts.push(
-      card(
-        "Championship Picture",
-        `<table><tr><th>#</th><th>Δ</th><th>Driver</th><th class="r">Race</th><th class="r">Pts</th></tr>${rows.join("")}</table>
-         <p class="note" style="margin-top:8px">Standings after this race. Cut line is a simplified top-${data.movement.filter((m) => m.inPlayoff).length || "N"} points order, not the full playoff format.</p>`,
-      ),
-    );
+  // --- 3. Playoff picture (season-phase-aware) ---
+  if (data.playoff.rows.length > 0) {
+    parts.push(playoffCard(data.playoff, s));
   }
 
   // --- 4. Driver-level callouts ---

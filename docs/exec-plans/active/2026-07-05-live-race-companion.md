@@ -188,6 +188,15 @@ route + "🔴 LIVE" banner into the main Pages site.
 flag/stage banner, **color-coded loop-data segments** à la F1 mini-sectors), a
 follow-your-driver card (localStorage) with an in-app alert feed, and the strategy
 / pit-cycle panel. Home "LIVE" banner. Mobile-first per DESIGN.md.
+Designed in the [Live UI design spec](../../design-docs/2026-07-05-live-ui-design.md)
++ [interactive mockup](../../design-docs/2026-07-05-live-ui-mockup.html): a **layered**
+board (glanceable running order → **tap any car** for a full per-driver live panel:
+position/gaps, live loop metrics with field rank, pit/strategy status, in-race
+trend sparklines), a **Loop Rating ★** sort that re-ranks the board by our live
+proprietary estimate, a Race Overview layer (movers/battles/field loop leaders),
+the strategy/pit-cycle tracker, My Driver + alert feed, and an idle state. Open
+questions (nav slot, sections-vs-scroll, default sort, TV-sync slider) are logged
+in the spec for owner sign-off before build.
 
 **Phase 4 — Verify & document.** Drive it against a live (or replayed) race; tune
 cadence; confirm idle → $0. Update ARCHITECTURE.md (new `live` domain + `live-store`

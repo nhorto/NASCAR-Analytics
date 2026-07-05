@@ -175,14 +175,54 @@ export interface ComputeSummary {
 
 // ---- Weekly recap ----
 
-/** A points-race finish with driver name, date-ordered — input to standings movement. */
+/** A points-race finish with driver name, date-ordered — input to standings + playoff models. */
 export interface SeasonPointsResultRow {
   raceId: number;
   driverId: number;
   fullName: string;
   finish: number;
   points: number;
+  playoffPoints: number;
   raceDateUtc: string | null;
+}
+
+/** One race slot in a season's schedule, date-ordered — used to split regular season vs playoffs. */
+export interface RaceSlot {
+  raceId: number;
+  raceDateUtc: string | null;
+}
+
+/** Where a driver stands in the playoff picture. */
+export type PlayoffStatus =
+  | "in-win" // regular season: locked in via a win
+  | "in-points" // regular season: holding a spot on points
+  | "bubble" // regular season: first driver(s) outside the cut
+  | "out" // regular season: below the bubble
+  | "clinched" // playoffs: auto-advanced (won a race this round)
+  | "advancing" // playoffs: above the round's cut line
+  | "below-cut" // playoffs: below the cut, in danger
+  | "eliminated"; // playoffs: knocked out in a prior round
+
+export interface PlayoffPictureRow {
+  driverId: number;
+  fullName: string;
+  wins: number;
+  /** Season points (regular season) or points earned in the current round (playoffs). */
+  points: number;
+  playoffPoints: number;
+  status: PlayoffStatus;
+  /** Points behind the cut line, for bubble / below-cut drivers; null otherwise. */
+  pointsToCut: number | null;
+}
+
+/** The season-phase-aware playoff picture as of one race. */
+export interface PlayoffPicture {
+  phase: "regular" | "playoff";
+  /** "Regular Season", "Round of 16", "Round of 8", "Championship 4", … */
+  roundLabel: string;
+  /** How many drivers advance from the current stage. */
+  cutSize: number;
+  rows: PlayoffPictureRow[];
 }
 
 /**

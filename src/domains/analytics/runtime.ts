@@ -55,6 +55,7 @@ export function handleRecap(p: Db, idParam: string): Response {
     season: ctx.season,
     standouts: service.raceStandouts(p, raceId),
     movement: service.standingsMovement(p, opts),
+    playoff: service.playoffPictureFor(p, opts),
     callouts: service.formCallouts(p, { ...opts, raceDateUtc: ctx.raceDateUtc }),
   });
 }
