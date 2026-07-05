@@ -6,6 +6,12 @@
       "runtimeExecutable": "bun",
       "runtimeArgs": ["run", "src/app/index.ts", "serve", "--port", "4310"],
       "port": 4310
+    },
+    {
+      "name": "looplab-live",
+      "runtimeExecutable": "bunx",
+      "runtimeArgs": ["wrangler", "dev", "-c", "worker/wrangler.toml", "--port", "8787"],
+      "port": 8787
     }
   ]
 }

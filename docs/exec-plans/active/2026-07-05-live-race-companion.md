@@ -1,6 +1,6 @@
 # Live Race Day Companion (MVP)
 
-**Status:** ACTIVE — owner-approved 2026-07-05. Phase 0 complete; Phase 1 in progress.
+**Status:** ACTIVE — owner-approved 2026-07-05. Phase 0/1 complete; Phase 2 (edge Durable Object) in progress — targeting a live, tester-shareable URL for tonight's Cup race (22:00 UTC).
 **Started:** 2026-07-05
 **Research:** [docs/research/2026-07-05_live-race-companion.md](../../research/2026-07-05_live-race-companion.md)
 
@@ -133,9 +133,56 @@ Added a `bun run capture` CLI (`src/app/capture.ts`) to record live snapshots
 (feed+flag+pit) for realistic fixtures / live validation — smoke-tested against the
 CDN. **Next:** run a capture during tonight's Cup race (22:00 UTC), then Phase 2 (edge DO).
 
-**Phase 2 — Edge runtime.** `LiveCoordinator` DO (alarm loop, idle backoff, UA
-fetch, KV write), `GET /api/live` Pages Function (KV read + `s-maxage`), wrangler
-bindings (KV namespace + DO). Local dev via `wrangler dev` / a Bun poller shim.
+**Phase 2 — Edge runtime. ✅ DONE (2026-07-05) — LIVE at
+[looplab-live.nhorton.workers.dev](https://looplab-live.nhorton.workers.dev).**
+Deployed the `looplab-live` Worker + `LiveCoordinator` DO; validated end-to-end
+against the real CDN both locally (`wrangler dev`) and in production: the DO polls
+the base feed, normalizes + enriches + diffs it, and `/api/live` serves a populated
+38-car snapshot. Verified same-day against **tonight's Cup race** (eero 400,
+Chicagoland) — the base feed had already switched to it (flag `hot`, lap 0/267, full
+field). The self-contained page (`GET /`) renders the leaderboard, follow-a-driver
+card, race chips, and alert feed (screenshot-verified on a 375px viewport). Live
+pass-efficiency / adjusted-PE read null pre-green (no passes yet) and populate once
+racing starts. **This one URL is the tester deliverable for tonight.**
+
+**Approach decided 2026-07-05 (deviation from the sketch above — recorded here first):**
+Ship a **standalone Cloudflare Worker** `looplab-live` rather than a Pages Function,
+and have that Worker also serve a **self-contained live page**. Rationale, given a
+same-day "share with testers tonight" goal:
+- **Lowest blast radius.** A new Worker is an independent deploy — it cannot break
+  the already-live static site (Cloudflare Pages `looplab` + Vercel). The Pages
+  project is untouched tonight.
+- **One URL for testers.** The Worker serves both `GET /api/live` (JSON) and `GET /`
+  (the live page HTML/JS, inline + self-contained). Testers get a single
+  `*.workers.dev` link — no Pages redeploy, no cross-origin/CORS, no URL-baking.
+- **DO state instead of a separate KV namespace.** `LiveCoordinator` stores the
+  latest snapshot + prev snapshot + rolling alerts in its own (SQLite-backed) DO
+  storage; `/api/live` routes to the DO to read it. Free-plan eligible via
+  `new_sqlite_classes` (token confirmed: `workers_scripts`/`workers_kv`/`d1` write).
+- **Baselines baked into the Worker** (`worker/baselines.ts`, generated from
+  `dist/data/baselines-{1,2,3}.json` — ~450 B each). They aren't on the live sites
+  yet and rarely change; baking keeps live-metric computation at the edge with zero
+  external dependency. (Tech-debt: weekly refresh must regenerate this file.)
+
+**Pieces:**
+- `src/domains/live/runtime.ts` — **pure** `processFeed(feed, opts)` composing
+  `normalizeFeed → computeLiveMetrics → deriveAlerts → pitCycleModel` into the
+  response body the DO stores. Bun-testable; no Cloudflare imports. (Keeps the DO a
+  thin adapter over already-tested logic.)
+- `worker/` (new top-level deploy target, outside `src/` so it's exempt from the
+  src architecture test): `index.ts` (the `LiveCoordinator` DO — alarm poll loop,
+  idle backoff to 60s, stop-when-unwatched; `fetch` router for `/api/live`, `/`,
+  `/health`, CORS), `baselines.ts` (baked), `wrangler.toml` (DO binding + sqlite
+  migration + `workers_dev`), `tsconfig.json` (`@cloudflare/workers-types`).
+- `BROWSER_UA` promoted into `live/config.ts` (the mandatory CDN UA is now shared by
+  the capture CLI and the edge Worker).
+
+**Idle behavior:** alarm reschedules at 5s while a session is live, 60s when idle,
+and deletes the alarm entirely after ~15 min with no `/api/live` request (restarts
+on the next request) → ~$0 off-race.
+
+**Deferred to Phase 3 (not needed for tonight's tester link):** integrating a `/live`
+route + "🔴 LIVE" banner into the main Pages site.
 
 **Phase 3 — Live UI.** New live page: glanceable leaderboard (running order, gap,
 flag/stage banner, **color-coded loop-data segments** à la F1 mini-sectors), a

@@ -2,6 +2,14 @@ import type { FlagState } from "./types.ts";
 
 // Live race companion — domain config. Pure constants only (no external imports).
 
+/**
+ * MANDATORY browser User-Agent for every NASCAR CDN request. The CDN 403s
+ * requests without one. Shared by the capture CLI (Bun) and the edge Worker
+ * (Cloudflare) so there is a single source of truth for what we send upstream.
+ */
+export const BROWSER_UA =
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
+
 /** Numeric flag_state → stable label. Source: rNascar23.Sdk / captured feeds. */
 export const FLAG_STATES: Record<number, FlagState> = {
   0: "none",

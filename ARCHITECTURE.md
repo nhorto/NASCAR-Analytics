@@ -41,19 +41,27 @@ src/
 │   │   ├── service.ts       Metric math (pure) + computeAll orchestration + leagueBaselines
 │   │   ├── runtime.ts       JSON API handlers (/api/standings, /api/tracks…)
 │   │   └── index.ts         Barrel
-│   └── live/                Live race companion — pure metrics/alerts  [PHASE 1 BUILT]
-│       ├── types.ts         Raw live-feed shapes + normalized snapshot/row/alert/baseline
-│       ├── config.ts        Flag enum, poll cadence, alert thresholds, bucket width
+│   └── live/                Live race companion — pure metrics/alerts  [PHASE 2 BUILT]
+│       ├── types.ts         Raw live-feed shapes + normalized snapshot/row/alert/baseline + LivePayload
+│       ├── config.ts        Flag enum, poll cadence, alert thresholds, bucket width, BROWSER_UA
 │       ├── service.ts       PURE + Workers-safe: normalizeFeed, computeLiveMetrics, deriveAlerts, pitCycleModel
-│       └── index.ts         Barrel (no repo/runtime — runs in Bun AND Cloudflare Workers)
+│       ├── runtime.ts       PURE processFeed(): composes service steps into the LivePayload the edge serves
+│       └── index.ts         Barrel (no repo — runs in Bun AND Cloudflare Workers)
 ├── providers/
 │   ├── index.ts             Providers interface + factory
 │   ├── db.ts                bun:sqlite connection + schema (incl. computed tables)
 │   ├── nascar-cdn.ts        Rate-limited, retrying CDN fetch client
 │   └── raw-archive.ts       Verbatim raw-JSON archival (CDN insurance)
 └── utils/                   Generic reusable helpers
+worker/                      Edge deploy target — the `looplab-live` Cloudflare Worker (OUTSIDE src; exempt from the src layer test)
+├── index.ts                 LiveCoordinator Durable Object (single poll loop) + fetch router (/api/live, /) + self-contained live page; imports only the pure `live` domain
+├── baselines.ts             GENERATED — baked per-series league baselines (from dist/data/baselines-*.json)
+├── wrangler.toml            Worker config: DO binding + sqlite migration + workers_dev
+└── tsconfig.json            Cloudflare-types typecheck (separate from root)
+scripts/
+└── gen-worker-baselines.ts  Regenerates worker/baselines.ts from the exported dist data
 tests/
-├── architecture.test.ts     Enforces the layer rules below (part of `bun test`)
+├── architecture.test.ts     Enforces the layer rules below (part of `bun test`; scans src/ only)
 ├── seed.ts                  In-memory db + row factories for domain tests
 └── fixtures/                Trimmed real CDN responses
 data/                        (gitignored) SQLite db + raw JSON archive
@@ -170,7 +178,7 @@ export interface Providers {
 - **Automated weekly refresh (2026-07-05)**: `bun run refresh` — one portable, runner-agnostic command that backfills + computes all three series, exports, and deploys (deploy self-gates on `CLOUDFLARE_API_TOKEN`). Scheduled by `.github/workflows/weekly-refresh.yml` (Mondays 12:00 UTC + manual dispatch), which caches the DB across runs so the weekly run is incremental and a cold cache self-heals to full history. Env-configurable (`NASCAR_DATA_DIR`, `NASCAR_PAGES_PROJECT`) so the same command can later run in a Cloudflare Container with the DB in R2. See [docs/DEPLOY.md](docs/DEPLOY.md).
 - **Static export + deployment (2026-07-05)**: `bun run export` pre-renders the whole site to `dist/` (~2,400 pages) using the same `render.ts` as the dev server, plus client JSON for the two interactive pages. Deployed to **Cloudflare Pages** via Direct Upload (`bunx wrangler pages deploy dist`) — the ~284MB DB stays local, only static output ships. Compare + track explorer render client-side from `dist/data/*.json`. See [docs/DEPLOY.md](docs/DEPLOY.md).
 - **Live in — deployed on two hosts (2026-07-05)**: the static site is live and public on **Cloudflare Pages** (`looplab-arh.pages.dev`, project `looplab`, wrangler account `nhorton@fabricationis.com`) and on **Vercel** (`looplab-murex.vercel.app`, project `looplab`). Same `dist/` build serves either; Cloudflare additionally honors `dist/_headers` cache rules.
-- **Live race companion — Phase 1 (2026-07-05, in progress)**: the pure, Workers-safe `live` domain computes a normalized snapshot, live proprietary-metric estimates (live pass efficiency + adjusted residual vs. per-bucket baselines, a closing-laps Closer estimate), race alerts (`deriveAlerts`), and a coarse pit-cycle model — all from the NASCAR CDN live feed + shipped `dist/data/baselines-{series}.json`. Unit-tested against a captured fixture. `bun run capture` records live snapshots for validation/fixtures. No edge runtime or live UI yet (Phases 2–4). See [the plan](docs/exec-plans/active/2026-07-05-live-race-companion.md).
+- **Live race companion — Phases 1–2 LIVE (2026-07-05)**: the pure, Workers-safe `live` domain computes a normalized snapshot, live proprietary-metric estimates (live pass efficiency + adjusted residual vs. per-bucket baselines, a closing-laps Closer estimate), race alerts (`deriveAlerts`), and a coarse pit-cycle model — all from the NASCAR CDN live feed. `bun run capture` records live snapshots for fixtures. The **`looplab-live` Cloudflare Worker** (in `worker/`, deployed at **[looplab-live.nhorton.workers.dev](https://looplab-live.nhorton.workers.dev)**) runs a `LiveCoordinator` **Durable Object** as the single upstream poller (alarm loop: 5s live / 60s idle / stops after 15 min unwatched), computes the payload via the pure domain against **baked baselines**, and serves both `GET /api/live` (JSON) and `GET /` (a self-contained mobile live page: flag/stage banner, leaderboard with live loop metrics, follow-a-driver card, alert feed). Validated end-to-end against the live CDN. Deploy: `cd worker && bunx wrangler deploy`. See [the plan](docs/exec-plans/active/2026-07-05-live-race-companion.md).
 - Known data holes are documented in [the re-verification doc](docs/research/2026-07-05_data-sources-reverification.md) (2025 YellaWood 500 results; exhibition heat races).
 
 ## What Does NOT Exist Here
@@ -180,7 +188,9 @@ export interface Providers {
 - No cross-series *statistical* comparison (e.g. normalizing a Cup season against an Xfinity season side by side) — the career page unifies a driver's Cup+Xfinity+Truck record, but the analytics/compare/tracks views still each stay within one series
 - No real playoff-format model — the recap's "Championship Picture" cut line is a simplified points order (top 16/12/10 per series); it does not model playoff rounds, eliminations, points resets, or win-and-in (see tech-debt tracker)
 - The weekly refresh is automated (`.github/workflows/weekly-refresh.yml` → `bun run refresh`, Mondays 12:00 UTC); what's NOT automated is the deploy leg *until* the two Cloudflare secrets are added — before then the CI builds + artifacts `dist/` but skips the upload
-- No in-race live companion UI or edge runtime yet — the pure `live` domain (Phase 1) computes live metrics/alerts and the batch ships baselines, but the Cloudflare Durable Object poller (`/api/live`) and the live page are Phases 2–4 (see the plan)
+- The live companion is a **standalone Worker** (`looplab-live.nhorton.workers.dev`), not yet folded into the main site — the static Pages/Vercel site has no "🔴 LIVE" banner or `/live` route linking to it (Phase 3). The edge poller + a self-contained live page DO exist and are deployed (Phase 2)
+- Live proprietary metrics are **estimates from live loop counters**, not the authoritative post-race `loopstats/prod` values; the DO does not yet swap to the official numbers after the checkered flag. Live baselines are **baked into the Worker** and must be regenerated + redeployed after a weekly refresh (see tech-debt tracker)
+- The DO stops polling after ~15 min with no `/api/live` traffic, so alert diffs can jump across a gap when it restarts (no cron keep-warm) — fine while testers keep a tab open, revisit for unattended coverage
 - No odds integration (deferred — see exec plan)
 - No user authentication (deliberately out of MVP scope)
 - Not yet running on Cloudflare-native infra — the refresh command is portable (runs in a Cloudflare Container later with the DB in R2), but today the scheduler is GitHub Actions, not a Cloudflare Cron Worker

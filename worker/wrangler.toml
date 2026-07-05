@@ -1,0 +1,20 @@
+# looplab-live — standalone edge Worker for the live race companion.
+# Independent of the Pages `looplab` deploy (see repo-root wrangler.toml); deploying
+# this cannot affect the static site.
+#
+# Deploy:  cd worker && bunx wrangler deploy
+# Tail:    cd worker && bunx wrangler tail
+name = "looplab-live"
+main = "index.ts"
+compatibility_date = "2026-07-05"
+workers_dev = true
+
+# The single-poller snapshot store. SQLite-backed so it runs on the Workers free
+# plan; the class lives in this same script (index.ts), so no cross-script binding.
+[[durable_objects.bindings]]
+name = "LIVE"
+class_name = "LiveCoordinator"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["LiveCoordinator"]

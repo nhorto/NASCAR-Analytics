@@ -12,8 +12,7 @@ import { liveConfig } from "../domains/live/index.ts";
 import type { FlagState } from "../domains/live/index.ts";
 
 // A browser User-Agent is MANDATORY — the CDN 403s requests without one.
-const BROWSER_UA =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
+const BROWSER_UA = liveConfig.BROWSER_UA;
 const BASE = "https://cf.nascar.com";
 
 /** Base feed = whatever session is currently on track; series_N = that series only. */

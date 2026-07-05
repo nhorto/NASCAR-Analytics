@@ -212,3 +212,19 @@ export interface LiveBaselines {
   /** Mean closing-laps position gain by closing-position bucket. */
   closerByBucket: Record<string, number>;
 }
+
+/**
+ * The client-facing payload the edge stores and serves at GET /api/live: the
+ * enriched snapshot (leaderboard + live metrics), the rolling alert feed
+ * (newest first), pit-cycle predictions, and liveness/timing. JSON-serializable.
+ */
+export interface LivePayload {
+  ok: boolean;
+  /** True when a session is actually on track (mirrors snapshot.isLive). */
+  live: boolean;
+  /** Wall-clock ms the snapshot was fetched from upstream. */
+  fetchedAt: number;
+  snapshot: LiveSnapshot;
+  alerts: LiveAlertEvent[];
+  pitCycles: PitCyclePrediction[];
+}
