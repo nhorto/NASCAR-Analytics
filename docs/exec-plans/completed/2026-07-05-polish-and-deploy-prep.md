@@ -1,13 +1,13 @@
 # Exec Plan: Polish Pass + Deployment Prep
 
-**Status:** ACTIVE
+**Status:** COMPLETED 2026-07-05
 **Created:** 2026-07-05
-**Follows:** [Multi-Series](../completed/2026-07-05-multi-series.md)
+**Follows:** [Multi-Series](2026-07-05-multi-series.md)
 
 ## Progress
 - ✅ Polish item 1 (In Form regular filter) — done 2026-07-05, tested + browser-verified (Xfinity In Form now shows regulars, not Cup part-timers).
 - ✅ Polish item 2 (track-explorer on-screen filters) — done 2026-07-05, tested + browser-verified (Since-year + Min-starts selects, state-preserving links).
-- ⬜ Deployment research — present options to Nick.
+- ✅ Deployment research — presented options; Nick chose Cloudflare Pages → [static export plan](2026-07-05-cloudflare-static-export.md).
 
 ## Goal
 

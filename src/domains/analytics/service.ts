@@ -359,3 +359,16 @@ export function formLeaders(p: Db, limit = 5, seriesId = DEFAULT_SERIES_ID): For
 export function currentSeason(p: Db, seriesId = DEFAULT_SERIES_ID): number | null {
   return repo.latestSeasonWithStats(p.db, seriesId);
 }
+
+/** All season stats for a series (every driver, every season) — for the client compare page. */
+export function allSeasonStats(p: Db, seriesId = DEFAULT_SERIES_ID): SeasonStanding[] {
+  return repo.allSeasonStatsWithNames(p.db, seriesId);
+}
+
+/** All track-type season rows for a series — for the client track explorer. */
+export function allTrackTypeStats(
+  p: Db,
+  seriesId = DEFAULT_SERIES_ID,
+): Array<DriverTrackTypeStats & { fullName: string }> {
+  return repo.allTrackTypeStatsWithNames(p.db, seriesId);
+}

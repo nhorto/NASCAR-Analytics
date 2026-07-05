@@ -9,6 +9,7 @@
     "status": "bun run src/app/index.ts status",
     "compute": "bun run src/app/index.ts compute",
     "serve": "bun run src/app/index.ts serve",
+    "export": "bun run src/app/index.ts export",
     "test": "bun test"
   },
   "devDependencies": {

@@ -292,6 +292,48 @@ export function formLeaders(
     .all(seriesId, seriesId, seriesId, minSeasonShare, limit) as unknown as FormLeader[];
 }
 
+/** Every season-stat row for a series, with driver name — powers the client compare page. */
+export function allSeasonStatsWithNames(db: Database, seriesId: number): SeasonStanding[] {
+  return db
+    .query(
+      `SELECT s.driver_id AS driverId, s.series_id AS seriesId, s.season, s.races, s.wins,
+              s.top5s, s.top10s, s.dnfs, s.avg_start AS avgStart, s.avg_finish AS avgFinish,
+              s.laps_led AS lapsLed, s.points, s.playoff_points AS playoffPoints,
+              s.loop_races AS loopRaces, s.avg_rating AS avgRating,
+              s.top15_lap_pct AS top15LapPct, s.fast_lap_pct AS fastLapPct,
+              s.pass_efficiency AS passEfficiency, s.adj_pass_efficiency AS adjPassEfficiency,
+              s.avg_closing_gain AS avgClosingGain, s.closer_score AS closerScore,
+              d.full_name AS fullName
+       FROM driver_season_stats s
+       JOIN drivers d ON d.driver_id = s.driver_id
+       WHERE s.series_id = ?
+       ORDER BY s.season, d.full_name`,
+    )
+    .all(seriesId) as unknown as SeasonStanding[];
+}
+
+/** Every track-type season row for a series, with driver name — powers the client track explorer. */
+export function allTrackTypeStatsWithNames(
+  db: Database,
+  seriesId: number,
+): Array<DriverTrackTypeStats & { fullName: string }> {
+  return db
+    .query(
+      `SELECT t.driver_id AS driverId, t.series_id AS seriesId, t.season, t.track_type AS trackType,
+              t.races, t.wins, t.top5s, t.top10s, t.dnfs, t.avg_start AS avgStart,
+              t.avg_finish AS avgFinish, t.laps_led AS lapsLed, t.loop_races AS loopRaces,
+              t.avg_rating AS avgRating, t.pass_efficiency AS passEfficiency,
+              t.adj_pass_efficiency AS adjPassEfficiency,
+              t.avg_closing_gain AS avgClosingGain, t.closer_score AS closerScore,
+              d.full_name AS fullName
+       FROM driver_track_type_stats t
+       JOIN drivers d ON d.driver_id = t.driver_id
+       WHERE t.series_id = ? AND t.races > 0
+       ORDER BY t.season, t.track_type, d.full_name`,
+    )
+    .all(seriesId) as unknown as Array<DriverTrackTypeStats & { fullName: string }>;
+}
+
 export function latestSeasonWithStats(db: Database, seriesId: number): number | null {
   const row = db
     .query(`SELECT MAX(season) AS season FROM driver_season_stats WHERE series_id = ?`)

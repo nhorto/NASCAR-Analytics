@@ -33,9 +33,7 @@ export function driversIndexContent(
         `<tr><td><a href="${withSeries(`/drivers/${d.driverId}`, seriesId)}">${esc(d.fullName)}</a></td><td class="r mut">${d.firstSeason}–${d.lastSeason}</td><td class="r">${d.races}</td><td class="r">${d.wins > 0 ? `<b>${d.wins}</b>` : `<span class="mut">0</span>`}</td></tr>`,
     )
     .join("");
-  const seriesField = seriesId === 1 ? "" : `<input type="hidden" name="series" value="${seriesId}">`;
-  const search = `<form class="inline" method="get" action="/drivers">
-    ${seriesField}
+  const search = `<form class="inline" method="get" action="${withSeries("/drivers", seriesId)}">
     <input type="search" name="q" placeholder="Search drivers…" value="${esc(q ?? "")}" style="flex:1">
     <button type="submit">Search</button>
   </form>`;
@@ -148,7 +146,7 @@ export function driverProfileContent(data: {
       .slice(0, 10)
       .map(
         (e) =>
-          `<tr><td class="mut">${fmtDate(e.raceDateUtc)}</td><td><a href="/races/${e.raceId}">${esc(e.raceName)}</a></td><td class="r">${deltaArrow(e.start, e.finish)}</td><td class="r"><b>P${e.finish}</b>${e.disqualified ? ` <span class="neg">DQ</span>` : ""}</td></tr>`,
+          `<tr><td class="mut">${fmtDate(e.raceDateUtc)}</td><td><a href="/race/${e.raceId}">${esc(e.raceName)}</a></td><td class="r">${deltaArrow(e.start, e.finish)}</td><td class="r"><b>P${e.finish}</b>${e.disqualified ? ` <span class="neg">DQ</span>` : ""}</td></tr>`,
       )
       .join("");
     parts.push(

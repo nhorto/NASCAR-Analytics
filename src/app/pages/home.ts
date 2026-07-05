@@ -31,7 +31,7 @@ export function homeContent(data: {
         `<div class="h-title">${esc(r.raceName)}</div>
          <div class="h-sub">${esc(TRACK_TYPE_LABELS[r.trackType] ?? r.trackType)}${r.actualLaps ? ` · ${r.actualLaps} laps` : ""}${r.cautions !== null ? ` · ${r.cautions} cautions` : ""}${r.leadChanges !== null ? ` · ${r.leadChanges} lead changes` : ""}</div>
          ${winnerHtml}`,
-        { href: withSeries(`/races/${r.raceId}`, s), label: "Full breakdown →" },
+        { href: `/race/${r.raceId}`, label: "Full breakdown →" },
       ),
     );
   }

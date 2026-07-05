@@ -22,20 +22,22 @@ export function racesIndexContent(
   seasons: number[],
   seriesId: number,
 ): string {
+  // Each season is its own path (/races/{year}); the select navigates there.
+  const base = withSeries("/races", seriesId);
   const options = seasons
-    .map((s) => `<option value="${s}" ${s === season ? "selected" : ""}>${s}</option>`)
+    .map(
+      (s) =>
+        `<option value="${s === season ? "" : `${base}/${s}`}" ${s === season ? "selected" : ""}>${s}</option>`,
+    )
     .join("");
-  const seriesField = seriesId === 1 ? "" : `<input type="hidden" name="series" value="${seriesId}">`;
-  const picker = `<form class="inline" method="get" action="/races">
-    ${seriesField}
+  const picker = `<form class="inline">
     <label class="note" for="season">Season</label>
-    <select id="season" name="season" onchange="this.form.submit()">${options}</select>
-    <noscript><button type="submit">Go</button></noscript>
+    <select id="season" onchange="if(this.value)location.href=this.value">${options}</select>
   </form>`;
   const rows = races
     .map((r) => {
       const name = r.hasResults
-        ? `<a href="${withSeries(`/races/${r.raceId}`, seriesId)}">${esc(r.raceName)}</a>`
+        ? `<a href="/race/${r.raceId}">${esc(r.raceName)}</a>`
         : `<span class="mut">${esc(r.raceName)}</span>`;
       return `<tr><td class="mut">${fmtDate(r.raceDateUtc)}</td><td>${name}</td><td class="r mut">${esc(TRACK_TYPE_LABELS[r.trackType] ?? r.trackType)}</td><td class="r">${r.winnerName ? esc(r.winnerName) : "<span class='mut'>—</span>"}</td></tr>`;
     })

@@ -1,10 +1,18 @@
 // Shared HTML-building helpers for app-level page templates.
 
-/** Append the series query param, keeping Cup (the default) as clean URLs. */
+/**
+ * Series lives in the URL PATH (not a query param) so each series is its own
+ * static file: Cup at the root, Xfinity under /xfinity, Trucks under /trucks.
+ */
+const SERIES_PREFIX: Record<number, string> = { 1: "", 2: "/xfinity", 3: "/trucks" };
+
+export function seriesPrefix(seriesId: number): string {
+  return SERIES_PREFIX[seriesId] ?? "";
+}
+
+/** Prefix an absolute app path with the series segment. href always starts "/". */
 export function withSeries(href: string, seriesId: number): string {
-  if (seriesId === 1) return href;
-  const sep = href.includes("?") ? "&" : "?";
-  return `${href}${sep}series=${seriesId}`;
+  return seriesPrefix(seriesId) + href;
 }
 
 export function esc(s: string | null | undefined): string {

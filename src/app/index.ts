@@ -140,6 +140,12 @@ switch (command) {
     console.log(`Looplab running at ${server.url}`);
     break;
   }
+  case "export": {
+    const { exportSite } = await import("./export.ts");
+    const { pages } = await exportSite(`${DATA_DIR}/nascar.db`, log);
+    console.log(`Exported ${pages} pages to dist/`);
+    break;
+  }
   default:
     console.log(`nascar-analytics CLI
 
@@ -149,6 +155,7 @@ Usage:
   bun run src/app/index.ts status [--series ID]
   bun run src/app/index.ts compute [--series ID]
   bun run src/app/index.ts driver --name "Chase Elliott" | --id 4062 [--series ID]
-  bun run src/app/index.ts serve [--port 3000]`);
+  bun run src/app/index.ts serve [--port 3000]
+  bun run src/app/index.ts export`);
     if (command !== undefined) process.exit(1);
 }

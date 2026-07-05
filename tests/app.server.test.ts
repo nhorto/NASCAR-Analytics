@@ -107,33 +107,43 @@ describe("web app", () => {
     expect(status).toBe(404);
   });
 
-  test("race page renders results and loop insights", async () => {
-    const { status, body } = await get("/races/101");
+  test("race page (un-prefixed /race/:id) renders results and loop insights", async () => {
+    const { status, body } = await get("/race/101");
     expect(status).toBe(200);
     expect(body).toContain("Road Grand Prix");
     expect(body).toContain("Beta Racer");
     expect(body).toContain("Loop Insights");
   });
 
-  test("races index lists the season", async () => {
-    const { status, body } = await get("/races?season=2024");
-    expect(status).toBe(200);
-    expect(body).toContain("Test 400");
-    expect(body).toContain("Road Grand Prix");
+  test("races index and per-season path both list the season", async () => {
+    const latest = await get("/races");
+    expect(latest.status).toBe(200);
+    expect(latest.body).toContain("Road Grand Prix");
+    const bySeason = await get("/races/2024");
+    expect(bySeason.status).toBe(200);
+    expect(bySeason.body).toContain("Test 400");
   });
 
-  test("compare renders both drivers with metrics", async () => {
-    const { status, body } = await get("/compare?a=10&b=20&season=2024");
-    expect(status).toBe(200);
-    expect(body).toContain("Alpha Driver");
-    expect(body).toContain("Beta Racer");
-    expect(body).toContain("Adj Pass Eff");
+  test("compare is a client shell backed by season-stats JSON", async () => {
+    const shell = await get("/compare");
+    expect(shell.status).toBe(200);
+    expect(shell.body).toContain("/compare.js");
+    const data = (await fetch(`${base}/data/season-stats-1.json`).then((r) => r.json())) as any[];
+    expect(data.some((d) => d.name === "Alpha Driver")).toBe(true);
+    expect(data.some((d) => d.name === "Beta Racer")).toBe(true);
   });
 
-  test("tracks explorer renders a leaderboard", async () => {
-    const { status, body } = await get("/tracks?type=road&from=2024&min=1");
-    expect(status).toBe(200);
-    expect(body).toContain("Beta Racer");
+  test("tracks is a client shell backed by track-type JSON", async () => {
+    const shell = await get("/tracks");
+    expect(shell.status).toBe(200);
+    expect(shell.body).toContain("/tracks.js");
+    const data = (await fetch(`${base}/data/tracktype-1.json`).then((r) => r.json())) as any[];
+    expect(data.some((d) => d.type === "road")).toBe(true);
+  });
+
+  test("client JS assets are served", async () => {
+    expect((await get("/compare.js")).body).toContain("season-stats-");
+    expect((await get("/tracks.js")).body).toContain("tracktype-");
   });
 
   test("unknown path returns styled 404", async () => {
@@ -148,31 +158,32 @@ describe("web app", () => {
     expect(body).toContain("Trucks");
   });
 
-  test("?series=2 shows Xfinity data, not Cup data", async () => {
+  test("path-based series: /xfinity shows Xfinity data, not Cup data", async () => {
     const cup = await get("/drivers");
     expect(cup.body).toContain("Alpha Driver");
     expect(cup.body).not.toContain("Xfinity Only");
 
-    const xf = await get("/drivers?series=2");
+    const xf = await get("/xfinity/drivers");
+    expect(xf.status).toBe(200);
     expect(xf.body).toContain("Xfinity Only");
     expect(xf.body).not.toContain("Alpha Driver");
-    // Bottom tabs and internal links carry the series through.
-    expect(xf.body).toContain("/drivers?series=2");
+    // Tabs and links carry the series via the path prefix.
+    expect(xf.body).toContain("/xfinity/drivers");
   });
 
   test("Xfinity home surfaces the Xfinity race and standings", async () => {
-    const { status, body } = await get("/?series=2");
+    const { status, body } = await get("/xfinity");
     expect(status).toBe(200);
     expect(body).toContain("Xfinity 250");
     expect(body).toContain("Xfinity Only");
   });
 
   test("race page derives its own series for the switcher", async () => {
-    const { status, body } = await get("/races/200");
+    const { status, body } = await get("/race/200");
     expect(status).toBe(200);
     expect(body).toContain("Xfinity 250");
-    // Switcher shows Xfinity active even without ?series in the URL.
-    expect(body).toContain("/drivers?series=2");
+    // Switcher/tabs reflect Xfinity even though /race/:id is un-prefixed.
+    expect(body).toContain("/xfinity/drivers");
   });
 
   test("JSON API is series-aware", async () => {
@@ -203,7 +214,8 @@ describe("web app", () => {
     const tracks = await json("/api/tracks?type=road&from=2024&min=1");
     expect(tracks.leaders.length).toBe(2);
 
+    // Non-numeric driver id no longer matches the route → 404 (not 400).
     const bad = await fetch(`${base}/api/drivers/xyz`);
-    expect(bad.status).toBe(400);
+    expect(bad.status).toBe(404);
   });
 });

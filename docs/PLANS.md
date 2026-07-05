@@ -6,7 +6,7 @@
 
 | Plan | Status | Description |
 |------|--------|-------------|
-| _None_ | | Next candidates: live race companion, scheduled sync automation, deployment/hosting, cross-series driver career pages. |
+| _None_ | | Next candidates: connect the Cloudflare deploy (owner login), weekly auto-refresh CI, live race companion, cross-series driver career pages. |
 
 ## Completed Plans
 
@@ -14,6 +14,8 @@
 |------|-----------|-------------|
 | [Fan Analytics Platform MVP](exec-plans/completed/2026-07-05-fan-analytics-mvp.md) | 2026-07-05 | Full MVP: CDN ingestion pipeline + raw archival (Phase 0/1), drivers + analytics domains with proprietary metrics (Phase 2), mobile-first dark web app — profiles, race pages, compare, track explorer (Phase 3). |
 | [Multi-Series (Xfinity + Trucks)](exec-plans/completed/2026-07-05-multi-series.md) | 2026-07-05 | Backfilled all 3 national series with loop data; added a Cup/Xfinity/Trucks series switcher threaded through the whole app and JSON API. |
+| [Polish Pass + Deployment Prep](exec-plans/completed/2026-07-05-polish-and-deploy-prep.md) | 2026-07-05 | In Form regular filter + track-explorer on-screen filters; researched hosting, chose Cloudflare Pages. |
+| [Cloudflare Static Export](exec-plans/completed/2026-07-05-cloudflare-static-export.md) | 2026-07-05 | Path-based series URLs, client-rendered compare/tracks, `bun run export` → dist/ for Cloudflare Pages Direct Upload. See [DEPLOY.md](DEPLOY.md). |
 
 ## Tech Debt
 

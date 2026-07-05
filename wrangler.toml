@@ -1,0 +1,10 @@
+# Cloudflare Pages (Direct Upload) config.
+# The site is exported locally (`bun run export` → dist/) and uploaded, because
+# the source data lives in a ~160MB gitignored SQLite file that never ships to
+# the repo or Cloudflare's build environment.
+#
+# Deploy:  bun run export && bunx wrangler pages deploy dist
+# See docs/DEPLOY.md for the full walkthrough.
+name = "looplab"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-07-05"
