@@ -1,5 +1,10 @@
 import type { Database } from "bun:sqlite";
-import type { DriverSummary, DriverRaceLogEntry, IdentityIssue } from "./types.ts";
+import type {
+  DriverSummary,
+  DriverRaceLogEntry,
+  IdentityIssue,
+  CareerSeasonRow,
+} from "./types.ts";
 import { POINTS_RACE_TYPE_ID } from "./config.ts";
 
 /** Career summaries over points races, newest team/number from the most recent start. */
@@ -67,6 +72,54 @@ export function raceLogForDriver(
     Omit<DriverRaceLogEntry, "disqualified"> & { disqualified: number }
   >;
   return rows.map((r) => ({ ...r, disqualified: r.disqualified === 1 }));
+}
+
+/** Per (series, season) points-race totals for one driver, newest season first. */
+export function careerSeasonRows(db: Database, driverId: number): CareerSeasonRow[] {
+  return db
+    .query(
+      `SELECT r.series_id AS seriesId,
+              r.season AS season,
+              COUNT(*) AS races,
+              SUM(res.finishing_position = 1) AS wins,
+              SUM(res.finishing_position <= 5) AS top5s,
+              SUM(res.finishing_position <= 10) AS top10s,
+              AVG(res.finishing_position) AS avgFinish
+       FROM results res
+       JOIN races r ON r.race_id = res.race_id
+       WHERE res.driver_id = ? AND r.race_type_id = ?
+       GROUP BY r.series_id, r.season
+       ORDER BY r.season DESC, r.series_id`,
+    )
+    .all(driverId, POINTS_RACE_TYPE_ID) as unknown as CareerSeasonRow[];
+}
+
+/** Name + the driver's most recent ride across all series; null if no starts. */
+export function careerIdentity(
+  db: Database,
+  driverId: number,
+): { fullName: string; latestTeam: string | null; latestCarNumber: string | null; latestCarMake: string | null } | null {
+  return (
+    (db
+      .query(
+        `SELECT d.full_name AS fullName,
+                res.team_name AS latestTeam,
+                res.car_number AS latestCarNumber,
+                res.car_make AS latestCarMake
+         FROM results res
+         JOIN races r ON r.race_id = res.race_id
+         JOIN drivers d ON d.driver_id = res.driver_id
+         WHERE res.driver_id = ?
+         ORDER BY COALESCE(r.race_date_utc, r.race_date) DESC, res.race_id DESC
+         LIMIT 1`,
+      )
+      .get(driverId) as {
+      fullName: string;
+      latestTeam: string | null;
+      latestCarNumber: string | null;
+      latestCarMake: string | null;
+    } | null) ?? null
+  );
 }
 
 export function findDriverIdByName(db: Database, name: string): number | null {

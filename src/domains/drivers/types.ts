@@ -32,3 +32,42 @@ export interface IdentityIssue {
   fullName: string;
   driverIds: number[];
 }
+
+/** One (series, season) slice of a driver's career (points races). */
+export interface CareerSeasonRow {
+  seriesId: number;
+  season: number;
+  races: number;
+  wins: number;
+  top5s: number;
+  top10s: number;
+  avgFinish: number | null;
+}
+
+/** A driver's totals within one series, across every season they ran it. */
+export interface CareerSeriesSummary {
+  seriesId: number;
+  firstSeason: number;
+  lastSeason: number;
+  seasons: number;
+  races: number;
+  wins: number;
+  top5s: number;
+  top10s: number;
+  avgFinish: number | null;
+}
+
+/** A driver's identity + full record across all national series. */
+export interface DriverCareer {
+  driverId: number;
+  fullName: string;
+  latestTeam: string | null;
+  latestCarNumber: string | null;
+  latestCarMake: string | null;
+  firstSeason: number;
+  lastSeason: number;
+  /** Per-series totals, ordered by series id (Cup, Xfinity, Trucks). */
+  series: CareerSeriesSummary[];
+  /** Per (series, season) rows, newest season first. */
+  seasons: CareerSeasonRow[];
+}

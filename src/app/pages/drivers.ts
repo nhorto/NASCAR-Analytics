@@ -64,6 +64,7 @@ export function driverProfileContent(data: {
     <div>
       <div class="h-title" style="font-size:26px;">${esc(d.fullName)}</div>
       <div class="h-sub">${esc(d.latestTeam ?? "")}${d.latestCarMake ? ` · ${esc(d.latestCarMake)}` : ""} · ${d.firstSeason}–${d.lastSeason} · ${d.races} starts · ${d.wins} wins</div>
+      <div class="note" style="margin-top:4px"><a href="/driver/${d.driverId}">Full career across series →</a></div>
     </div>
   </div>`);
 

@@ -143,6 +143,37 @@ describe("web app", () => {
     expect(status).toBe(404);
   });
 
+  test("driver profile links to the cross-series career page", async () => {
+    const { body } = await get("/drivers/10");
+    expect(body).toContain("Full career across series →");
+    expect(body).toContain('href="/driver/10"');
+  });
+
+  test("career page (un-prefixed /driver/:id) renders series + timeline", async () => {
+    const { status, body } = await get("/driver/10");
+    expect(status).toBe(200);
+    expect(body).toContain("Alpha Driver");
+    expect(body).toContain("By Series");
+    expect(body).toContain("Career Timeline");
+    // Links into the series-scoped deep profile.
+    expect(body).toContain("/drivers/10");
+  });
+
+  test("unknown career 404s", async () => {
+    const { status } = await get("/driver/9999");
+    expect(status).toBe(404);
+  });
+
+  test("career API returns cross-series record", async () => {
+    const career = (await fetch(`${base}/api/driver/10/career`).then((r) => r.json())) as any;
+    expect(career.fullName).toBe("Alpha Driver");
+    expect(Array.isArray(career.series)).toBe(true);
+    expect(career.series[0]).toHaveProperty("seriesId", 1);
+    expect(career.seasons.length).toBeGreaterThan(0);
+    const missing = await fetch(`${base}/api/driver/9999/career`);
+    expect(missing.status).toBe(404);
+  });
+
   test("race page (un-prefixed /race/:id) renders results and loop insights", async () => {
     const { status, body } = await get("/race/101");
     expect(status).toBe(200);

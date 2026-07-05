@@ -67,6 +67,8 @@ export function createServer(p: Providers, port: number) {
       if (path === "/api/drivers") return driversRuntime.handleDriverIndex(p, url);
       m = path.match(/^\/api\/drivers\/(\d+)$/);
       if (m) return driversRuntime.handleDriver(p, m[1]!, url);
+      m = path.match(/^\/api\/driver\/(\d+)\/career$/);
+      if (m) return driversRuntime.handleDriverCareer(p, m[1]!);
       m = path.match(/^\/api\/drivers\/(\d+)\/stats$/);
       if (m) return analyticsRuntime.handleDriverStats(p, m[1]!, url);
       m = path.match(/^\/api\/standings\/(\d+)$/);
@@ -74,7 +76,12 @@ export function createServer(p: Providers, port: number) {
       if (path === "/api/tracks") return analyticsRuntime.handleTrackLeaderboard(p, url);
       if (path === "/api/metrics") return analyticsRuntime.handleMetrics(p, url);
 
-      // --- race pages: un-prefixed, series derived from the race ---
+      // --- career + race pages: un-prefixed (driver_id / race_id are global) ---
+      m = path.match(/^\/driver\/(\d+)$/);
+      if (m) {
+        const html = render.renderCareer(p, Number(m[1]));
+        return html ? htmlResponse(html) : notFound(SERIES.cup, "Driver");
+      }
       m = path.match(/^\/race\/(\d+)$/);
       if (m) {
         const html = render.renderRacePage(p, Number(m[1]));

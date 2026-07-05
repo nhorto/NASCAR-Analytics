@@ -13,6 +13,7 @@ import { racesIndexContent, racePageContent } from "./pages/races.ts";
 import { compareShell } from "./pages/compare.ts";
 import { tracksShell } from "./pages/tracks.ts";
 import { metricsContent } from "./pages/metrics.ts";
+import { careerContent } from "./pages/career.ts";
 
 type P = Pick<Providers, "db">;
 
@@ -94,6 +95,24 @@ export function renderRacesIndex(p: P, seriesId: number, season?: number): strin
       seasons,
       seriesId,
     ),
+  });
+}
+
+/**
+ * Career pages are un-prefixed (driver_id is global across series). The shell's
+ * series context is the driver's primary (most-started) series so the switcher
+ * and season pill render coherently.
+ */
+export function renderCareer(p: P, driverId: number): string | null {
+  const career = driversService.driverCareer(p, driverId);
+  if (!career) return null;
+  const primarySeries = [...career.series].sort((a, b) => b.races - a.races)[0]!.seriesId;
+  return page({
+    title: `${career.fullName} · Career`,
+    active: "drivers",
+    seriesId: primarySeries,
+    season: currentSeason(p, primarySeries),
+    content: careerContent(career),
   });
 }
 
