@@ -183,6 +183,20 @@ CREATE TABLE IF NOT EXISTS driver_form (
 );
 CREATE INDEX IF NOT EXISTS idx_driver_form_driver ON driver_form(driver_id, season);
 
+-- Per-race single-race residuals for the two proprietary metrics, for the
+-- weekly recap. One row per (race, driver); rebuilt by each compute run.
+CREATE TABLE IF NOT EXISTS race_metric_standouts (
+  race_id INTEGER NOT NULL,
+  series_id INTEGER NOT NULL,
+  season INTEGER NOT NULL,
+  driver_id INTEGER NOT NULL,
+  adj_pass_efficiency REAL,
+  closer_score REAL,
+  rating REAL,
+  PRIMARY KEY (race_id, driver_id)
+);
+CREATE INDEX IF NOT EXISTS idx_race_standouts_race ON race_metric_standouts(race_id);
+
 CREATE TABLE IF NOT EXISTS raw_fetches (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   url TEXT NOT NULL,

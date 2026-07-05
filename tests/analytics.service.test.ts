@@ -9,11 +9,15 @@ import {
   computeForm,
   qualifiedRegulars,
   rankByMetric,
+  computeRaceStandouts,
+  computeStandingsMovement,
+  pickFormCallouts,
 } from "../src/domains/analytics/service.ts";
 import type {
   PointsResultRow,
   PointsLoopRow,
   SeasonStanding,
+  SeasonPointsResultRow,
 } from "../src/domains/analytics/types.ts";
 
 function standing(
@@ -273,5 +277,98 @@ describe("computeForm", () => {
     expect(form[0]!.avgRating).toBeNull();
     expect(form[1]!.avgRating).toBeCloseTo(100);
     expect(form[1]!.avgClosingGain).toBeCloseTo(3);
+  });
+});
+
+describe("computeRaceStandouts", () => {
+  test("applies the season residual math to a single race", () => {
+    const loops = [
+      loop({ raceId: 1, driverId: 1, avgPs: 3, passesGf: 8, passedGf: 2, closingPs: 3, closingLapsDiff: 2, rating: 120 }),
+      loop({ raceId: 1, driverId: 2, avgPs: 4, passesGf: 2, passedGf: 8, closingPs: 4, closingLapsDiff: -2, rating: 90 }),
+    ];
+    const out = computeRaceStandouts(loops, buildLeagueExpectations(loops));
+    const d1 = out.find((s) => s.driverId === 1)!;
+    const d2 = out.find((s) => s.driverId === 2)!;
+    // bucket-0 pass baseline = mean(0.8, 0.2) = 0.5 → ±30; closing baseline = 0 → ±2.
+    expect(d1.adjPassEfficiency).toBeCloseTo(30);
+    expect(d1.closerScore).toBeCloseTo(2);
+    expect(d1.rating).toBeCloseTo(120);
+    expect(d2.adjPassEfficiency).toBeCloseTo(-30);
+    expect(d2.closerScore).toBeCloseTo(-2);
+  });
+
+  test("adjPE is null when a driver had no green-flag encounters", () => {
+    const loops = [loop({ raceId: 1, driverId: 1, avgPs: 5, passesGf: 0, passedGf: 0 })];
+    const out = computeRaceStandouts(loops, buildLeagueExpectations(loops));
+    expect(out[0]!.adjPassEfficiency).toBeNull();
+  });
+});
+
+describe("computeStandingsMovement", () => {
+  function row(o: Partial<SeasonPointsResultRow> & { raceId: number; driverId: number; finish: number; points: number }): SeasonPointsResultRow {
+    return {
+      fullName: `Driver ${o.driverId}`,
+      raceDateUtc: o.raceId === 1 ? "2024-03-01T18:00:00" : "2024-03-08T18:00:00",
+      ...o,
+    };
+  }
+
+  test("ranks after the race with movement vs. the prior race", () => {
+    const rows = [
+      row({ raceId: 1, driverId: 1, finish: 1, points: 40 }),
+      row({ raceId: 1, driverId: 2, finish: 2, points: 35 }),
+      row({ raceId: 1, driverId: 3, finish: 3, points: 34 }),
+      row({ raceId: 2, driverId: 1, finish: 3, points: 34 }),
+      row({ raceId: 2, driverId: 2, finish: 1, points: 45 }),
+      row({ raceId: 2, driverId: 3, finish: 2, points: 40 }),
+    ];
+    const mv = computeStandingsMovement(rows, 2, 2);
+    // After R2: d2=80(1), d1=74(2, win tie-break over d3), d3=74(3).
+    expect(mv.map((m) => m.driverId)).toEqual([2, 1, 3]);
+    expect(mv[0]!).toMatchObject({ driverId: 2, rank: 1, prevRank: 2, rankDelta: 1, pointsThisRace: 45, inPlayoff: true });
+    expect(mv[1]!).toMatchObject({ driverId: 1, rank: 2, prevRank: 1, rankDelta: -1, inPlayoff: true });
+    expect(mv[2]!).toMatchObject({ driverId: 3, rank: 3, prevRank: 3, rankDelta: 0, inPlayoff: false });
+  });
+
+  test("first race of the season has null movement", () => {
+    const rows = [
+      row({ raceId: 1, driverId: 1, finish: 1, points: 40 }),
+      row({ raceId: 1, driverId: 2, finish: 2, points: 35 }),
+    ];
+    const mv = computeStandingsMovement(rows, 1, 16);
+    expect(mv.every((m) => m.prevRank === null && m.rankDelta === null)).toBe(true);
+  });
+
+  test("returns empty for a race not in the set", () => {
+    expect(computeStandingsMovement([], 99, 16)).toEqual([]);
+  });
+});
+
+describe("pickFormCallouts", () => {
+  const results = [
+    { driverId: 1, fullName: "D1", finish: 2 },
+    { driverId: 2, fullName: "D2", finish: 20 },
+    { driverId: 3, fullName: "D3", finish: 5 },
+  ];
+
+  test("splits over/under vs. prior form and ignores drivers with no baseline", () => {
+    const prior = new Map([
+      [1, 10], // finished P2 vs 10 form → +8 over
+      [2, 8], //  finished P20 vs 8 form → −12 under
+      // d3 has no prior form → excluded
+    ]);
+    const { over, under } = pickFormCallouts(results, prior, 3);
+    expect(over.map((c) => c.driverId)).toEqual([1]);
+    expect(over[0]!.delta).toBeCloseTo(8);
+    expect(under.map((c) => c.driverId)).toEqual([2]);
+  });
+
+  test("caps each side at count, strongest first", () => {
+    const prior = new Map([
+      [1, 10], // +8
+      [3, 25], // +20
+    ]);
+    const { over } = pickFormCallouts(results, prior, 1);
+    expect(over.map((c) => c.driverId)).toEqual([3]); // biggest overachievement only
   });
 });

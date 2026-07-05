@@ -94,7 +94,8 @@ switch (command) {
     const s = analyticsService.computeAll(p, argValue("--series", ingestionConfig.SERIES.cup), log);
     console.log(
       `computed: ${s.seasonStatsRows} season rows, ${s.trackTypeStatsRows} track-type rows, ` +
-        `${s.formRows} form rows (from ${s.resultRows} results, ${s.loopRows} loop rows)`,
+        `${s.formRows} form rows, ${s.raceStandoutRows} race-standout rows ` +
+        `(from ${s.resultRows} results, ${s.loopRows} loop rows)`,
     );
     break;
   }

@@ -43,6 +43,22 @@ export function handleMetrics(p: Db, url: URL): Response {
   return Response.json(service.seasonMetricBoard(p, season, seriesId));
 }
 
+export function handleRecap(p: Db, idParam: string): Response {
+  const raceId = Number.parseInt(idParam, 10);
+  if (Number.isNaN(raceId)) return Response.json({ error: "invalid race id" }, { status: 400 });
+  const ctx = service.raceContext(p, raceId);
+  if (ctx === null) return Response.json({ error: "no such race" }, { status: 404 });
+  const opts = { seriesId: ctx.seriesId, season: ctx.season, raceId };
+  return Response.json({
+    raceId,
+    seriesId: ctx.seriesId,
+    season: ctx.season,
+    standouts: service.raceStandouts(p, raceId),
+    movement: service.standingsMovement(p, opts),
+    callouts: service.formCallouts(p, { ...opts, raceDateUtc: ctx.raceDateUtc }),
+  });
+}
+
 export function handleTrackLeaderboard(p: Db, url: URL): Response {
   const seriesId = seriesOf(url);
   const current = service.currentSeason(p, seriesId);

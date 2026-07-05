@@ -1,7 +1,21 @@
 # Weekly Race Recap
 
-**Status:** ACTIVE
+**Status:** COMPLETE
 **Started:** 2026-07-05
+**Completed:** 2026-07-05
+
+## Outcome
+
+Shipped as designed. Per-race proprietary-metric standouts are computed during
+`bun run compute` and persisted to a new `race_metric_standouts` table; the
+recap page (`/recap` latest per series, `/recap/{raceId}` per race, un-prefixed)
+composes them with the ingested result summary, a points-standings movement
+table (cut line per series via `PLAYOFF_CUT_BY_SERIES`), and form-vs-result
+callouts. Added a Recap nav tab, repointed the Home "Last Race" CTA to the
+recap, `/api/recap/:id`, and static-export coverage for the current season.
+15 new tests (3 pure units + E2E + export smoke); full `bun test` green (129).
+The v1 playoff picture is points-only, logged as tech debt (not the real
+elimination/reset format).
 
 ## Problem
 

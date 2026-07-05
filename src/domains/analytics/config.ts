@@ -30,3 +30,20 @@ export const FORM_LEADER_MIN_SEASON_SHARE = 0.5;
  * part-timer's few strong runs from topping the adjPE / Closer boards.
  */
 export const METRIC_LEADER_MIN_LOOP_SHARE = 0.5;
+
+/**
+ * Points-standings cut line for the recap "playoff picture", by series. These
+ * are the field SIZES (Cup 16, Xfinity 12, Trucks 10) — a simplified points-order
+ * cut line, NOT the real NASCAR elimination/reset format. See tech-debt tracker.
+ */
+export const PLAYOFF_CUT_BY_SERIES: Record<number, number> = { 1: 16, 2: 12, 3: 10 };
+
+/** How many over/under-performers the recap surfaces per side. */
+export const RECAP_STANDOUT_COUNT = 3;
+
+/**
+ * A recap form callout needs a stable baseline: only drivers whose trailing-form
+ * window (as of the prior race) covers at least this many races are eligible, so
+ * a one-race "form" can't drive a callout.
+ */
+export const RECAP_FORM_MIN_WINDOW = 3;
