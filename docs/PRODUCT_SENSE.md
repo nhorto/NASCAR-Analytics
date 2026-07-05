@@ -43,10 +43,13 @@ Give NASCAR's 75 million fans the clean, modern data tools the sport deserves. T
 
 ## Competitive Landscape
 
+> Refreshed 2026-07-05 — see [research/2026-07-05_competitive-refresh.md](research/2026-07-05_competitive-refresh.md) for detail.
+
 | Competitor | Strength | Weakness | Our Angle |
 |------------|----------|----------|-----------|
-| Lap Raptor | Best free analytics (wARP, PFAE) | No monetization, dated UX, no betting | Modern UX + proprietary metrics + betting context |
-| FRCS.pro | 21 years of trust, loop data | 2008 UX, no mobile | Mobile-first, cleaner data presentation |
-| Win The Race | Monte Carlo sims, DFS optimizer | Paywall-first, no freemium, niche | Freemium funnel, broader audience |
-| Racing-Reference | Complete historical database | 2003 UX, no visualizations | Beautiful charts, AI-assisted queries |
-| NASCAR Mobile | Official app, scanner audio | Freezes, poor UX, premium paywall | We don't compete on scanner — we compete on analytics |
+| Lap Raptor | Best free analytics (wARP, PFAE, Pass Matrix), expanding, current | Dated UX, no head-to-head comparison focus | Modern UX + comparison/exploration tooling |
+| FRCS.pro | 21 years of trust, loop data, Accupredict ($39–79/yr) | 2008 UX, no mobile | Mobile-first, cleaner data presentation |
+| Win The Race | 200k-run sims, DFS optimizer ($50/mo) | Expensive, DFS-grinder niche | Free-first, broader fan audience |
+| Racing-Reference | Complete historical database | 2003 UX, no visualizations, bot-blocked | Beautiful charts, interactive exploration |
+| nascar-reference.com (NEW 2026) | Modern free historical stats, Elo model, comparisons | **No loop data** — results-based only | Loop-data-first analytics is our lane |
+| NASCAR Mobile v16 (2026 overhaul) | Official; driver pages w/ track history; premium live stats $4.99/mo | No loop-data exploration, no comparisons, no track-type analytics | Analytical depth the official app won't build |

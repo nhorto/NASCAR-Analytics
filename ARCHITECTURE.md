@@ -123,10 +123,10 @@ export interface Providers {
 
 | Source | Type | What We Get |
 |--------|------|------------|
-| `cf.nascar.com/cacher/{year}/{series}/{race_id}/` | Public CDN (free, no auth) | Loop data, lap times, pit stops, live race data, standings |
-| nascaR.data (R package) | Free, CRAN | Historical results 1949-present |
-| pynascar (Python) | Free, PyPI | Lap times, pit stops, qualifying data |
-| The Odds API | Paid (~$50/mo) | Aggregated betting odds from DraftKings, FanDuel, etc. |
+| `cf.nascar.com/cacher/{year}/{series}/{race_id}/` | Public CDN (free, no auth) | Schedules/results 2016+, loop data 2016+ (2018 missing), lap times 2020+, pit data, live race data. Verified working 2026-07-05 — see [re-verification](docs/research/2026-07-05_data-sources-reverification.md) |
+| `cf.nascar.com/loopstats/prod/{year}/{series}/{race_id}.json` | Public CDN (free, no auth) | Full official loop data per race (Driver Rating, quality passes, fast laps, etc.) |
+| nascaR.data (R package) | Free, CRAN | Historical results 1949-present (v3.1.0, actively maintained) |
+| ~~The Odds API~~ | ❌ Does NOT cover NASCAR | Verified 2026-07-05. Odds source TBD — betting/odds domain deferred |
 | rNascar23.Sdk reference | GitHub | Documents all NASCAR CDN endpoint patterns including LoopData |
 
 ## Current Guarantees

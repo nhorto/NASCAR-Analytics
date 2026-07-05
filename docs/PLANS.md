@@ -6,6 +6,7 @@
 
 | Plan | Status | Description |
 |------|--------|-------------|
+| [Fan Analytics Platform MVP](exec-plans/active/2026-07-05-fan-analytics-mvp.md) | ACTIVE | Data pipeline (CDN ingestion + archival) + mobile-first fan analytics UI. Betting deferred, live companion is the follow-on. |
 
 ## Completed Plans
 
