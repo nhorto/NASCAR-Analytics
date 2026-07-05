@@ -1,0 +1,557 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NASCAR Analytics — Live UI Mockup (Phase 3)</title>
+<style>
+  :root {
+    --bg: #0a0c10;
+    --surface: #12151c;
+    --surface-2: #191d26;
+    --border: #262c38;
+    --text: #e9edf4;
+    --muted: #8b95a6;
+    --accent: #ffd23f;   /* caution-flag yellow — highlights only */
+    --pos: #34d399;      /* gains / good */
+    --neg: #f87171;      /* losses / bad */
+    --live: #ff4d4f;     /* LIVE dot only — never decorative */
+    --display: "Avenir Next Condensed", "Arial Narrow", "Roboto Condensed", system-ui, sans-serif;
+    --body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #06070a; color: var(--text); font-family: var(--body); padding: 32px 20px 64px; }
+  .spec { max-width: 1280px; margin: 0 auto 40px; }
+  .spec h1 { font-family: var(--display); text-transform: uppercase; letter-spacing: .03em; font-size: 34px; }
+  .spec p.sub { color: var(--muted); margin-top: 6px; max-width: 76ch; line-height: 1.55; }
+  .spec .legend { display:flex; flex-wrap:wrap; gap:18px; margin-top:16px; font-size:12.5px; color:var(--muted); }
+  .spec .legend b { color: var(--text); }
+  .frames { display: flex; flex-wrap: wrap; gap: 28px; max-width: 1280px; margin: 0 auto; align-items: flex-start; }
+  .frame { width: 390px; background: var(--bg); border: 1px solid #2a3140; border-radius: 34px; overflow: hidden; box-shadow: 0 24px 60px rgba(0,0,0,.55); }
+  .frame-label { text-align: center; color: var(--muted); font-size: 13px; letter-spacing: .12em; text-transform: uppercase; padding: 14px 0 10px; border-bottom: 1px solid var(--border); background: #0d1016; }
+
+  /* ---------- app chrome ---------- */
+  .appbar { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px 12px; }
+  .wordmark { font-family: var(--display); font-weight: 700; font-size: 21px; letter-spacing: .06em; text-transform: uppercase; }
+  .wordmark em { font-style: normal; color: var(--accent); }
+  .season-pill { font-size: 12px; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 5px 11px; }
+  .screen { padding: 0 14px 14px; display: flex; flex-direction: column; gap: 12px; }
+  .tabbar { display: flex; border-top: 1px solid var(--border); background: #0d1016; }
+  .tabbar a { flex: 1; text-align: center; padding: 12px 0 16px; font-size: 10px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); text-decoration: none; position: relative; }
+  .tabbar a.on { color: var(--accent); }
+  .tabbar a span { display: block; font-size: 17px; margin-bottom: 2px; }
+  .tabbar a .livedot { position:absolute; top:8px; left:50%; margin-left:6px; width:6px; height:6px; border-radius:50%; background:var(--live); box-shadow:0 0 0 0 rgba(255,77,79,.6); animation: pulse 1.8s infinite; }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(255,77,79,.55)} 70%{box-shadow:0 0 0 7px rgba(255,77,79,0)} 100%{box-shadow:0 0 0 0 rgba(255,77,79,0)} }
+
+  /* ---------- shared components (from Phase 3 mockup) ---------- */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 14px; }
+  .card-h { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
+  .card-h h3 { font-family: var(--display); font-size: 15px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+  .card-h h3::before { content: ""; display: inline-block; width: 4px; height: 11px; background: var(--accent); border-radius: 2px; margin-right: 8px; }
+  .card-h .more { font-size: 12px; color: var(--muted); }
+  .num { font-variant-numeric: tabular-nums; }
+  .chips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .chip { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 10px 6px; text-align: center; }
+  .chip b { display: block; font-family: var(--display); font-size: 22px; letter-spacing: .02em; }
+  .chip span { font-size: 10px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+  .pos { color: var(--pos); } .neg { color: var(--neg); } .mut { color: var(--muted); }
+  .badge { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; font-family: var(--display); font-weight: 700; font-size: 15px; color: #fff; }
+  .b-hms { background: #1c5bd4; } .b-jgr { background: #d4541c; } .b-th { background: #c8102e; }
+  .b-23xi { background: #3b3f4a; } .b-tp { background: #7a4dd8; } .b-rfk { background: #0a7d4b; } .b-pen { background: #d39c00; color:#14150e; } .b-tsr { background: #14708a; }
+  .note { font-size: 11px; color: var(--muted); line-height: 1.45; }
+  .h-title { font-family: var(--display); text-transform: uppercase; font-size: 24px; letter-spacing: .02em; line-height: 1.1; }
+  .h-sub { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
+  .trend { font-size: 11px; padding: 3px 8px; border-radius: 999px; font-weight: 600; }
+  .trend.up { background: rgba(52,211,153,.14); color: var(--pos); }
+  .trend.dn { background: rgba(248,113,113,.14); color: var(--neg); }
+  .seg { display: flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 3px; }
+  .seg a { flex: 1; text-align: center; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); padding: 8px 0; border-radius: 9px; text-decoration: none; cursor: pointer; }
+  .seg a.on { background: var(--accent); color: #14150e; font-weight: 700; }
+  .series-switch { margin: 2px 14px 12px; }
+  .series-switch a { font-size: 12px; letter-spacing: .08em; padding: 9px 0; }
+
+  /* ---------- LIVE-specific ---------- */
+  /* flag status banner */
+  .flagbar { border-radius: 16px; padding: 12px 14px; display:flex; align-items:center; gap:12px; border:1px solid var(--border); position:relative; overflow:hidden; }
+  .flagbar.green  { background: linear-gradient(135deg, rgba(52,211,153,.18), rgba(52,211,153,0) 60%), var(--surface); }
+  .flagbar.yellow { background: linear-gradient(135deg, rgba(255,210,63,.20), rgba(255,210,63,0) 60%), var(--surface); }
+  .flag-ico { width:34px; height:34px; border-radius:9px; flex:none; }
+  .flag-ico.green { background: var(--pos); }
+  .flag-ico.yellow { background: repeating-linear-gradient(45deg, var(--accent) 0 6px, #14150e 6px 12px); }
+  .flagbar .fmain { font-family: var(--display); font-size: 17px; text-transform: uppercase; letter-spacing:.04em; }
+  .flagbar .fsub { font-size: 11.5px; color: var(--muted); margin-top:1px; }
+  .flagbar .ftime { margin-left:auto; text-align:right; }
+  .flagbar .ftime b { font-family: var(--display); font-size: 26px; display:block; line-height:1; }
+  .flagbar .ftime span { font-size: 9.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); }
+  .livechip { display:inline-flex; align-items:center; gap:6px; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--live); font-weight:700; }
+  .livechip i { width:7px; height:7px; border-radius:50%; background:var(--live); animation:pulse 1.8s infinite; }
+  /* stage progress */
+  .stagebar { display:flex; align-items:center; gap:8px; margin-top:10px; }
+  .stagebar .track { flex:1; height:7px; border-radius:4px; background:var(--surface-2); overflow:hidden; position:relative; }
+  .stagebar .track i { position:absolute; left:0; top:0; height:100%; background:var(--accent); border-radius:4px; }
+  .stagebar .track .s1 { position:absolute; top:-3px; bottom:-3px; width:2px; background:var(--border); }
+  .stagebar .lbl { font-size:10px; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; }
+
+  /* leaderboard */
+  .lb { display:flex; flex-direction:column; }
+  .lb-row { display:grid; grid-template-columns: 22px 30px 1fr auto; align-items:center; gap:9px; padding:8px 4px; border-top:1px solid #1d222c; cursor:pointer; }
+  .lb-row:first-child { border-top:none; }
+  .lb-row .p { font-family:var(--display); font-size:16px; text-align:center; color:var(--muted); }
+  .lb-row.p1 .p { color: var(--accent); }
+  .lb-row .who .nm { font-weight:600; font-size:14px; }
+  .lb-row .who .meta { font-size:10.5px; color:var(--muted); display:flex; gap:7px; align-items:center; }
+  .lb-row .right { text-align:right; display:flex; align-items:center; gap:9px; justify-content:flex-end; }
+  .gap { font-variant-numeric:tabular-nums; font-size:13px; min-width:46px; text-align:right; }
+  .mv { font-size:11px; font-variant-numeric:tabular-nums; min-width:26px; text-align:right; }
+  .mv.flat { color:var(--muted); }
+  .chev { color:var(--muted); font-size:12px; transition:transform .15s; }
+  .lb-row.open .chev { transform:rotate(90deg); }
+  /* live loop metric value shown in metrics-sort mode */
+  .metricval { font-family:var(--display); font-size:16px; min-width:52px; text-align:right; }
+  .lb.by-metric .gap, .lb.by-metric .mv { display:none; }
+  .lb:not(.by-metric) .metricval { display:none; }
+  /* tiny loop-segment sparkbar under a name (F1 mini-sector analog) */
+  .segbar { display:inline-flex; gap:2px; }
+  .segbar i { width:9px; height:5px; border-radius:1px; background:var(--surface-2); }
+  .segbar i.g { background:var(--pos); } .segbar i.y { background:var(--accent); } .segbar i.r { background:var(--neg); }
+
+  /* expanded driver drill-down */
+  .drill { border-top:1px dashed var(--border); background:#0d1016; padding:12px; display:none; }
+  .lb-row.open + .drill { display:block; }
+  .drill .mini-chips { display:grid; grid-template-columns:repeat(4,1fr); gap:6px; margin-bottom:10px; }
+  .drill .mini-chips .c { background:var(--surface); border:1px solid var(--border); border-radius:10px; padding:7px 4px; text-align:center; }
+  .drill .mini-chips b { font-family:var(--display); font-size:16px; display:block; }
+  .drill .mini-chips span { font-size:8.5px; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); }
+  .mrow { display:grid; grid-template-columns: 96px 1fr 74px; align-items:center; gap:8px; padding:4px 0; font-size:12px; }
+  .mrow .lbl { color:var(--muted); text-transform:uppercase; letter-spacing:.04em; font-size:10px; }
+  .mrow .bar { height:7px; border-radius:4px; background:var(--surface-2); overflow:hidden; }
+  .mrow .bar i { display:block; height:100%; border-radius:4px; background:#4b83f0; }
+  .mrow .bar i.good { background:var(--pos); } .mrow .bar i.bad { background:var(--neg); }
+  .mrow .val { text-align:right; font-variant-numeric:tabular-nums; font-weight:600; }
+  .mrow .val small { color:var(--muted); font-weight:400; font-size:10px; }
+  .drill-h { font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:var(--muted); margin:12px 0 4px; }
+  .pit-line { display:flex; gap:8px; flex-wrap:wrap; margin-top:2px; }
+  .pit-tag { font-size:10.5px; padding:4px 8px; border-radius:999px; background:var(--surface); border:1px solid var(--border); color:var(--muted); }
+  .pit-tag b { color:var(--text); }
+  .pit-tag.warn { border-color:rgba(255,210,63,.5); color:var(--accent); }
+
+  /* movers / battles */
+  .split2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .mlist .m { display:flex; align-items:center; gap:8px; padding:5px 0; font-size:12.5px; border-top:1px solid #1d222c; }
+  .mlist .m:first-child { border-top:none; }
+  .mlist .m .d { font-size:14px; font-variant-numeric:tabular-nums; font-weight:700; min-width:30px; }
+  .battle { display:flex; align-items:center; gap:8px; padding:7px 0; border-top:1px solid #1d222c; font-size:12.5px; }
+  .battle:first-child { border-top:none; }
+  .battle .gap2 { margin-left:auto; font-variant-numeric:tabular-nums; color:var(--accent); font-size:12px; }
+
+  /* strategy / pit-cycle */
+  .cyc { display:flex; flex-direction:column; gap:2px; }
+  .cyc-row { display:grid; grid-template-columns: 30px 1fr 58px; align-items:center; gap:9px; padding:7px 2px; border-top:1px solid #1d222c; font-size:12.5px; }
+  .cyc-row:first-child { border-top:none; }
+  .cyc-row .stint { height:8px; border-radius:4px; background:var(--surface-2); position:relative; overflow:hidden; }
+  .cyc-row .stint i { position:absolute; top:0; left:0; height:100%; border-radius:4px; background:linear-gradient(90deg, var(--pos), var(--accent)); }
+  .cyc-row .stint i.old { background:linear-gradient(90deg, var(--accent), var(--neg)); }
+  .cyc-row .st { text-align:right; font-variant-numeric:tabular-nums; }
+  .cyc-row .st small { color:var(--muted); }
+  .cyc-row.pitted .stint i { background:var(--surface-2); }
+  .cyc-row.pitted .st { color:var(--pos); }
+
+  /* alerts */
+  .alert { display:flex; gap:10px; padding:9px 2px; border-top:1px solid #1d222c; }
+  .alert:first-child { border-top:none; }
+  .alert .ai { width:26px; height:26px; border-radius:7px; flex:none; display:flex; align-items:center; justify-content:center; font-size:13px; background:var(--surface-2); }
+  .alert .ai.good { background:rgba(52,211,153,.16); }
+  .alert .ai.bad { background:rgba(248,113,113,.16); }
+  .alert .ai.warn { background:rgba(255,210,63,.16); }
+  .alert .at { font-size:12.5px; line-height:1.35; }
+  .alert .at time { color:var(--muted); font-size:10.5px; }
+
+  /* follow card */
+  .follow { background: linear-gradient(135deg, rgba(255,210,63,.10), rgba(255,210,63,0) 55%), var(--surface); border:1px solid var(--border); border-radius:16px; padding:14px; }
+  .follow .top { display:flex; align-items:center; gap:12px; }
+  .follow .top .p { font-family:var(--display); font-size:34px; color:var(--accent); line-height:1; }
+  .follow .top .nm { font-weight:700; font-size:16px; }
+  .follow .top .sub { font-size:11.5px; color:var(--muted); }
+  .follow .top .bell { margin-left:auto; font-size:12px; color:var(--accent); border:1px solid rgba(255,210,63,.4); border-radius:999px; padding:6px 11px; }
+
+  /* home live banner */
+  .livebanner { display:flex; align-items:center; gap:12px; border-radius:16px; padding:14px; border:1px solid rgba(255,77,79,.35); background: linear-gradient(135deg, rgba(255,77,79,.12), rgba(255,77,79,0) 60%), var(--surface); }
+  .livebanner .go { margin-left:auto; font-family:var(--display); font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--live); border:1px solid rgba(255,77,79,.5); border-radius:999px; padding:8px 13px; }
+</style>
+</head>
+<body>
+
+<div class="spec">
+  <h1>Live UI — Design Mockup (Phase 3)</h1>
+  <p class="sub">The live race companion, in the established house style (dark, caution-yellow accent, condensed display type, tabular numerals).
+     Numbers are illustrative — a live mid-race snapshot of a 2026 Cup road race. Structure is <b>layered</b>: a glanceable board with a race-status header on top,
+     and any car <b>taps open</b> to a full per-driver live panel. Frame 2 is interactive — tap the sort toggle and tap a row.
+     Wordmark "LOOPLAB" is the existing placeholder.</p>
+  <div class="legend">
+    <div><b>🔴 LIVE dot</b> — only when a session is on track</div>
+    <div><b>segbar</b> ▮▮▮ — last-5-lap trend: green gaining · yellow holding · red losing</div>
+    <div><b>▲/▼</b> — positions gained/lost vs. start (green/red)</div>
+    <div><b>gap</b> — seconds to leader (P1 shows interval to P2)</div>
+  </div>
+</div>
+
+<div class="frames">
+
+  <!-- ============ 1 · HOME (LIVE banner) ============ -->
+  <div class="frame">
+    <div class="frame-label">1 · Home — Live banner</div>
+    <div class="appbar">
+      <div class="wordmark">Loop<em>lab</em></div>
+      <div class="season-pill num">2026 Season</div>
+    </div>
+    <div class="series-switch seg"><a class="on">Cup</a><a>Xfinity</a><a>Trucks</a></div>
+    <div class="screen">
+      <div class="livebanner">
+        <span class="livechip"><i></i>Live</span>
+        <div>
+          <div class="h-title" style="font-size:19px;">Grant Park 165</div>
+          <div class="note">Chicago Street · Lap 48/75 · Green · Stage 2</div>
+        </div>
+        <span class="go">Open ›</span>
+      </div>
+      <div class="follow" style="padding:12px 14px;">
+        <div class="top">
+          <span class="p num">P4</span>
+          <div><div class="nm">Your driver · SVG</div><div class="sub">▲2 · 3 quality passes last 10 laps</div></div>
+          <span class="trend up" style="align-self:center;">▲ gaining</span>
+        </div>
+      </div>
+      <div class="card">
+        <div class="card-h"><h3>While You Were Away</h3></div>
+        <div class="alert"><div class="ai warn">⚑</div><div class="at">Caution — Lap 41, debris in Turn 6. Field pitted; SVG gained 2 on pit road. <time>7 min ago</time></div></div>
+        <div class="alert"><div class="ai good">▲</div><div class="at">SVG passed Reddick for P4 on the Lap 44 restart. <time>4 min ago</time></div></div>
+      </div>
+      <p class="note" style="text-align:center;">Below the live banner: the usual Last Race / Championship / In Form cards (unchanged).</p>
+    </div>
+    <div class="tabbar">
+      <a class="on"><span>⌂</span>Home</a><a><span>◔</span>Drivers</a><a><span>◉</span>Live<i class="livedot"></i></a><a><span>⇄</span>Compare</a><a><span>◎</span>Tracks</a>
+    </div>
+  </div>
+
+  <!-- ============ 2 · LIVE BOARD (interactive) ============ -->
+  <div class="frame">
+    <div class="frame-label">2 · Live Board — tap to drill down</div>
+    <div class="appbar">
+      <div class="wordmark">Loop<em>lab</em></div>
+      <span class="livechip"><i></i>Live · syncing</span>
+    </div>
+    <div class="series-switch seg"><a class="on">Cup</a><a>Xfinity</a><a>Trucks</a></div>
+    <div class="screen">
+      <!-- race-status header -->
+      <div class="flagbar green">
+        <div class="flag-ico green"></div>
+        <div>
+          <div class="fmain">Green · Stage 2</div>
+          <div class="fsub">Grant Park 165 · Chicago Street · Road</div>
+        </div>
+        <div class="ftime"><b class="num">27</b><span>Laps to go</span></div>
+      </div>
+      <div class="stagebar">
+        <span class="lbl">St 2</span>
+        <div class="track"><i style="width:53%"></i><span class="s1" style="left:60%"></span></div>
+        <span class="lbl num">ends L55</span>
+      </div>
+
+      <!-- sort toggle: track position vs our loop metrics -->
+      <div class="seg" id="sortseg">
+        <a class="on" data-mode="pos">Running Order</a>
+        <a data-mode="metric">Loop Rating ★</a>
+      </div>
+
+      <div class="card" style="padding:6px 10px;">
+        <div class="lb" id="board">
+          <!-- P1 -->
+          <div class="lb-row p1" onclick="tog(this)">
+            <span class="p num">1</span><span class="badge b-jgr">45</span>
+            <div class="who"><div class="nm">Tyler Reddick</div><div class="meta"><span>23XI</span><span class="segbar"><i class="g"></i><i class="g"></i><i class="y"></i><i class="g"></i><i class="g"></i></span></div></div>
+            <div class="right"><span class="pos mv">▲3</span><span class="gap num">Leader</span><span class="metricval pos num">+5.1</span><span class="chev">›</span></div>
+          </div>
+          <div class="drill">
+            <div class="mini-chips">
+              <div class="c"><b class="num">P1</b><span>Pos</span></div>
+              <div class="c"><b class="num">—</b><span>To Ldr</span></div>
+              <div class="c"><b class="num pos">▲3</b><span>vs Start</span></div>
+              <div class="c"><b class="num">88.4</b><span>Last mph</span></div>
+            </div>
+            <div class="drill-h">Live loop metrics · rank in field</div>
+            <div class="mrow"><span class="lbl">Adj Pass Eff</span><span class="bar"><i class="good" style="width:82%"></i></span><span class="val pos">+5.1 <small>#2</small></span></div>
+            <div class="mrow"><span class="lbl">Quality Pass</span><span class="bar"><i class="good" style="width:76%"></i></span><span class="val">14 <small>#3</small></span></div>
+            <div class="mrow"><span class="lbl">Closer est.</span><span class="bar"><i class="good" style="width:70%"></i></span><span class="val pos">+1.8 <small>#4</small></span></div>
+            <div class="drill-h">Pit / strategy</div>
+            <div class="pit-line">
+              <span class="pit-tag">Last stop <b>L40</b> · +1</span>
+              <span class="pit-tag"><b>15</b> laps on tires</span>
+              <span class="pit-tag warn">Pit window open</span>
+            </div>
+            <div class="drill-h">This race so far</div>
+            <div style="display:flex; gap:8px;">
+              <svg viewBox="0 0 150 44" width="50%" height="44"><polyline fill="none" stroke="#2a3140" stroke-width="1" points="0,40 150,40"/><polyline fill="none" stroke="#34d399" stroke-width="2" points="4,30 30,26 56,20 82,14 108,10 146,6"/><circle cx="146" cy="6" r="3" fill="#34d399"/><text x="4" y="12" fill="#8b95a6" font-size="8">Running pos ▲</text></svg>
+              <svg viewBox="0 0 150 44" width="50%" height="44"><polyline fill="none" stroke="#2a3140" stroke-width="1" points="0,40 150,40"/><polyline fill="none" stroke="#ffd23f" stroke-width="2" points="4,10 30,12 56,15 82,14 108,20 146,24"/><circle cx="146" cy="24" r="3" fill="#ffd23f"/><text x="4" y="12" fill="#8b95a6" font-size="8">Lap-speed falloff</text></svg>
+            </div>
+          </div>
+          <!-- P2 -->
+          <div class="lb-row" onclick="tog(this)">
+            <span class="p num">2</span><span class="badge b-th">97</span>
+            <div class="who"><div class="nm">S. van Gisbergen</div><div class="meta"><span>Trackhouse</span><span class="segbar"><i class="g"></i><i class="g"></i><i class="g"></i><i class="g"></i><i class="y"></i></span></div></div>
+            <div class="right"><span class="pos mv">▲4</span><span class="gap num">+1.24</span><span class="metricval pos num">+6.8</span><span class="chev">›</span></div>
+          </div>
+          <div class="drill">
+            <div class="mini-chips">
+              <div class="c"><b class="num">P2</b><span>Pos</span></div>
+              <div class="c"><b class="num">+1.24</b><span>To Ldr</span></div>
+              <div class="c"><b class="num pos">▲4</b><span>vs Start</span></div>
+              <div class="c"><b class="num">88.9</b><span>Last mph</span></div>
+            </div>
+            <div class="drill-h">Live loop metrics · rank in field</div>
+            <div class="mrow"><span class="lbl">Adj Pass Eff</span><span class="bar"><i class="good" style="width:95%"></i></span><span class="val pos">+6.8 <small>#1</small></span></div>
+            <div class="mrow"><span class="lbl">Quality Pass</span><span class="bar"><i class="good" style="width:90%"></i></span><span class="val">17 <small>#1</small></span></div>
+            <div class="mrow"><span class="lbl">Closer est.</span><span class="bar"><i class="good" style="width:80%"></i></span><span class="val pos">+2.4 <small>#2</small></span></div>
+            <div class="drill-h">Pit / strategy</div>
+            <div class="pit-line">
+              <span class="pit-tag">Last stop <b>L40</b> · +2</span>
+              <span class="pit-tag"><b>15</b> laps on tires</span>
+              <span class="pit-tag warn">Undercut threat on Reddick</span>
+            </div>
+            <p class="note" style="margin-top:8px;">Best road-course passer in the field, gaining on the leader ~0.15s/lap. Tap ★ Loop Rating to see the board re-rank him to P1.</p>
+          </div>
+          <!-- P3–P6 collapsed -->
+          <div class="lb-row" onclick="tog(this)">
+            <span class="p num">3</span><span class="badge b-hms">5</span>
+            <div class="who"><div class="nm">Kyle Larson</div><div class="meta"><span>Hendrick</span><span class="segbar"><i class="g"></i><i class="y"></i><i class="y"></i><i class="r"></i><i class="y"></i></span></div></div>
+            <div class="right"><span class="mv flat">▲0</span><span class="gap num">+2.90</span><span class="metricval num">+1.2</span><span class="chev">›</span></div>
+          </div>
+          <div class="drill"><p class="note">Collapsed — every row expands the same way.</p></div>
+          <div class="lb-row" onclick="tog(this)">
+            <span class="p num">4</span><span class="badge b-hms">24</span>
+            <div class="who"><div class="nm">William Byron</div><div class="meta"><span>Hendrick</span><span class="segbar"><i class="r"></i><i class="y"></i><i class="g"></i><i class="g"></i><i class="g"></i></span></div></div>
+            <div class="right"><span class="pos mv">▲6</span><span class="gap num">+3.45</span><span class="metricval pos num">+3.9</span><span class="chev">›</span></div>
+          </div>
+          <div class="drill"><p class="note">Collapsed.</p></div>
+          <div class="lb-row" onclick="tog(this)">
+            <span class="p num">5</span><span class="badge b-pen">12</span>
+            <div class="who"><div class="nm">Ryan Blaney</div><div class="meta"><span>Penske</span><span class="segbar"><i class="y"></i><i class="r"></i><i class="r"></i><i class="y"></i><i class="r"></i></span></div></div>
+            <div class="right"><span class="neg mv">▼3</span><span class="gap num">+4.10</span><span class="metricval neg num">−2.1</span><span class="chev">›</span></div>
+          </div>
+          <div class="drill"><p class="note">Collapsed.</p></div>
+          <div class="lb-row" onclick="tog(this)">
+            <span class="p num">6</span><span class="badge b-rfk">6</span>
+            <div class="who"><div class="nm">Brad Keselowski</div><div class="meta"><span>RFK</span><span class="segbar"><i class="g"></i><i class="g"></i><i class="y"></i><i class="g"></i><i class="y"></i></span></div></div>
+            <div class="right"><span class="pos mv">▲2</span><span class="gap num">+5.02</span><span class="metricval pos num">+2.7</span><span class="chev">›</span></div>
+          </div>
+          <div class="drill"><p class="note">Collapsed.</p></div>
+        </div>
+      </div>
+      <p class="note" style="text-align:center;">▾ scroll for full field (38 cars) · refreshes every ~5s</p>
+    </div>
+    <div class="tabbar">
+      <a><span>⌂</span>Home</a><a><span>◔</span>Drivers</a><a class="on"><span>◉</span>Live<i class="livedot"></i></a><a><span>⇄</span>Compare</a><a><span>◎</span>Tracks</a>
+    </div>
+  </div>
+
+  <!-- ============ 3 · RACE OVERVIEW (movers & battles) ============ -->
+  <div class="frame">
+    <div class="frame-label">3 · Race Overview — movers &amp; battles</div>
+    <div class="appbar">
+      <div class="wordmark">Loop<em>lab</em></div>
+      <span class="livechip"><i></i>Live</span>
+    </div>
+    <div class="series-switch seg"><a class="on">Cup</a><a>Xfinity</a><a>Trucks</a></div>
+    <div class="screen">
+      <div class="chips">
+        <div class="chip"><b class="num">48</b><span>Lap</span></div>
+        <div class="chip"><b class="num">4</b><span>Cautions</span></div>
+        <div class="chip"><b class="num">9</b><span>Lead Chg</span></div>
+        <div class="chip"><b class="num">14</b><span>Leaders</span></div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h3>Movers · Last 10 Laps</h3></div>
+        <div class="split2">
+          <div class="mlist">
+            <div class="drill-h" style="margin:0 0 2px;">Gaining</div>
+            <div class="m"><span class="d pos num">▲7</span><span class="badge b-hms" style="width:24px;height:24px;font-size:12px;">24</span> Byron</div>
+            <div class="m"><span class="d pos num">▲5</span><span class="badge b-tsr" style="width:24px;height:24px;font-size:12px;">1</span> Zilisch</div>
+            <div class="m"><span class="d pos num">▲4</span><span class="badge b-th" style="width:24px;height:24px;font-size:12px;">97</span> SVG</div>
+          </div>
+          <div class="mlist">
+            <div class="drill-h" style="margin:0 0 2px;">Fading</div>
+            <div class="m"><span class="d neg num">▼6</span><span class="badge b-pen" style="width:24px;height:24px;font-size:12px;">12</span> Blaney</div>
+            <div class="m"><span class="d neg num">▼4</span><span class="badge b-jgr" style="width:24px;height:24px;font-size:12px;">54</span> Gibbs</div>
+            <div class="m"><span class="d neg num">▼3</span><span class="badge b-23xi" style="width:24px;height:24px;font-size:12px;">23</span> Wallace</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h3>Battles Now</h3><span class="more">within 0.4s</span></div>
+        <div class="battle"><span class="badge b-jgr" style="width:24px;height:24px;font-size:12px;">45</span> Reddick <span class="mut" style="font-size:11px;">P1</span><span class="mut">vs</span><span class="badge b-th" style="width:24px;height:24px;font-size:12px;">97</span> SVG <span class="mut" style="font-size:11px;">P2</span><span class="gap2 num">0.31s ▼</span></div>
+        <div class="battle"><span class="badge b-hms" style="width:24px;height:24px;font-size:12px;">24</span> Byron <span class="mut" style="font-size:11px;">P4</span><span class="mut">vs</span><span class="badge b-hms" style="width:24px;height:24px;font-size:12px;">5</span> Larson <span class="mut" style="font-size:11px;">P3</span><span class="gap2 num">0.18s ▼</span></div>
+        <div class="battle"><span class="badge b-rfk" style="width:24px;height:24px;font-size:12px;">6</span> Keselowski <span class="mut" style="font-size:11px;">P6</span><span class="mut">vs</span><span class="badge b-pen" style="width:24px;height:24px;font-size:12px;">12</span> Blaney <span class="mut" style="font-size:11px;">P5</span><span class="gap2 num">0.39s ▲</span></div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h3>Field Loop Leaders · Live</h3><span class="more">Full board →</span></div>
+        <div class="mrow"><span class="lbl">Adj Pass Eff</span><span class="bar"><i class="good" style="width:95%"></i></span><span class="val pos">SVG +6.8</span></div>
+        <div class="mrow"><span class="lbl">Quality Pass</span><span class="bar"><i class="good" style="width:88%"></i></span><span class="val">SVG 17</span></div>
+        <div class="mrow"><span class="lbl">Closer est.</span><span class="bar"><i class="good" style="width:80%"></i></span><span class="val pos">Byron +2.9</span></div>
+        <div class="mrow"><span class="lbl">Fast Laps</span><span class="bar"><i class="acc" style="width:72%"></i></span><span class="val">Reddick 11</span></div>
+        <p class="note" style="margin-top:6px;">Live estimate = live feed × our weekly baselines. Swaps to the official post-race value when loopstats finalizes.</p>
+      </div>
+    </div>
+    <div class="tabbar">
+      <a><span>⌂</span>Home</a><a><span>◔</span>Drivers</a><a class="on"><span>◉</span>Live<i class="livedot"></i></a><a><span>⇄</span>Compare</a><a><span>◎</span>Tracks</a>
+    </div>
+  </div>
+
+  <!-- ============ 4 · STRATEGY / PIT-CYCLE ============ -->
+  <div class="frame">
+    <div class="frame-label">4 · Strategy — pit cycle &amp; tires</div>
+    <div class="appbar">
+      <div class="wordmark">Loop<em>lab</em></div>
+      <span class="livechip"><i></i>Live</span>
+    </div>
+    <div class="series-switch seg"><a class="on">Cup</a><a>Xfinity</a><a>Trucks</a></div>
+    <div class="screen">
+      <div class="card">
+        <div class="card-h"><h3>Green-Flag Pit Cycle</h3><span class="more">est. window</span></div>
+        <p class="note" style="margin:-2px 0 8px;">Predicted from lap-time falloff since last stop. <span class="pos">Green→yellow</span> = tire life left; <span class="neg">red</span> = past optimal. Pitted cars greyed.</p>
+        <div class="cyc">
+          <div class="cyc-row"><span class="badge b-jgr" style="width:26px;height:26px;font-size:12px;">45</span><div class="stint"><i style="width:62%"></i></div><span class="st num">L58<small>·est</small></span></div>
+          <div class="cyc-row"><span class="badge b-th" style="width:26px;height:26px;font-size:12px;">97</span><div class="stint"><i style="width:60%"></i></div><span class="st num">L57</span></div>
+          <div class="cyc-row"><span class="badge b-hms" style="width:26px;height:26px;font-size:12px;">5</span><div class="stint"><i class="old" style="width:82%"></i></div><span class="st num neg">L51</span></div>
+          <div class="cyc-row pitted"><span class="badge b-hms" style="width:26px;height:26px;font-size:12px;">24</span><div class="stint"><i style="width:8%"></i></div><span class="st num">pitted L46</span></div>
+          <div class="cyc-row"><span class="badge b-pen" style="width:26px;height:26px;font-size:12px;">12</span><div class="stint"><i class="old" style="width:90%"></i></div><span class="st num neg">now</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h3>Undercut Watch</h3></div>
+        <div class="alert"><div class="ai warn">⏱</div><div class="at"><b>Byron</b> pitted L46 on fresh tires and is running 0.6s/lap faster than the P3–P4 group yet to stop. Projected to <b class="pos">gain 2–3 spots</b> when they cycle through. <time>live</time></div></div>
+        <div class="alert"><div class="ai bad">▼</div><div class="at"><b>Blaney</b> is 12 laps past his falloff cliff — losing ~0.4s/lap and must pit within 2 laps or drop out of the top 10. <time>live</time></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h3>Tire Falloff · Leaders</h3></div>
+        <svg viewBox="0 0 340 90" width="100%" height="90">
+          <polyline fill="none" stroke="#2a3140" stroke-width="1" points="0,78 340,78"/>
+          <polyline fill="none" stroke="#34d399" stroke-width="2.5" points="6,20 70,24 134,30 198,34 262,40 334,46"/>
+          <polyline fill="none" stroke="#f87171" stroke-width="2.5" points="6,22 70,30 134,42 198,56 262,70 334,80"/>
+          <circle cx="334" cy="46" r="3.5" fill="#34d399"/><circle cx="334" cy="80" r="3.5" fill="#f87171"/>
+          <text x="10" y="16" fill="#34d399" font-size="10">SVG — gentle falloff</text>
+          <text x="10" y="90" fill="#f87171" font-size="10">Blaney — cliff</text>
+        </svg>
+        <p class="note">Lap time vs. laps-on-tires. A steeper line = burning the tire faster → pits sooner.</p>
+      </div>
+    </div>
+    <div class="tabbar">
+      <a><span>⌂</span>Home</a><a><span>◔</span>Drivers</a><a class="on"><span>◉</span>Live<i class="livedot"></i></a><a><span>⇄</span>Compare</a><a><span>◎</span>Tracks</a>
+    </div>
+  </div>
+
+  <!-- ============ 5 · MY DRIVER + ALERTS ============ -->
+  <div class="frame">
+    <div class="frame-label">5 · My Driver + alert feed</div>
+    <div class="appbar">
+      <div class="wordmark">Loop<em>lab</em></div>
+      <span class="livechip"><i></i>Live</span>
+    </div>
+    <div class="series-switch seg"><a class="on">Cup</a><a>Xfinity</a><a>Trucks</a></div>
+    <div class="screen">
+      <div class="follow">
+        <div class="top">
+          <span class="p num">P2</span>
+          <div><div class="nm">Shane van Gisbergen · 97</div><div class="sub">Trackhouse · Chevrolet</div></div>
+          <span class="bell">🔔 Alerts</span>
+        </div>
+        <div class="mini-chips" style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:12px;">
+          <div class="c" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:7px 4px;text-align:center;"><b class="num" style="font-family:var(--display);font-size:16px;display:block;">+1.24</b><span style="font-size:8.5px;text-transform:uppercase;color:var(--muted);">To Ldr</span></div>
+          <div class="c" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:7px 4px;text-align:center;"><b class="num pos" style="font-family:var(--display);font-size:16px;display:block;">▲4</b><span style="font-size:8.5px;text-transform:uppercase;color:var(--muted);">vs Start</span></div>
+          <div class="c" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:7px 4px;text-align:center;"><b class="num pos" style="font-family:var(--display);font-size:16px;display:block;">+6.8</b><span style="font-size:8.5px;text-transform:uppercase;color:var(--muted);">Pass Eff #1</span></div>
+          <div class="c" style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:7px 4px;text-align:center;"><b class="num" style="font-family:var(--display);font-size:16px;display:block;">12</b><span style="font-size:8.5px;text-transform:uppercase;color:var(--muted);">Laps led</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h3>His Race · Alert Feed</h3><span class="more">Customize ⚙</span></div>
+        <div class="alert"><div class="ai good">▲</div><div class="at">Passed Larson for <b>P2</b> in Turn 10. <time>Lap 47 · just now</time></div></div>
+        <div class="alert"><div class="ai warn">⛽</div><div class="at">Entered the <b>green-flag pit window</b> — can stay out 3 more laps. <time>Lap 46</time></div></div>
+        <div class="alert"><div class="ai good">★</div><div class="at">Now <b>#1 in live Adj Pass Efficiency</b> — best road passer on track. <time>Lap 44</time></div></div>
+        <div class="alert"><div class="ai warn">⚑</div><div class="at">Restart P6 after the Lap 41 caution; gained 2 on pit road. <time>Lap 44</time></div></div>
+        <div class="alert"><div class="ai bad">▼</div><div class="at">Reported <b>tight in Turn 6</b> on the scanner (loose radio). <time>Lap 38</time></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h3>Alerts I Get</h3></div>
+        <div class="pit-line">
+          <span class="pit-tag"><b>✓</b> Position changes</span>
+          <span class="pit-tag"><b>✓</b> Pit in/out</span>
+          <span class="pit-tag"><b>✓</b> Caution &amp; restart</span>
+          <span class="pit-tag"><b>✓</b> Metric milestones</span>
+          <span class="pit-tag mut">+ Stage results</span>
+        </div>
+        <p class="note" style="margin-top:8px;">In-app only for MVP (no lock-screen push yet). Persists in localStorage — no account needed.</p>
+      </div>
+    </div>
+    <div class="tabbar">
+      <a><span>⌂</span>Home</a><a><span>◔</span>Drivers</a><a class="on"><span>◉</span>Live<i class="livedot"></i></a><a><span>⇄</span>Compare</a><a><span>◎</span>Tracks</a>
+    </div>
+  </div>
+
+  <!-- ============ 6 · IDLE (no session) ============ -->
+  <div class="frame">
+    <div class="frame-label">6 · Idle — nothing on track</div>
+    <div class="appbar">
+      <div class="wordmark">Loop<em>lab</em></div>
+      <div class="season-pill num">2026 Season</div>
+    </div>
+    <div class="series-switch seg"><a class="on">Cup</a><a>Xfinity</a><a>Trucks</a></div>
+    <div class="screen">
+      <div class="card" style="text-align:center; padding:26px 16px;">
+        <div style="font-size:30px; margin-bottom:8px;">🏁</div>
+        <div class="h-title" style="font-size:20px;">No session on track</div>
+        <p class="note" style="margin-top:6px;">The live board wakes up automatically when practice, qualifying, or the race goes green.</p>
+      </div>
+      <div class="card">
+        <div class="card-h"><h3>Next Up</h3></div>
+        <div class="h-sub" style="color:var(--text);font-weight:600;">Quaker State 400</div>
+        <div class="note">Atlanta · Sat Jul 11, 7:00 PM ET · in 6 days</div>
+        <div class="pit-line" style="margin-top:10px;">
+          <span class="pit-tag">🔔 Remind me at green</span>
+          <span class="pit-tag">Set my driver</span>
+        </div>
+      </div>
+      <p class="note" style="text-align:center;">Idle = the Durable Object backs off to ~60s polling → ~$0 between races.</p>
+    </div>
+    <div class="tabbar">
+      <a><span>⌂</span>Home</a><a><span>◔</span>Drivers</a><a class="on"><span>◉</span>Live</a><a><span>⇄</span>Compare</a><a><span>◎</span>Tracks</a>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  // tap a leaderboard row to expand its drill-down (single-open accordion per board)
+  function tog(row){
+    var wasOpen = row.classList.contains('open');
+    var board = row.closest('.lb');
+    board.querySelectorAll('.lb-row.open').forEach(function(r){ r.classList.remove('open'); });
+    if(!wasOpen) row.classList.add('open');
+  }
+  // sort toggle: running order vs live loop rating
+  var seg = document.getElementById('sortseg');
+  if(seg){
+    seg.addEventListener('click', function(e){
+      var a = e.target.closest('a'); if(!a) return;
+      seg.querySelectorAll('a').forEach(function(x){ x.classList.remove('on'); });
+      a.classList.add('on');
+      document.getElementById('board').classList.toggle('by-metric', a.dataset.mode === 'metric');
+    });
+  }
+</script>
+</body>
+</html>
