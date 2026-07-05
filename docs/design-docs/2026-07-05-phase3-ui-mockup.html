@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NASCAR Analytics — Phase 3 UI Mockup</title>
+<style>
+  :root {
+    --bg: #0a0c10;
+    --surface: #12151c;
+    --surface-2: #191d26;
+    --border: #262c38;
+    --text: #e9edf4;
+    --muted: #8b95a6;
+    --accent: #ffd23f;   /* caution-flag yellow — highlights only */
+    --pos: #34d399;      /* gains / good */
+    --neg: #f87171;      /* losses / bad */
+    --display: "Avenir Next Condensed", "Arial Narrow", "Roboto Condensed", system-ui, sans-serif;
+    --body: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #06070a; color: var(--text); font-family: var(--body); padding: 32px 20px 64px; }
+  .spec { max-width: 1280px; margin: 0 auto 40px; }
+  .spec h1 { font-family: var(--display); text-transform: uppercase; letter-spacing: .03em; font-size: 34px; }
+  .spec p.sub { color: var(--muted); margin-top: 6px; max-width: 72ch; line-height: 1.5; }
+  .tokens { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 20px; }
+  .swatch { border: 1px solid var(--border); border-radius: 10px; padding: 10px 14px; background: var(--surface); display: flex; align-items: center; gap: 10px; font-size: 13px; color: var(--muted); }
+  .swatch i { width: 22px; height: 22px; border-radius: 6px; display: inline-block; border: 1px solid rgba(255,255,255,.12); }
+  .frames { display: flex; flex-wrap: wrap; gap: 28px; max-width: 1280px; margin: 0 auto; align-items: flex-start; }
+  .frame { width: 390px; background: var(--bg); border: 1px solid #2a3140; border-radius: 34px; overflow: hidden; box-shadow: 0 24px 60px rgba(0,0,0,.55); }
+  .frame-label { text-align: center; color: var(--muted); font-size: 13px; letter-spacing: .12em; text-transform: uppercase; padding: 14px 0 10px; border-bottom: 1px solid var(--border); background: #0d1016; }
+
+  /* ---------- app chrome ---------- */
+  .appbar { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px 12px; }
+  .wordmark { font-family: var(--display); font-weight: 700; font-size: 21px; letter-spacing: .06em; text-transform: uppercase; }
+  .wordmark em { font-style: normal; color: var(--accent); }
+  .season-pill { font-size: 12px; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 5px 11px; }
+  .screen { padding: 0 14px 14px; display: flex; flex-direction: column; gap: 12px; }
+  .tabbar { display: flex; border-top: 1px solid var(--border); background: #0d1016; }
+  .tabbar a { flex: 1; text-align: center; padding: 12px 0 16px; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); text-decoration: none; }
+  .tabbar a.on { color: var(--accent); }
+  .tabbar a span { display: block; font-size: 17px; margin-bottom: 2px; }
+
+  /* ---------- components ---------- */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 14px; }
+  .card-h { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 10px; }
+  .card-h h3 { font-family: var(--display); font-size: 15px; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+  .card-h h3::before { content: ""; display: inline-block; width: 4px; height: 11px; background: var(--accent); border-radius: 2px; margin-right: 8px; }
+  .card-h .more { font-size: 12px; color: var(--muted); }
+  .num { font-variant-numeric: tabular-nums; }
+
+  .chips { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .chip { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 10px 6px; text-align: center; }
+  .chip b { display: block; font-family: var(--display); font-size: 22px; letter-spacing: .02em; }
+  .chip span { font-size: 10px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th { font-size: 10px; letter-spacing: .09em; text-transform: uppercase; color: var(--muted); text-align: left; padding: 4px 6px; font-weight: 600; }
+  td { padding: 7px 6px; border-top: 1px solid #1d222c; font-variant-numeric: tabular-nums; }
+  th.r, td.r { text-align: right; }
+  .pos { color: var(--pos); } .neg { color: var(--neg); } .mut { color: var(--muted); }
+
+  .badge { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; border-radius: 8px; font-family: var(--display); font-weight: 700; font-size: 15px; color: #fff; }
+  .b-hms { background: #1c5bd4; } .b-jgr { background: #d4541c; } .b-th { background: #c8102e; }
+  .b-23xi { background: #3b3f4a; } .b-tp { background: #7a4dd8; }
+
+  .drow { display: flex; align-items: center; gap: 10px; }
+  .drow .nm { font-weight: 600; font-size: 14.5px; }
+  .drow .sub { font-size: 11.5px; color: var(--muted); }
+
+  .bar-row { display: grid; grid-template-columns: 92px 1fr 44px; align-items: center; gap: 8px; font-size: 12.5px; padding: 5px 0; }
+  .bar-row .lbl { color: var(--muted); text-transform: uppercase; letter-spacing: .05em; font-size: 10.5px; }
+  .bar { height: 8px; border-radius: 4px; background: var(--surface-2); overflow: hidden; }
+  .bar i { display: block; height: 100%; border-radius: 4px; background: #4b83f0; }
+  .bar i.good { background: var(--pos); } .bar i.bad { background: var(--neg); } .bar i.acc { background: var(--accent); }
+
+  .seg { display: flex; background: var(--surface-2); border: 1px solid var(--border); border-radius: 12px; padding: 3px; }
+  .seg a { flex: 1; text-align: center; font-size: 11px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); padding: 8px 0; border-radius: 9px; text-decoration: none; }
+  .seg a.on { background: var(--accent); color: #14150e; font-weight: 700; }
+  .series-switch { margin: 2px 14px 12px; }
+  .series-switch a { font-size: 12px; letter-spacing: .08em; padding: 9px 0; }
+
+  .trend { font-size: 11px; padding: 3px 8px; border-radius: 999px; font-weight: 600; }
+  .trend.up { background: rgba(52,211,153,.14); color: var(--pos); }
+  .trend.dn { background: rgba(248,113,113,.14); color: var(--neg); }
+
+  .cmp-row { display: grid; grid-template-columns: 52px 1fr 90px 1fr 52px; align-items: center; gap: 6px; padding: 7px 0; border-top: 1px solid #1d222c; font-size: 13px; }
+  .cmp-row .m { text-align: center; font-size: 10px; letter-spacing: .07em; text-transform: uppercase; color: var(--muted); }
+  .cmp-row .v { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .cmp-row .v.l { text-align: right; } .cmp-row .v.r2 { text-align: left; }
+  .cmp-bar { height: 7px; border-radius: 4px; background: var(--surface-2); position: relative; overflow: hidden; }
+  .cmp-bar i { position: absolute; top: 0; height: 100%; }
+  .cmp-bar.l i { right: 0; background: #4b83f0; border-radius: 4px 0 0 4px; }
+  .cmp-bar.r2 i { left: 0; background: #d4541c; border-radius: 0 4px 4px 0; }
+  .cmp-bar .win { background: var(--pos) !important; }
+
+  .hero { display: flex; align-items: center; gap: 12px; background: linear-gradient(135deg, rgba(255,210,63,.10), rgba(255,210,63,0) 55%), var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 14px; }
+  .hero .big { font-family: var(--display); font-size: 19px; font-weight: 700; }
+  .hero .meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .hero .rating { margin-left: auto; text-align: right; }
+  .hero .rating b { font-family: var(--display); font-size: 26px; color: var(--accent); display: block; }
+  .hero .rating span { font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+
+  .note { font-size: 11px; color: var(--muted); line-height: 1.45; }
+  .h-title { font-family: var(--display); text-transform: uppercase; font-size: 24px; letter-spacing: .02em; line-height: 1.1; }
+  .h-sub { color: var(--muted); font-size: 12.5px; margin-top: 3px; }
+</style>
+</head>
+<body>
+
+<div class="spec">
+  <h1>Phase 3 UI — Design Mockup</h1>
+  <p class="sub">Five phone screens, all numbers pulled live from the computed database (mid-2026 season, through Sonoma).
+     Dark default, caution-flag yellow as the accent, green/red strictly for gains/losses, condensed display type for headlines,
+     tabular numerals everywhere. Wordmark "LOOPLAB" is a placeholder — naming is open.</p>
+  <div class="tokens">
+    <div class="swatch"><i style="background:#0a0c10"></i>bg #0a0c10</div>
+    <div class="swatch"><i style="background:#12151c"></i>surface #12151c</div>
+    <div class="swatch"><i style="background:#262c38"></i>border #262c38</div>
+    <div class="swatch"><i style="background:#e9edf4"></i>text #e9edf4</div>
+    <div class="swatch"><i style="background:#8b95a6"></i>muted #8b95a6</div>
+    <div class="swatch"><i style="background:#ffd23f"></i>accent #ffd23f</div>
+    <div class="swatch"><i style="background:#34d399"></i>positive #34d399</div>
+    <div class="swatch"><i style="background:#f87171"></i>negative #f87171</div>
+  </div>
+</div>
+
+<div class="frames">
+
+  <!-- ============ HOME ============ -->
+  <div class="frame">
+    <div class="frame-label">1 · Home</div>
+    <div class="appbar">
+      <div class="wordmark">Loop<em>lab</em></div>
+      <div class="season-pill num">2026 Season</div>
+    </div>
+    <div class="series-switch seg">
+      <a class="on">Cup</a><a>Xfinity</a><a>Trucks</a>
+    </div>
+    <div class="screen">
+      <div class="card">
+        <div class="card-h"><h3>Last Race · Jun 28</h3><span class="more">Full breakdown →</span></div>
+        <div class="h-title">Toyota / Save Mart 350</div>
+        <div class="h-sub">Sonoma Raceway · Road · 110 laps · 3 cautions · 8 lead changes</div>
+        <div class="hero" style="margin-top:10px; border:none; padding:10px 0 0; background:none;">
+          <span class="badge b-th">97</span>
+          <div>
+            <div class="big">Shane van Gisbergen</div>
+            <div class="meta">Won from P6 · led 74 of 110 · MoV 0.357s</div>
+          </div>
+          <div class="rating"><b class="num">148.5</b><span>Rating</span></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h3>Championship</h3><span class="more">Standings →</span></div>
+        <table>
+          <tr><th>#</th><th>Driver</th><th class="r">W</th><th class="r">Avg Fin</th><th class="r">Pts</th></tr>
+          <tr><td class="mut">1</td><td>Denny Hamlin</td><td class="r">4</td><td class="r">9.2</td><td class="r"><b>718</b></td></tr>
+          <tr><td class="mut">2</td><td>Tyler Reddick</td><td class="r">5</td><td class="r">9.8</td><td class="r"><b>718</b></td></tr>
+          <tr><td class="mut">3</td><td>Ryan Blaney</td><td class="r">1</td><td class="r">11.3</td><td class="r">606</td></tr>
+          <tr><td class="mut">4</td><td>Ty Gibbs</td><td class="r">1</td><td class="r">13.2</td><td class="r">587</td></tr>
+          <tr><td class="mut">5</td><td>Kyle Larson</td><td class="r">0</td><td class="r">13.9</td><td class="r">563</td></tr>
+        </table>
+        <p class="note" style="margin-top:8px">⚑ Hamlin and Reddick are tied at 718 — first mid-season points tie of the Next Gen era.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h3>In Form · Last 6</h3></div>
+        <table>
+          <tr><th>Driver</th><th class="r">Avg Fin</th><th class="r">Rating</th><th class="r">Trend</th></tr>
+          <tr><td>Kyle Larson</td><td class="r">7.3</td><td class="r">113.1</td><td class="r"><span class="trend up">▲ hot</span></td></tr>
+          <tr><td>Denny Hamlin</td><td class="r">7.7</td><td class="r">101.1</td><td class="r"><span class="trend up">▲</span></td></tr>
+          <tr><td>Ryan Blaney</td><td class="r">8.0</td><td class="r">100.1</td><td class="r"><span class="trend up">▲</span></td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="tabbar">
+      <a class="on"><span>⌂</span>Home</a><a><span>◔</span>Drivers</a><a><span>⚑</span>Races</a><a><span>⇄</span>Compare</a><a><span>◎</span>Tracks</a>
+    </div>
+  </div>
+
+  <!-- ============ DRIVER PROFILE ============ -->
+  <div class="frame">
+    <div class="frame-label">2 · Driver Profile</div>
+    <div class="appbar">
+      <div class="wordmark">Loop<em>lab</em></div>
+      <div class="season-pill num">2026 Season</div>
+    </div>
+    <div class="series-switch seg">
+      <a class="on">Cup</a><a>Xfinity</a><a>Trucks</a>
+    </div>
+    <div class="screen">
+      <div class="drow" style="padding: 2px 4px;">
+        <span class="badge b-hms" style="width:44px;height:44px;font-size:22px;">5</span>
+        <div>
+          <div class="h-title" style="font-size:26px;">Kyle Larson</div>
+          <div class="sub">Hendrick Motorsports · Chevrolet · 2017–2026</div>
+        </div>
+      </div>
+
+      <div class="chips">
+        <div class="chip"><b class="num">13.9</b><span>Avg Fin</span></div>
+        <div class="chip"><b class="num">97.3</b><span>Rating</span></div>
+        <div class="chip"><b class="num">8</b><span>Top 5s</span></div>
+        <div class="chip"><b class="num">610</b><span>Laps Led</span></div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h3>Form · Rating, Last 8</h3><span class="trend up">▲ 7.3 avg fin L6</span></div>
+        <svg viewBox="0 0 340 72" width="100%" height="72">
+          <polyline fill="none" stroke="#2a3140" stroke-width="1" points="0,58 340,58"/>
+          <polyline fill="none" stroke="#34d399" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"
+            points="10,40 56,52 102,45 148,54 194,58 240,37 286,17 332,6"/>
+          <circle cx="332" cy="6" r="3.5" fill="#34d399"/>
+          <text x="332" y="20" fill="#8b95a6" font-size="10" text-anchor="end" font-family="sans-serif">113.1</text>
+          <text x="10" y="34" fill="#8b95a6" font-size="10" font-family="sans-serif">89.9</text>
+        </svg>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h3>Track Types · 2026 Avg Finish</h3></div>
+        <div class="bar-row"><span class="lbl">Short</span><span class="bar"><i class="good" style="width:88%"></i></span><span class="num r" style="text-align:right"><b>5.0</b></span></div>
+        <div class="bar-row"><span class="lbl">Road</span><span class="bar"><i class="good" style="width:72%"></i></span><span class="num" style="text-align:right">9.0</span></div>
+        <div class="bar-row"><span class="lbl">Intermediate</span><span class="bar"><i style="width:55%"></i></span><span class="num" style="text-align:right">14.0</span></div>
+        <div class="bar-row"><span class="lbl">Superspdwy</span><span class="bar"><i class="bad" style="width:18%"></i></span><span class="num" style="text-align:right">29.3</span></div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h3>Loop Metrics · 2026</h3></div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+          <div>
+            <b class="num neg" style="font-family:var(--display);font-size:24px;">−1.2</b>
+            <div class="note"><b>Adj Pass Efficiency</b> — green-flag passing vs the average car running where he runs</div>
+          </div>
+          <div>
+            <b class="num pos" style="font-family:var(--display);font-size:24px;">+0.43</b>
+            <div class="note"><b>Closer Score</b> — positions gained in closing laps vs expectation</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h3>Seasons</h3></div>
+        <table>
+          <tr><th>Yr</th><th class="r">W</th><th class="r">T5</th><th class="r">Avg Fin</th><th class="r">Rating</th><th class="r">Pts</th></tr>
+          <tr><td>2026</td><td class="r">0</td><td class="r">8</td><td class="r">13.9</td><td class="r">97.3</td><td class="r">563</td></tr>
+          <tr><td>2025</td><td class="r">3</td><td class="r">15</td><td class="r">12.8</td><td class="r">94.3</td><td class="r">1155</td></tr>
+          <tr><td>2024</td><td class="r">6</td><td class="r">15</td><td class="r">12.9</td><td class="r">101.2</td><td class="r">1183</td></tr>
+          <tr><td>2023</td><td class="r">4</td><td class="r">15</td><td class="r">14.6</td><td class="r">96.8</td><td class="r">1098</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="tabbar">
+      <a><span>⌂</span>Home</a><a class="on"><span>◔</span>Drivers</a><a><span>⚑</span>Races</a><a><span>⇄</span>Compare</a><a><span>◎</span>Tracks</a>
+    </div>
+  </div>
+
+  <!-- ============ RACE PAGE ============ -->
+  <div class="frame">
+    <div class="frame-label">3 · Race Page</div>
+    <div class="appbar">
+      <div class="wordmark">Loop<em>lab</em></div>
+      <div class="season-pill num">2026 Season</div>
+    </div>
+    <div class="series-switch seg">
+      <a class="on">Cup</a><a>Xfinity</a><a>Trucks</a>
+    </div>
+    <div class="screen">
+      <div>
+        <div class="h-title">Toyota / Save Mart 350</div>
+        <div class="h-sub">Sonoma Raceway · Road · Jun 28, 2026</div>
+      </div>
+
+      <div class="chips">
+        <div class="chip"><b class="num">110</b><span>Laps</span></div>
+        <div class="chip"><b class="num">3</b><span>Cautions</span></div>
+        <div class="chip"><b class="num">8</b><span>Lead Chg</span></div>
+        <div class="chip"><b class="num">.357</b><span>MoV (s)</span></div>
+      </div>
+
+      <div class="hero">
+        <span class="badge b-th" style="width:40px;height:40px;font-size:19px;">97</span>
+        <div>
+          <div class="big">Shane van Gisbergen</div>
+          <div class="meta">P6 → P1 · led 74 laps · 24 fast laps</div>
+        </div>
+        <div class="rating"><b class="num">148.5</b><span>Rating</span></div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h3>Results</h3><span class="more">All 38 →</span></div>
+        <table>
+          <tr><th>Fin</th><th></th><th>Driver</th><th class="r">Start</th><th class="r">Rating</th></tr>
+          <tr><td><b>1</b></td><td class="pos">▲5</td><td>S. van Gisbergen</td><td class="r mut">6</td><td class="r">148.5</td></tr>
+          <tr><td><b>2</b></td><td class="pos">▲5</td><td>Chase Briscoe</td><td class="r mut">7</td><td class="r">118.4</td></tr>
+          <tr><td><b>3</b></td><td class="neg">▼2</td><td>Ty Gibbs</td><td class="r mut">1</td><td class="r">120.9</td></tr>
+          <tr><td><b>4</b></td><td class="neg">▼1</td><td>Kyle Larson</td><td class="r mut">3</td><td class="r">113.4</td></tr>
+          <tr><td><b>5</b></td><td class="pos">▲9</td><td>Christopher Bell</td><td class="r mut">14</td><td class="r">104.4</td></tr>
+          <tr><td><b>6</b></td><td class="pos">▲10</td><td>Ryan Blaney</td><td class="r mut">16</td><td class="r">104.5</td></tr>
+          <tr><td><b>7</b></td><td class="pos">▲10</td><td>Connor Zilisch</td><td class="r mut">17</td><td class="r">100.7</td></tr>
+          <tr><td><b>8</b></td><td class="pos">▲11</td><td>Ryan Preece</td><td class="r mut">19</td><td class="r">86.8</td></tr>
+        </table>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h3>Loop Insights</h3></div>
+        <div class="bar-row"><span class="lbl">GF Passes</span><span class="bar"><i class="acc" style="width:95%"></i></span><span class="num" style="text-align:right">76</span></div>
+        <p class="note" style="margin:-2px 0 8px">Christopher Bell made 76 green-flag passes — most in the race — after starting P14.</p>
+        <div class="bar-row"><span class="lbl">Fast Laps</span><span class="bar"><i class="acc" style="width:80%"></i></span><span class="num" style="text-align:right">24</span></div>
+        <p class="note" style="margin:-2px 0">Van Gisbergen owned 24 of the race's fastest laps; no one else had more than 20.</p>
+      </div>
+    </div>
+    <div class="tabbar">
+      <a><span>⌂</span>Home</a><a><span>◔</span>Drivers</a><a class="on"><span>⚑</span>Races</a><a><span>⇄</span>Compare</a><a><span>◎</span>Tracks</a>
+    </div>
+  </div>
+
+  <!-- ============ COMPARE ============ -->
+  <div class="frame">
+    <div class="frame-label">4 · Head-to-Head</div>
+    <div class="appbar">
+      <div class="wordmark">Loop<em>lab</em></div>
+      <div class="season-pill num">2026 Season</div>
+    </div>
+    <div class="series-switch seg">
+      <a class="on">Cup</a><a>Xfinity</a><a>Trucks</a>
+    </div>
+    <div class="screen">
+      <div style="display:flex; align-items:center; justify-content:space-between; padding: 2px 4px;">
+        <div class="drow"><span class="badge b-hms">5</span><div><div class="nm">Kyle Larson</div><div class="sub">Hendrick</div></div></div>
+        <span style="font-family:var(--display); color:var(--muted); font-size:15px;">VS</span>
+        <div class="drow" style="flex-direction:row-reverse; text-align:right;"><span class="badge b-jgr">20</span><div><div class="nm">Christopher Bell</div><div class="sub">Joe Gibbs</div></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h3>2026 Season</h3><span class="more">Change year ▾</span></div>
+        <div class="cmp-row"><span class="v l num">13.9</span><span class="cmp-bar l"><i class="win" style="width:78%"></i></span><span class="m">Avg Finish</span><span class="cmp-bar r2"><i style="width:52%"></i></span><span class="v r2 num">17.7</span></div>
+        <div class="cmp-row"><span class="v l num">8.9</span><span class="cmp-bar l"><i class="win" style="width:85%"></i></span><span class="m">Avg Start</span><span class="cmp-bar r2"><i style="width:48%"></i></span><span class="v r2 num">14.1</span></div>
+        <div class="cmp-row"><span class="v l num">97.3</span><span class="cmp-bar l"><i class="win" style="width:82%"></i></span><span class="m">Rating</span><span class="cmp-bar r2"><i style="width:66%"></i></span><span class="v r2 num">88.7</span></div>
+        <div class="cmp-row"><span class="v l num">−1.2</span><span class="cmp-bar l"><i style="width:28%"></i></span><span class="m">Adj Pass Eff</span><span class="cmp-bar r2"><i class="win" style="width:88%"></i></span><span class="v r2 num">+4.0</span></div>
+        <div class="cmp-row"><span class="v l num">+0.43</span><span class="cmp-bar l"><i class="win" style="width:70%"></i></span><span class="m">Closer</span><span class="cmp-bar r2"><i style="width:16%"></i></span><span class="v r2 num">−3.24</span></div>
+        <div class="cmp-row"><span class="v l num">85%</span><span class="cmp-bar l"><i class="win" style="width:85%"></i></span><span class="m">Top-15 Laps</span><span class="cmp-bar r2"><i style="width:70%"></i></span><span class="v r2 num">70%</span></div>
+        <div class="cmp-row"><span class="v l num">610</span><span class="cmp-bar l"><i class="win" style="width:80%"></i></span><span class="m">Laps Led</span><span class="cmp-bar r2"><i style="width:55%"></i></span><span class="v r2 num">416</span></div>
+        <div class="cmp-row"><span class="v l num">563</span><span class="cmp-bar l"><i class="win" style="width:88%"></i></span><span class="m">Points</span><span class="cmp-bar r2"><i style="width:73%"></i></span><span class="v r2 num">466</span></div>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h3>The Story</h3></div>
+        <p class="note" style="font-size:12.5px">Larson leads nearly everything on raw pace — but Bell is passing <b class="pos">+4.0 points above expectation</b> for where he runs, the best adjusted pass efficiency gap between any two playoff drivers. Bell's <b class="neg">−3.24 Closer Score</b> says the finishes aren't matching the speed late in races.</p>
+      </div>
+    </div>
+    <div class="tabbar">
+      <a><span>⌂</span>Home</a><a><span>◔</span>Drivers</a><a><span>⚑</span>Races</a><a class="on"><span>⇄</span>Compare</a><a><span>◎</span>Tracks</a>
+    </div>
+  </div>
+
+  <!-- ============ TRACK EXPLORER ============ -->
+  <div class="frame">
+    <div class="frame-label">5 · Track-Type Explorer</div>
+    <div class="appbar">
+      <div class="wordmark">Loop<em>lab</em></div>
+      <div class="season-pill num">2026 Season</div>
+    </div>
+    <div class="series-switch seg">
+      <a class="on">Cup</a><a>Xfinity</a><a>Trucks</a>
+    </div>
+    <div class="screen">
+      <div class="seg">
+        <a>Superspdwy</a><a>Intermediate</a><a>Short</a><a class="on">Road</a>
+      </div>
+      <div style="display:flex; justify-content:space-between; align-items:center; padding: 0 4px;">
+        <span class="note">2023–2026 · points races · min 8 starts</span>
+        <span class="note" style="color:var(--accent)">Filters ⚙</span>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h3>Road Courses · Avg Finish</h3></div>
+        <table>
+          <tr><th>#</th><th>Driver</th><th class="r">Starts</th><th class="r">W</th><th class="r">Avg Fin</th></tr>
+          <tr><td class="mut">1</td><td>S. van Gisbergen</td><td class="r">16</td><td class="r"><b class="pos">8</b></td><td class="r"><b>8.3</b></td></tr>
+          <tr><td class="mut">2</td><td>Chris Buescher</td><td class="r">21</td><td class="r">1</td><td class="r">10.2</td></tr>
+          <tr><td class="mut">3</td><td>Chase Elliott</td><td class="r">20</td><td class="r">0</td><td class="r">11.8</td></tr>
+          <tr><td class="mut">4</td><td>Tyler Reddick</td><td class="r">21</td><td class="r">2</td><td class="r">12.0</td></tr>
+          <tr><td class="mut">5</td><td>Christopher Bell</td><td class="r">21</td><td class="r">1</td><td class="r">12.1</td></tr>
+          <tr><td class="mut">6</td><td>M. McDowell</td><td class="r">21</td><td class="r">1</td><td class="r">12.6</td></tr>
+        </table>
+        <p class="note" style="margin-top:8px">SVG has won half his Cup road starts. No other driver in the field is above 10%.</p>
+      </div>
+
+      <div class="card">
+        <div class="card-h"><h3>Same View, Other Lenses</h3></div>
+        <p class="note">Sortable by Rating · Adj Pass Efficiency · Closer Score · Top-15 Lap % — one tap re-ranks the table. Every column is a loop-data stat nobody else surfaces by track type.</p>
+      </div>
+    </div>
+    <div class="tabbar">
+      <a><span>⌂</span>Home</a><a><span>◔</span>Drivers</a><a><span>⚑</span>Races</a><a><span>⇄</span>Compare</a><a class="on"><span>◎</span>Tracks</a>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,51 @@
+[
+ {
+  "race_id": 5617,
+  "race_name": "Toyota / Save Mart 350",
+  "series_id": 1,
+  "sch_laps": 110,
+  "act_laps": 110,
+  "drivers": [
+   {
+    "driver_id": 4469,
+    "start_ps": 6,
+    "mid_ps": 7,
+    "ps": 1,
+    "closing_ps": 1,
+    "closing_laps_diff": 0,
+    "best_ps": 1,
+    "worst_ps": 11,
+    "avg_ps": 2.07,
+    "passes_gf": 17,
+    "passing_diff": -8,
+    "passed_gf": 25,
+    "quality_passes": 12,
+    "fast_laps": 24,
+    "top15_laps": 110,
+    "lead_laps": 74,
+    "laps": 110,
+    "rating": 148.45
+   },
+   {
+    "driver_id": 4228,
+    "start_ps": 7,
+    "mid_ps": 9,
+    "ps": 2,
+    "closing_ps": 2,
+    "closing_laps_diff": 0,
+    "best_ps": 2,
+    "worst_ps": 13,
+    "avg_ps": 4.2,
+    "passes_gf": 26,
+    "passing_diff": -10,
+    "passed_gf": 36,
+    "quality_passes": 19,
+    "fast_laps": 4,
+    "top15_laps": 110,
+    "lead_laps": 0,
+    "laps": 110,
+    "rating": 118.37
+   }
+  ]
+ }
+]

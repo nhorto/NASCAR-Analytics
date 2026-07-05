@@ -1,0 +1,80 @@
+{
+ "laps": [
+  {
+   "Number": "97",
+   "FullName": "Shane Van Gisbergen",
+   "Manufacturer": "Chv",
+   "RunningPos": 1,
+   "NASCARDriverID": 4469,
+   "Laps": [
+    {
+     "Lap": 0,
+     "LapTime": null,
+     "LapSpeed": null,
+     "RunningPos": 6
+    },
+    {
+     "Lap": 1,
+     "LapTime": 80.362,
+     "LapSpeed": "89.147",
+     "RunningPos": 5
+    },
+    {
+     "Lap": 2,
+     "LapTime": 77.886,
+     "LapSpeed": "91.981",
+     "RunningPos": 4
+    },
+    {
+     "Lap": 3,
+     "LapTime": 77.739,
+     "LapSpeed": "92.155",
+     "RunningPos": 4
+    }
+   ]
+  },
+  {
+   "Number": "19",
+   "FullName": "Chase Briscoe",
+   "Manufacturer": "Tyt",
+   "RunningPos": 2,
+   "NASCARDriverID": 4228,
+   "Laps": [
+    {
+     "Lap": 0,
+     "LapTime": null,
+     "LapSpeed": null,
+     "RunningPos": 7
+    },
+    {
+     "Lap": 1,
+     "LapTime": 81.465,
+     "LapSpeed": "87.940",
+     "RunningPos": 8
+    },
+    {
+     "Lap": 2,
+     "LapTime": 78.482,
+     "LapSpeed": "91.282",
+     "RunningPos": 8
+    },
+    {
+     "Lap": 3,
+     "LapTime": 78.004,
+     "LapSpeed": "91.841",
+     "RunningPos": 8
+    }
+   ]
+  }
+ ],
+ "flags": [
+  {
+   "LapsCompleted": 0,
+   "FlagState": 8
+  },
+  {
+   "LapsCompleted": 1,
+   "FlagState": 1
+  }
+ ]
+}
