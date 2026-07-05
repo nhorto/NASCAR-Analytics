@@ -59,3 +59,26 @@ export const VEHICLE_STATUS_RUNNING = 1;
  * per-track with live/historical data in a later phase.
  */
 export const DEFAULT_STINT_LAPS = 40;
+
+// ---- history / trend derivation (Phase 3) ----
+
+/** Max per-lap frames the edge keeps in the rolling history buffer. */
+export const HISTORY_LAPS = 30;
+
+/** Number of segbar ticks (the last-N-lap trend shown under each driver). */
+export const SEG_COUNT = 5;
+
+/** Window (laps) for the Race Overview "movers" gainers/faders. */
+export const MOVER_WINDOW_LAPS = 10;
+
+/** How many movers to surface on each side (gaining / fading). */
+export const MOVER_TOP_N = 3;
+
+/** Two cars within this on-track gap (seconds) count as a live "battle". */
+export const BATTLE_GAP_SECONDS = 0.4;
+
+/** Max battles surfaced in Race Overview. */
+export const BATTLE_TOP_N = 5;
+
+/** Length of the per-driver trend series (position / speed sparklines). */
+export const TREND_SAMPLES = 12;

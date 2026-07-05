@@ -144,7 +144,16 @@ export interface LiveDriverRow {
   livePassEfficiency: number | null; // passes / (passes + passed), 0–1
   adjPassEfficiency: number | null; // residual vs league baseline, ×100
   closerEstimate: number | null; // live last-10% position diff vs baseline
+  // Filled by the history enrichment (attachTrends) — undefined in the raw snapshot,
+  // populated only at the edge where per-lap history exists:
+  segments?: SegTrend[]; // last-5-lap trend, oldest→newest (segbar)
+  posTrend?: number[]; // recent running positions, oldest→newest (sparkline)
+  spdTrend?: Array<number | null>; // recent last-lap speeds, oldest→newest (falloff)
+  mover10?: number | null; // positions gained (+) / lost (−) vs ~10 laps ago
 }
+
+/** One segbar tick: gaining (green) / holding (yellow) / losing (red). */
+export type SegTrend = "g" | "y" | "r";
 
 export interface LiveSnapshot {
   raceId: number;
@@ -214,9 +223,67 @@ export interface LiveBaselines {
 }
 
 /**
+ * One captured lap of history: each running car's position + last-lap speed at
+ * `lap`. Keyed by driverId (string for JSON). Kept in a capped rolling buffer so
+ * the edge can derive trends the single snapshot can't (segbars, movers, falloff).
+ */
+export interface LiveFrame {
+  lap: number;
+  pos: Record<string, number>;
+  spd: Record<string, number | null>;
+}
+
+/** Rolling per-lap history the DO persists between ticks. */
+export interface LiveHistory {
+  frames: LiveFrame[];
+}
+
+/** A car among the biggest position gainers/faders over the mover window. */
+export interface LiveMover {
+  driverId: number;
+  driverName: string;
+  carNumber: string;
+  manufacturer: string | null;
+  delta: number; // + gained / − lost over the window
+}
+
+/** Two cars racing nose-to-tail (within the battle-gap threshold on track). */
+export interface LiveBattle {
+  aId: number;
+  aName: string;
+  aCar: string;
+  aPos: number;
+  bId: number;
+  bName: string;
+  bCar: string;
+  bPos: number;
+  gap: number; // seconds between them
+  closing: boolean; // gap shrinking vs the previous frame
+}
+
+/** The live leader of one proprietary/loop metric across the field. */
+export interface FieldLeader {
+  key: string; // "adjPE" | "qualityPasses" | "closer" | "fastLaps"
+  label: string;
+  driverId: number;
+  driverName: string;
+  carNumber: string;
+  value: number;
+}
+
+/** The next scheduled session for the idle "Next Up" card. */
+export interface NextRace {
+  seriesId: number;
+  name: string | null;
+  trackName: string | null;
+  startTimeUtc: string | null;
+}
+
+/**
  * The client-facing payload the edge stores and serves at GET /api/live: the
- * enriched snapshot (leaderboard + live metrics), the rolling alert feed
- * (newest first), pit-cycle predictions, and liveness/timing. JSON-serializable.
+ * enriched snapshot (leaderboard + live metrics + trends), the rolling alert feed
+ * (newest first), pit-cycle predictions, race-overview derivations, and
+ * liveness/timing. JSON-serializable.
  */
 export interface LivePayload {
   ok: boolean;
@@ -227,4 +294,8 @@ export interface LivePayload {
   snapshot: LiveSnapshot;
   alerts: LiveAlertEvent[];
   pitCycles: PitCyclePrediction[];
+  movers: { gaining: LiveMover[]; fading: LiveMover[] };
+  battles: LiveBattle[];
+  fieldLeaders: FieldLeader[];
+  nextRace: NextRace | null;
 }

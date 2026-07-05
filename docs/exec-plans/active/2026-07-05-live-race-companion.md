@@ -198,6 +198,39 @@ the strategy/pit-cycle tracker, My Driver + alert feed, and an idle state. Open
 questions (nav slot, sections-vs-scroll, default sort, TV-sync slider) are logged
 in the spec for owner sign-off before build.
 
+**Owner decisions (2026-07-05) — 🚧 Phase 3 IN PROGRESS:**
+- **Nav:** a **permanent Live tab** (8th bottom-tab) with a 🔴 live-dot shown only
+  when a session is on track. Tab bar condenses to stay usable on mobile.
+- **Layout:** **secondary sub-tabs inside Live** — Board / Overview / Strategy /
+  My Driver (not one long scroll).
+- **Scope:** the **full mockup in one pass**. That requires the edge to accumulate
+  **per-lap history** (the single `/api/live` snapshot can't power segbars, last-10-lap
+  movers, tire-falloff, or the trend sparklines), so Phase 3 has two halves:
+
+  **3a — Edge history + richer payload (pure domain + DO):**
+  - `live/service.ts` gains pure history helpers: `updateHistory(prev, snapshot)`
+    (append a capped per-lap frame of `{pos, spd}` per driver), plus `attachTrends`
+    (segbar last-5 trend, `posTrend`/`spdTrend` sparkline series, `mover10`),
+    `deriveMovers` (last-10-lap gainers/faders), `deriveBattles` (adjacent cars within
+    0.4s — from the current snapshot), `deriveFieldLeaders` (per-metric live leader).
+  - `live/runtime.ts` `processFeed` now also takes/returns `LiveHistory` and emits the
+    enriched `LivePayload` (`movers`, `battles`, `fieldLeaders`, trend-enriched drivers,
+    optional `nextRace`). New payload/types in `live/types.ts`.
+  - The DO persists `history`, fetches+caches the per-series **schedule feed** for the
+    idle "Next Up", and passes history through each tick. Worker redeploys.
+
+  **3b — Main-site Live UI (client-rendered, matches the mockup):**
+  - `live` nav tab in `layout.ts` (+ `window.__LIVE_API__` = the Worker origin);
+    LIVE-component CSS ported into `style.css`.
+  - `pages/live.ts` shell + `client/live.js`: sub-tabbed Board (Running-Order default,
+    one tap to **Loop Rating ★**) with tap-to-expand drill-downs, Overview, Strategy,
+    My Driver (localStorage follow) + alert feed, and the idle state.
+  - Home **🔴 LIVE banner** + "While You Were Away" digest (client-detected liveness).
+  - `export.ts`/`server.ts` wire `/live` per series + the client asset.
+
+  Default sort = **Running Order** (one tap to the moat). TV-sync slider + confidence
+  indicator deferred to a fast-follow.
+
 **Phase 4 — Verify & document.** Drive it against a live (or replayed) race; tune
 cadence; confirm idle → $0. Update ARCHITECTURE.md (new `live` domain + `live-store`
 provider, "Current Guarantees", "What Does NOT Exist"), QUALITY_SCORE, and move this

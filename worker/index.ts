@@ -7,7 +7,14 @@
 // redeploy, no cross-origin. See docs/exec-plans/active/2026-07-05-live-race-companion.md.
 
 import { liveConfig, liveRuntime } from "../src/domains/live/index.ts";
-import type { LiveAlertEvent, LiveFeed, LivePayload, LiveSnapshot } from "../src/domains/live/index.ts";
+import type {
+  LiveAlertEvent,
+  LiveFeed,
+  LiveHistory,
+  LivePayload,
+  LiveSnapshot,
+  NextRace,
+} from "../src/domains/live/index.ts";
 import { BASELINES } from "./baselines.ts";
 
 interface Env {
@@ -62,20 +69,26 @@ export class LiveCoordinator {
       if (feed) {
         const prevSnapshot = (await this.state.storage.get<LiveSnapshot>("prevSnapshot")) ?? null;
         const prevAlerts = (await this.state.storage.get<LiveAlertEvent[]>("alerts")) ?? [];
+        const prevHistory = (await this.state.storage.get<LiveHistory>("history")) ?? null;
         const baselines = BASELINES[feed.series_id] ?? BASELINES[1] ?? null;
 
-        const { payload, snapshot } = liveRuntime.processFeed(feed, {
+        const { payload, snapshot, history } = liveRuntime.processFeed(feed, {
           baselines,
           prevSnapshot,
           prevAlerts,
+          prevHistory,
           maxAlerts: MAX_ALERTS,
           fetchedAt: Date.now(),
         });
         live = payload.live;
 
+        // Only the idle state needs "Next Up"; skip the schedule fetch while racing.
+        if (!live) payload.nextRace = await this.getNextRace(feed.series_id);
+
         await this.state.storage.put("latest", payload);
         await this.state.storage.put("prevSnapshot", snapshot);
         await this.state.storage.put("alerts", payload.alerts);
+        await this.state.storage.put("history", history);
       }
     } catch {
       // Keep the last good snapshot; just try again next tick.
@@ -90,6 +103,64 @@ export class LiveCoordinator {
     const next = live ? liveConfig.POLL_INTERVAL_MS : liveConfig.IDLE_POLL_INTERVAL_MS;
     await this.state.storage.setAlarm(Date.now() + next);
   }
+
+  /** Next scheduled session for the idle "Next Up" card; schedule cached ~10 min. */
+  private async getNextRace(seriesId: number): Promise<NextRace | null> {
+    const CACHE_MS = 10 * 60 * 1000;
+    try {
+      const now = Date.now();
+      const cached = await this.state.storage.get<{ at: number; seriesId: number; races: unknown[] }>("schedule");
+      let races = cached?.races;
+      if (!cached || cached.seriesId !== seriesId || now - cached.at > CACHE_MS) {
+        const year = new Date().getUTCFullYear();
+        const url = `https://cf.nascar.com/cacher/${year}/${seriesId}/schedule-feed.json`;
+        const res = await fetch(url, { headers: { "User-Agent": liveConfig.BROWSER_UA }, cf: { cacheTtl: 60 } });
+        if (res.ok) {
+          const parsed = await res.json();
+          if (Array.isArray(parsed)) {
+            races = parsed;
+            await this.state.storage.put("schedule", { at: now, seriesId, races });
+          }
+        }
+      }
+      return pickNextRace(races ?? [], seriesId);
+    } catch {
+      return null;
+    }
+  }
+}
+
+// ---- schedule helpers ----
+
+/** Parse a NASCAR schedule timestamp, tolerating a missing UTC marker. */
+function parseUtc(raw: string): number {
+  const s = /[zZ]|[+-]\d\d:?\d\d$/.test(raw) ? raw : raw.replace(" ", "T") + "Z";
+  return Date.parse(s);
+}
+
+/** The soonest race in the schedule feed that starts after now. */
+function pickNextRace(races: unknown[], seriesId: number): NextRace | null {
+  const now = Date.now();
+  let best: Record<string, unknown> | null = null;
+  let bestT = Infinity;
+  for (const r of races) {
+    if (!r || typeof r !== "object") continue;
+    const rec = r as Record<string, unknown>;
+    const raw = (rec.start_time_utc ?? rec.race_date_utc ?? rec.start_time) as string | undefined;
+    if (!raw) continue;
+    const t = parseUtc(raw);
+    if (Number.isFinite(t) && t > now && t < bestT) {
+      bestT = t;
+      best = rec;
+    }
+  }
+  if (!best) return null;
+  return {
+    seriesId,
+    name: (best.race_name as string) ?? (best.scheduled_event_name as string) ?? null,
+    trackName: (best.track_name as string) ?? null,
+    startTimeUtc: (best.start_time_utc as string) ?? (best.race_date_utc as string) ?? null,
+  };
 }
 
 // ---- upstream fetch ----
@@ -143,6 +214,10 @@ function warming(): LivePayload & { warming: true } {
     },
     alerts: [],
     pitCycles: [],
+    movers: { gaining: [], fading: [] },
+    battles: [],
+    fieldLeaders: [],
+    nextRace: null,
   };
 }
 
