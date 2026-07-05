@@ -147,7 +147,7 @@ export function renderRecap(p: P, raceId: number): string | null {
       race,
       results: ingestionService.raceResults(p, race.raceId),
       standouts: analyticsService.raceStandouts(p, race.raceId),
-      movement: analyticsService.standingsMovement(p, {
+      playoff: analyticsService.playoffPictureFor(p, {
         seriesId: race.seriesId,
         season: race.season,
         raceId: race.raceId,

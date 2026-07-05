@@ -12,12 +12,16 @@ import {
   computeRaceStandouts,
   computeStandingsMovement,
   pickFormCallouts,
+  regularSeasonField,
+  playoffPicture,
 } from "../src/domains/analytics/service.ts";
+import type { DriverSeasonAgg } from "../src/domains/analytics/service.ts";
 import type {
   PointsResultRow,
   PointsLoopRow,
   SeasonStanding,
   SeasonPointsResultRow,
+  RaceSlot,
 } from "../src/domains/analytics/types.ts";
 
 function standing(
@@ -308,6 +312,7 @@ describe("computeStandingsMovement", () => {
   function row(o: Partial<SeasonPointsResultRow> & { raceId: number; driverId: number; finish: number; points: number }): SeasonPointsResultRow {
     return {
       fullName: `Driver ${o.driverId}`,
+      playoffPoints: 0,
       raceDateUtc: o.raceId === 1 ? "2024-03-01T18:00:00" : "2024-03-08T18:00:00",
       ...o,
     };
@@ -370,5 +375,101 @@ describe("pickFormCallouts", () => {
     ]);
     const { over } = pickFormCallouts(results, prior, 1);
     expect(over.map((c) => c.driverId)).toEqual([3]); // biggest overachievement only
+  });
+});
+
+// A tiny format for playoff tests: 4 in, cut to 2 after a 2-race round, then a
+// 1-race championship. Playoff-race count = 3 (the last 3 of the season).
+const FMT = { fieldSize: 4, roundCuts: [2], roundRaces: [2, 1] };
+
+function agg(o: Partial<DriverSeasonAgg> & { driverId: number }): DriverSeasonAgg {
+  return { fullName: `D${o.driverId}`, points: 0, wins: 0, playoffPoints: 0, ...o };
+}
+
+describe("regularSeasonField", () => {
+  test("win-and-in: winners locked, remaining spots by points, cut + bubble", () => {
+    const aggs = [
+      agg({ driverId: 1, points: 100, wins: 1, playoffPoints: 5 }), // winner
+      agg({ driverId: 2, points: 90, wins: 0, playoffPoints: 1 }), //  winless, top points
+      agg({ driverId: 3, points: 80, wins: 1, playoffPoints: 3 }), // winner
+      agg({ driverId: 4, points: 70, wins: 0 }), //                   winless (in on points)
+      agg({ driverId: 5, points: 60, wins: 0 }), //                   bubble
+      agg({ driverId: 6, points: 50, wins: 0 }), //                   out
+    ];
+    const rows = regularSeasonField(aggs, FMT);
+    const status = new Map(rows.map((r) => [r.driverId, r.status]));
+    expect(status.get(1)).toBe("in-win");
+    expect(status.get(3)).toBe("in-win");
+    expect(status.get(2)).toBe("in-points");
+    expect(status.get(4)).toBe("in-points");
+    expect(status.get(5)).toBe("bubble");
+    expect(status.get(6)).toBe("out");
+    // in-field is exactly the field size
+    expect(rows.filter((r) => r.status === "in-win" || r.status === "in-points")).toHaveLength(4);
+    // points behind the cut (last in-points = D4 @ 70)
+    expect(rows.find((r) => r.driverId === 5)!.pointsToCut).toBe(10);
+    expect(rows.find((r) => r.driverId === 6)!.pointsToCut).toBe(20);
+  });
+
+  test("more winners than spots: top field by playoff points, rest out", () => {
+    const aggs = [
+      agg({ driverId: 1, points: 100, wins: 1, playoffPoints: 10 }),
+      agg({ driverId: 2, points: 95, wins: 1, playoffPoints: 8 }),
+      agg({ driverId: 3, points: 90, wins: 1, playoffPoints: 6 }),
+      agg({ driverId: 4, points: 85, wins: 1, playoffPoints: 4 }),
+      agg({ driverId: 5, points: 80, wins: 1, playoffPoints: 2 }), // 5th winner → bubble
+      agg({ driverId: 6, points: 70, wins: 0 }), //                   winless → out
+    ];
+    const rows = regularSeasonField(aggs, FMT);
+    const status = new Map(rows.map((r) => [r.driverId, r.status]));
+    expect([1, 2, 3, 4].map((d) => status.get(d))).toEqual(["in-win", "in-win", "in-win", "in-win"]);
+    expect(status.get(5)).toBe("bubble");
+    expect(status.get(6)).toBe("out");
+  });
+});
+
+describe("playoffPicture (phase-aware)", () => {
+  function pr(raceId: number, driverId: number, finish: number, points: number, pp = 0): SeasonPointsResultRow {
+    return { raceId, driverId, fullName: `D${driverId}`, finish, points, playoffPoints: pp, raceDateUtc: `2024-0${raceId}-01T18:00:00` };
+  }
+  const seq: RaceSlot[] = [1, 2, 3, 4, 5, 6, 7].map((id) => ({ raceId: id, raceDateUtc: `2024-0${id}-01T18:00:00` }));
+  // Regular season decided in race 1 (no winners → field is top-4 by points).
+  const regular = [
+    pr(1, 1, 2, 100), pr(1, 2, 3, 90), pr(1, 3, 4, 80),
+    pr(1, 4, 5, 70), pr(1, 5, 6, 60), pr(1, 6, 7, 50),
+  ];
+  // Round of 4 (races 5, 6): D4 wins race 5 (auto-advance) despite low points.
+  const playoff = [
+    pr(5, 1, 2, 40), pr(5, 2, 3, 38), pr(5, 3, 20, 5), pr(5, 4, 1, 3),
+    pr(6, 1, 2, 30), pr(6, 2, 3, 28), pr(6, 3, 20, 5), pr(6, 4, 4, 3),
+    pr(7, 1, 1, 40), pr(7, 4, 2, 35), // championship
+  ];
+  const rows = [...regular, ...playoff];
+
+  test("regular-season race → win-and-in field", () => {
+    const pic = playoffPicture(rows, seq, FMT, 1);
+    expect(pic.phase).toBe("regular");
+    expect(pic.roundLabel).toBe("Regular Season");
+    const inField = pic.rows.filter((r) => r.status === "in-points" || r.status === "in-win").map((r) => r.driverId).sort();
+    expect(inField).toEqual([1, 2, 3, 4]);
+    expect(pic.rows.find((r) => r.driverId === 5)!.status).toBe("bubble");
+  });
+
+  test("first playoff race → Round of 4", () => {
+    const pic = playoffPicture(rows, seq, FMT, 5);
+    expect(pic.phase).toBe("playoff");
+    expect(pic.roundLabel).toBe("Round of 4");
+    expect(pic.cutSize).toBe(2);
+  });
+
+  test("championship race → round eliminations + auto-advance resolved", () => {
+    const pic = playoffPicture(rows, seq, FMT, 7);
+    expect(pic.phase).toBe("playoff");
+    expect(pic.roundLabel).toBe("Championship 2");
+    const survivors = pic.rows.filter((r) => r.status !== "eliminated").map((r) => r.driverId).sort();
+    const eliminated = pic.rows.filter((r) => r.status === "eliminated").map((r) => r.driverId).sort();
+    // D4 auto-advanced on its race-5 win; D1 advanced on points; D2/D3 eliminated.
+    expect(survivors).toEqual([1, 4]);
+    expect(eliminated).toEqual([2, 3]);
   });
 });

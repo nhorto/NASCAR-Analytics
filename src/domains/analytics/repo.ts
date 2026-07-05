@@ -11,6 +11,7 @@ import type {
   RaceMetricStandout,
   RaceStandout,
   SeasonPointsResultRow,
+  RaceSlot,
 } from "./types.ts";
 import { POINTS_RACE_TYPE_ID, POINTS_RACE_ID_OVERRIDES } from "./config.ts";
 
@@ -408,6 +409,7 @@ export function seasonPointsResultsWithNames(
     .query(
       `SELECT res.race_id AS raceId, res.driver_id AS driverId, d.full_name AS fullName,
               res.finishing_position AS finish, res.points_earned AS points,
+              COALESCE(res.playoff_points_earned, 0) AS playoffPoints,
               COALESCE(r.race_date_utc, r.race_date) AS raceDateUtc
        FROM results res
        JOIN races r ON r.race_id = res.race_id
@@ -416,6 +418,22 @@ export function seasonPointsResultsWithNames(
        ORDER BY COALESCE(r.race_date_utc, r.race_date), res.race_id`,
     )
     .all(seriesId, season, POINTS_RACE_TYPE_ID, ...POINTS_RACE_ID_OVERRIDES) as unknown as SeasonPointsResultRow[];
+}
+
+/**
+ * Every scheduled race for a season, date-ordered. Includes not-yet-run races
+ * (upserted from the schedule feed), so the last-N-races playoff split is known
+ * mid-season. Exhibitions sort mid/early-season, so the final N are the playoffs.
+ */
+export function seasonRaceSequence(db: Database, seriesId: number, season: number): RaceSlot[] {
+  return db
+    .query(
+      `SELECT race_id AS raceId, COALESCE(race_date_utc, race_date) AS raceDateUtc
+       FROM races
+       WHERE series_id = ? AND season = ?
+       ORDER BY COALESCE(race_date_utc, race_date), race_id`,
+    )
+    .all(seriesId, season) as unknown as RaceSlot[];
 }
 
 /**
