@@ -198,7 +198,16 @@ the strategy/pit-cycle tracker, My Driver + alert feed, and an idle state. Open
 questions (nav slot, sections-vs-scroll, default sort, TV-sync slider) are logged
 in the spec for owner sign-off before build.
 
-**Owner decisions (2026-07-05) — 🚧 Phase 3 IN PROGRESS:**
+**Phase 3 — ✅ DONE (2026-07-05), LIVE on Cloudflare Pages
+([looplab-arh.pages.dev/live](https://looplab-arh.pages.dev/live)).** Built 3a (edge
+history + enriched payload) and 3b (the main-site Live page, sub-tabs, drill-downs,
+strategy, my-driver, home 🔴 LIVE banner, permanent Live tab). Verified live against
+the eero 400 green-flag feed (board / battles / strategy / drill-down / livedot all
+render). Vercel mirror deploy pending (transient upload abort — Cloudflare is the
+live host). Remaining: **Phase 4** — drive a full race, tune, then move this plan to
+`completed/`.
+
+**Owner decisions (2026-07-05):**
 - **Nav:** a **permanent Live tab** (8th bottom-tab) with a 🔴 live-dot shown only
   when a session is on track. Tab bar condenses to stay usable on mobile.
 - **Layout:** **secondary sub-tabs inside Live** — Board / Overview / Strategy /
