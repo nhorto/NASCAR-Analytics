@@ -127,6 +127,33 @@ export interface TrackTypeLeaderRow {
   closerScore: number | null;
 }
 
+/** The two proprietary season metrics a driver can be ranked on. */
+export type MetricKey = "adjPassEfficiency" | "closerScore";
+
+/** One driver's standing on a single proprietary metric within a season. */
+export interface MetricRank {
+  driverId: number;
+  fullName: string;
+  loopRaces: number;
+  value: number;
+  /** 1 = best in the qualified field. */
+  rank: number;
+  /** How many drivers are ranked on this metric (the "N" in "2nd of N"). */
+  field: number;
+  /** 0–100, higher = better: share of the qualified field this driver beats. */
+  percentile: number;
+}
+
+/** Both proprietary-metric leaderboards for one season, best first. */
+export interface SeasonMetricBoard {
+  seriesId: number;
+  season: number;
+  /** Number of loop-data regulars who qualified for the boards. */
+  qualified: number;
+  adjPass: MetricRank[];
+  closer: MetricRank[];
+}
+
 /** A driver's trailing-window form as of the most recent race. */
 export interface FormLeader {
   driverId: number;

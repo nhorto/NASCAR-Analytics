@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { driversService } from "../src/domains/drivers/index.ts";
+import type { CareerSeasonRow } from "../src/domains/drivers/types.ts";
 import { testDb, seedDriver, seedRace, seedResult, seedLoop } from "./seed.ts";
 
 function seedScenario() {
@@ -57,5 +58,59 @@ describe("driversService", () => {
     const issues = driversService.identityIssues({ db });
     expect(issues).toHaveLength(1);
     expect(issues[0]!.driverIds.sort()).toEqual([10, 30]);
+  });
+});
+
+describe("summariseSeries", () => {
+  const rows: CareerSeasonRow[] = [
+    { seriesId: 2, season: 2019, races: 10, wins: 2, top5s: 5, top10s: 8, avgFinish: 12 },
+    { seriesId: 1, season: 2020, races: 20, wins: 1, top5s: 6, top10s: 12, avgFinish: 15 },
+    { seriesId: 1, season: 2021, races: 30, wins: 4, top5s: 10, top10s: 20, avgFinish: 10 },
+  ];
+
+  test("groups by series, sums totals, orders by series id", () => {
+    const s = driversService.summariseSeries(rows);
+    expect(s.map((x) => x.seriesId)).toEqual([1, 2]);
+    const cup = s[0]!;
+    expect(cup.races).toBe(50);
+    expect(cup.wins).toBe(5);
+    expect(cup.seasons).toBe(2);
+    expect(cup.firstSeason).toBe(2020);
+    expect(cup.lastSeason).toBe(2021);
+    // races-weighted avg finish: (15*20 + 10*30) / 50 = 12
+    expect(cup.avgFinish).toBeCloseTo(12);
+  });
+
+  test("empty input yields no summaries", () => {
+    expect(driversService.summariseSeries([])).toEqual([]);
+  });
+});
+
+describe("driverCareer", () => {
+  test("spans series with a newest-first season matrix; null for unknown driver", () => {
+    const db = testDb();
+    seedDriver(db, 10, "Dual Series");
+    // Cup 2024 + Xfinity 2023, and one exhibition that must be excluded.
+    seedRace(db, { raceId: 1, season: 2024, seriesId: 1, raceDateUtc: "2024-05-01T18:00:00" });
+    seedRace(db, { raceId: 2, season: 2023, seriesId: 2, raceDateUtc: "2023-05-01T18:00:00" });
+    seedRace(db, { raceId: 3, season: 2024, seriesId: 1, raceTypeId: 2, raceDateUtc: "2024-06-01T18:00:00" });
+    seedResult(db, { raceId: 1, driverId: 10, finish: 1, teamName: "Cup Team", carNumber: "5" });
+    seedResult(db, { raceId: 2, driverId: 10, finish: 3, teamName: "Xf Team", carNumber: "9" });
+    seedResult(db, { raceId: 3, driverId: 10, finish: 1, teamName: "Cup Team", carNumber: "5" });
+
+    const career = driversService.driverCareer({ db }, 10)!;
+    expect(career.fullName).toBe("Dual Series");
+    expect(career.firstSeason).toBe(2023);
+    expect(career.lastSeason).toBe(2024);
+    expect(career.series.map((s) => s.seriesId)).toEqual([1, 2]);
+    // Exhibition race 3 excluded → Cup has 1 start, 1 win.
+    expect(career.series[0]!.races).toBe(1);
+    expect(career.series[0]!.wins).toBe(1);
+    // Latest ride is the most recent points start (Cup 2024).
+    expect(career.latestTeam).toBe("Cup Team");
+    // Season matrix newest-first.
+    expect(career.seasons.map((r) => r.season)).toEqual([2024, 2023]);
+
+    expect(driversService.driverCareer({ db }, 999)).toBeNull();
   });
 });

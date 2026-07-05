@@ -12,6 +12,8 @@ import { driversIndexContent, driverProfileContent } from "./pages/drivers.ts";
 import { racesIndexContent, racePageContent } from "./pages/races.ts";
 import { compareShell } from "./pages/compare.ts";
 import { tracksShell } from "./pages/tracks.ts";
+import { metricsContent } from "./pages/metrics.ts";
+import { careerContent } from "./pages/career.ts";
 
 type P = Pick<Providers, "db">;
 
@@ -36,6 +38,7 @@ export function renderHome(p: P, seriesId: number): string {
       latestResults,
       standings: current === null ? [] : analyticsService.standings(p, current, seriesId).slice(0, 8),
       formLeaders: analyticsService.formLeaders(p, 5, seriesId),
+      metricBoard: current === null ? null : analyticsService.seasonMetricBoard(p, current, seriesId),
     }),
   });
 }
@@ -54,6 +57,11 @@ export function renderDriversIndex(p: P, seriesId: number, q: string | null): st
 export function renderDriverProfile(p: P, seriesId: number, driverId: number): string | null {
   const driver = driversService.findDriver(p, driverId, seriesId);
   if (!driver) return null;
+  const seasons = analyticsService.seasonStatsForDriver(p, driver.driverId, seriesId);
+  const latest = seasons[seasons.length - 1] ?? null;
+  const metricRanks = latest
+    ? analyticsService.driverMetricRanks(p, driver.driverId, latest.season, seriesId)
+    : { adjPass: null, closer: null };
   return page({
     title: driver.fullName,
     active: "drivers",
@@ -62,10 +70,11 @@ export function renderDriverProfile(p: P, seriesId: number, driverId: number): s
     content: driverProfileContent({
       seriesId,
       driver,
-      seasons: analyticsService.seasonStatsForDriver(p, driver.driverId, seriesId),
+      seasons,
       splits: analyticsService.trackTypeStatsForDriver(p, driver.driverId, seriesId),
       form: analyticsService.formForDriver(p, driver.driverId, seriesId),
       raceLog: driversService.driverRaceLog(p, driver.driverId, seriesId),
+      metricRanks,
     }),
   });
 }
@@ -89,6 +98,24 @@ export function renderRacesIndex(p: P, seriesId: number, season?: number): strin
   });
 }
 
+/**
+ * Career pages are un-prefixed (driver_id is global across series). The shell's
+ * series context is the driver's primary (most-started) series so the switcher
+ * and season pill render coherently.
+ */
+export function renderCareer(p: P, driverId: number): string | null {
+  const career = driversService.driverCareer(p, driverId);
+  if (!career) return null;
+  const primarySeries = [...career.series].sort((a, b) => b.races - a.races)[0]!.seriesId;
+  return page({
+    title: `${career.fullName} · Career`,
+    active: "drivers",
+    seriesId: primarySeries,
+    season: currentSeason(p, primarySeries),
+    content: careerContent(career),
+  });
+}
+
 /** Race pages are un-prefixed (race_id is globally unique); series is derived. */
 export function renderRacePage(p: P, raceId: number): string | null {
   const race = ingestionService.raceDetails(p, raceId);
@@ -99,6 +126,19 @@ export function renderRacePage(p: P, raceId: number): string | null {
     seriesId: race.seriesId,
     season: currentSeason(p, race.seriesId),
     content: racePageContent(race, ingestionService.raceResults(p, race.raceId), race.seriesId),
+  });
+}
+
+/** Null when the series has no computed stats yet (→ 404). */
+export function renderMetrics(p: P, seriesId: number): string | null {
+  const current = currentSeason(p, seriesId);
+  if (current === null) return null;
+  return page({
+    title: "Metrics",
+    active: "metrics",
+    seriesId,
+    season: current,
+    content: metricsContent(analyticsService.seasonMetricBoard(p, current, seriesId)),
   });
 }
 

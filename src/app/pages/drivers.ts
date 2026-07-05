@@ -3,6 +3,7 @@ import type {
   DriverSeasonStats,
   DriverTrackTypeStats,
   DriverFormRow,
+  MetricRank,
 } from "../../domains/analytics/types.ts";
 import {
   esc,
@@ -15,6 +16,7 @@ import {
   sparkline,
   deltaArrow,
   fmtDate,
+  ordinal,
   withSeries,
   TRACK_TYPE_LABELS,
 } from "../html.ts";
@@ -51,6 +53,7 @@ export function driverProfileContent(data: {
   splits: DriverTrackTypeStats[];
   form: DriverFormRow[];
   raceLog: DriverRaceLogEntry[];
+  metricRanks: { adjPass: MetricRank | null; closer: MetricRank | null };
 }): string {
   const d = data.driver;
   const latest = data.seasons[data.seasons.length - 1] ?? null;
@@ -61,6 +64,7 @@ export function driverProfileContent(data: {
     <div>
       <div class="h-title" style="font-size:26px;">${esc(d.fullName)}</div>
       <div class="h-sub">${esc(d.latestTeam ?? "")}${d.latestCarMake ? ` · ${esc(d.latestCarMake)}` : ""} · ${d.firstSeason}–${d.lastSeason} · ${d.races} starts · ${d.wins} wins</div>
+      <div class="note" style="margin-top:4px"><a href="/driver/${d.driverId}">Full career across series →</a></div>
     </div>
   </div>`);
 
@@ -112,15 +116,28 @@ export function driverProfileContent(data: {
   }
 
   if (latest && latest.loopRaces > 0) {
+    const rankLine = (r: MetricRank | null): string =>
+      r
+        ? `<div class="trend ${r.percentile >= 50 ? "up" : "dn"}" style="margin:3px 0 5px">${ordinal(r.rank)} of ${r.field} · ${r.percentile}th pctl</div>`
+        : "";
+    const bigMetric = (
+      value: number | null,
+      digits: number,
+      label: string,
+      blurb: string,
+      rank: MetricRank | null,
+    ): string =>
+      `<div class="big-metric"><b class="num ${(value ?? 0) >= 0 ? "pos" : "neg"}">${signed(value, digits)}</b>
+        ${rankLine(rank)}
+        <div class="note"><b>${label}</b> — ${blurb}</div></div>`;
     parts.push(
       card(
         `Loop Metrics · ${latest.season}`,
         `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
-          <div class="big-metric"><b class="num ${(latest.adjPassEfficiency ?? 0) >= 0 ? "pos" : "neg"}">${signed(latest.adjPassEfficiency)}</b>
-            <div class="note"><b>Adj Pass Efficiency</b> — green-flag passing vs the average car running where they run</div></div>
-          <div class="big-metric"><b class="num ${(latest.closerScore ?? 0) >= 0 ? "pos" : "neg"}">${signed(latest.closerScore, 2)}</b>
-            <div class="note"><b>Closer Score</b> — positions gained in closing laps vs expectation</div></div>
+          ${bigMetric(latest.adjPassEfficiency, 1, "Adj Pass Efficiency", "green-flag passing vs the average car running where they run", data.metricRanks.adjPass)}
+          ${bigMetric(latest.closerScore, 2, "Closer Score", "positions gained in closing laps vs expectation", data.metricRanks.closer)}
         </div>`,
+        { href: withSeries("/metrics", data.seriesId), label: "Leaderboards →" },
       ),
     );
   }

@@ -18,7 +18,7 @@ src/
 │   ├── html.ts              esc/fmt/badge/sparkline/card helpers + path-based withSeries
 │   ├── style.css            Design tokens + components (per docs/DESIGN.md)
 │   ├── client/              Browser JS for the client-rendered pages (compare.js, tracks.js)
-│   └── pages/               Page templates (home, drivers, races) + client shells (compare, tracks)
+│   └── pages/               Page templates (home, drivers, races, metrics, career) + client shells (compare, tracks)
 ├── domains/
 │   ├── data-ingestion/      NASCAR CDN data fetching and storage  [BUILT]
 │   │   ├── types.ts         CDN feed shapes + normalized row types
@@ -155,8 +155,10 @@ export interface Providers {
 - **Track-type classification**: every 2016–2026 track across all three series classified (superspeedway/intermediate/short/road/dirt), including Atlanta's 2022 reprofile via season override; zero unknown types after the Xfinity/Truck track audit.
 - **Architecture tests**: layer dependency rules are enforced by `bun test` (tests/architecture.test.ts).
 - **Computed analytics (2026-07-05)**: `bun run compute` rebuilds `driver_season_stats`, `driver_track_type_stats`, and `driver_form` (trailing-6-race form) from points races (`race_type_id = 1` + the race-5580 override). Includes two proprietary metrics — Adjusted Pass Efficiency and Closer Score, both residuals vs. league-average baselines per running-position bucket. Verified against known history (season wins leaders 2017–2024, SVG road stats, Elliott 2023 injury season).
-- **Drivers domain (2026-07-05)**: driver summaries, race logs, id/name lookup (`driver --name "..."` CLI), and an identity-integrity check. CDN driver_id verified stable across 2017–2026 — no alias table needed.
-- **Web app (2026-07-05)**: `bun run serve` (default port 3000) serves the mobile-first dark UI — home, driver index/profiles, race pages with loop insights, head-to-head compare, track-type explorer — plus JSON API routes (`/api/drivers`, `/api/drivers/:id`, `/api/drivers/:id/stats`, `/api/standings/:season`, `/api/tracks`). All reads hit precomputed tables; measured page renders < 60ms. Look & feel per [the design mockup](docs/design-docs/2026-07-05-phase3-ui-mockup.html).
+- **Drivers domain (2026-07-05)**: driver summaries, race logs, id/name lookup (`driver --name "..."` CLI), an identity-integrity check, and a cross-series career record (`driverCareer`). CDN driver_id verified stable across 2017–2026 — no alias table needed.
+- **Cross-series career pages (2026-07-05)**: `/driver/{id}` (un-prefixed, like `/race/{id}`, since driver_id is global) shows a driver's whole record across Cup + Xfinity + Trucks on one page — grand totals, a per-series breakdown linking to each series' deep profile, and a season × series timeline matrix (starts + wins per season per series). Reached via a "Full career across series →" link on each series profile. Powered entirely by the drivers domain (one GROUP BY over points races, folded by the pure `summariseSeries`), plus `/api/driver/:id/career`.
+- **Web app (2026-07-05)**: `bun run serve` (default port 3000) serves the mobile-first dark UI — home, driver index/profiles, race pages with loop insights, head-to-head compare, track-type explorer, and a proprietary-metrics leaderboard — plus JSON API routes (`/api/drivers`, `/api/drivers/:id`, `/api/drivers/:id/stats`, `/api/standings/:season`, `/api/tracks`, `/api/metrics`). All reads hit precomputed tables; measured page renders < 60ms. Look & feel per [the design mockup](docs/design-docs/2026-07-05-phase3-ui-mockup.html).
+- **Proprietary-metric leaderboards (2026-07-05)**: `/metrics` (per series, new nav tab) ranks the current season's loop-data regulars — drivers who ran ≥ 50% of the season's max loop-race count (`METRIC_LEADER_MIN_LOOP_SHARE`) — by Adjusted Pass Efficiency and Closer Score, with a plain-English methodology explainer. Driver profiles show each metric's rank/percentile within that field; the home page carries a "Beyond the Box Score" card linking in. Ranking is pure/unit-tested (`rankByMetric`, `qualifiedRegulars`); no new metric math — this exposes the values already in `driver_season_stats`.
 - **Series switching (2026-07-05)**: a Cup/Xfinity/Trucks segmented switcher (top-level nav axis, under the app bar). Series lives in the URL **path** (`/`, `/xfinity`, `/trucks`) so each series is its own static file; threaded through every page and internal link. A race page (`/race/{id}`, un-prefixed) derives its series from the race itself.
 - **Static export + deployment (2026-07-05)**: `bun run export` pre-renders the whole site to `dist/` (~1,800 pages) using the same `render.ts` as the dev server, plus client JSON for the two interactive pages. Deployed to **Cloudflare Pages** via Direct Upload (`bunx wrangler pages deploy dist`) — the ~160MB DB stays local, only static output ships. Compare + track explorer render client-side from `dist/data/*.json`. See [docs/DEPLOY.md](docs/DEPLOY.md).
 - Known data holes are documented in [the re-verification doc](docs/research/2026-07-05_data-sources-reverification.md) (2025 YellaWood 500 results; exhibition heat races).
@@ -165,7 +167,7 @@ export interface Providers {
 
 > Honest list of gaps. Must be kept updated.
 
-- No cross-series views (comparing a Cup season to an Xfinity season; a unified career timeline across a driver's Cup+Xfinity+Truck record) — each view stays within one series
+- No cross-series *statistical* comparison (e.g. normalizing a Cup season against an Xfinity season side by side) — the career page unifies a driver's Cup+Xfinity+Truck record, but the analytics/compare/tracks views still each stay within one series
 - No scheduled automation — the weekly refresh (sync → compute → export → deploy) is run by hand
 - Not yet live — the static export is built and verified locally; the one-time Cloudflare Pages connect (needs the owner's login) is pending, per docs/DEPLOY.md
 - No odds integration (deferred — see exec plan)

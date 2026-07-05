@@ -42,12 +42,14 @@ export async function exportSite(dbPath = "data/nascar.db", log?: Log): Promise<
     pages++;
   };
 
+  const careerIds = new Set<number>();
   for (const s of ALL_SERIES) {
     const prefix = SERIES_PREFIX[s]!;
     await write(prefix || "/", render.renderHome(p, s));
     await write(`${prefix}/drivers`, render.renderDriversIndex(p, s, null));
 
     for (const d of driversService.driverIndex(p, s)) {
+      careerIds.add(d.driverId);
       const html = render.renderDriverProfile(p, s, d.driverId);
       if (html) await write(`${prefix}/drivers/${d.driverId}`, html);
     }
@@ -59,6 +61,8 @@ export async function exportSite(dbPath = "data/nascar.db", log?: Log): Promise<
       if (html) await write(`${prefix}/races/${yr}`, html);
     }
 
+    const metrics = render.renderMetrics(p, s);
+    if (metrics) await write(`${prefix}/metrics`, metrics);
     await write(`${prefix}/compare`, render.renderCompare(p, s));
     await write(`${prefix}/tracks`, render.renderTracks(p, s));
 
@@ -66,6 +70,13 @@ export async function exportSite(dbPath = "data/nascar.db", log?: Log): Promise<
     await Bun.write(join(DIST, `data/tracktype-${s}.json`), JSON.stringify(trackTypePayload(p, s)));
     log?.info(`series ${s}: pages so far ${pages}`);
   }
+
+  // Career pages are un-prefixed (driver_id is global); one per distinct driver.
+  for (const id of careerIds) {
+    const html = render.renderCareer(p, id);
+    if (html) await write(`/driver/${id}`, html);
+  }
+  log?.info(`career pages: ${careerIds.size}`);
 
   // Race pages are un-prefixed (race_id is globally unique); one per race with results.
   const raceIds = db

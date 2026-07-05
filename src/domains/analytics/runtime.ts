@@ -34,6 +34,15 @@ export function handleStandings(p: Db, seasonParam: string, url: URL): Response 
   return Response.json({ seriesId, season, standings });
 }
 
+export function handleMetrics(p: Db, url: URL): Response {
+  const seriesId = seriesOf(url);
+  const current = service.currentSeason(p, seriesId);
+  if (current === null) return Response.json({ error: "no computed data" }, { status: 404 });
+  const requested = Number.parseInt(url.searchParams.get("season") ?? "", 10);
+  const season = Number.isNaN(requested) ? current : requested;
+  return Response.json(service.seasonMetricBoard(p, season, seriesId));
+}
+
 export function handleTrackLeaderboard(p: Db, url: URL): Response {
   const seriesId = seriesOf(url);
   const current = service.currentSeason(p, seriesId);

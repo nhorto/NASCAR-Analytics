@@ -7,8 +7,42 @@ import {
   computeSeasonStats,
   computeTrackTypeStats,
   computeForm,
+  qualifiedRegulars,
+  rankByMetric,
 } from "../src/domains/analytics/service.ts";
-import type { PointsResultRow, PointsLoopRow } from "../src/domains/analytics/types.ts";
+import type {
+  PointsResultRow,
+  PointsLoopRow,
+  SeasonStanding,
+} from "../src/domains/analytics/types.ts";
+
+function standing(
+  over: Partial<SeasonStanding> & { driverId: number; loopRaces: number },
+): SeasonStanding {
+  return {
+    seriesId: 1,
+    season: 2024,
+    fullName: `Driver ${over.driverId}`,
+    races: over.loopRaces,
+    wins: 0,
+    top5s: 0,
+    top10s: 0,
+    dnfs: 0,
+    avgStart: null,
+    avgFinish: null,
+    lapsLed: 0,
+    points: 0,
+    playoffPoints: 0,
+    avgRating: null,
+    top15LapPct: null,
+    fastLapPct: null,
+    passEfficiency: null,
+    adjPassEfficiency: null,
+    avgClosingGain: null,
+    closerScore: null,
+    ...over,
+  };
+}
 
 function result(over: Partial<PointsResultRow> & { raceId: number; driverId: number; finish: number }): PointsResultRow {
   return {
@@ -168,6 +202,49 @@ describe("computeTrackTypeStats", () => {
     expect(inter.avgFinish).toBeCloseTo(2);
     expect(road.races).toBe(1);
     expect(road.wins).toBe(0);
+  });
+});
+
+describe("qualifiedRegulars", () => {
+  test("keeps drivers at or above the loop-share threshold of the season max", () => {
+    const rows = [
+      standing({ driverId: 1, loopRaces: 20 }), // max
+      standing({ driverId: 2, loopRaces: 10 }), // exactly 50%
+      standing({ driverId: 3, loopRaces: 9 }), // below 50%
+    ];
+    const kept = qualifiedRegulars(rows, 0.5).map((r) => r.driverId).sort();
+    expect(kept).toEqual([1, 2]);
+  });
+  test("empty when no driver has loop data", () => {
+    expect(qualifiedRegulars([standing({ driverId: 1, loopRaces: 0 })], 0.5)).toEqual([]);
+  });
+});
+
+describe("rankByMetric", () => {
+  test("ranks best (highest) first with rank, field, and percentile", () => {
+    const rows = [
+      standing({ driverId: 1, loopRaces: 10, adjPassEfficiency: 1 }),
+      standing({ driverId: 2, loopRaces: 10, adjPassEfficiency: 5 }),
+      standing({ driverId: 3, loopRaces: 10, adjPassEfficiency: 3 }),
+    ];
+    const ranked = rankByMetric(rows, "adjPassEfficiency");
+    expect(ranked.map((r) => r.driverId)).toEqual([2, 3, 1]);
+    expect(ranked.map((r) => r.rank)).toEqual([1, 2, 3]);
+    expect(ranked.every((r) => r.field === 3)).toBe(true);
+    // rank 1 → 100th pctl, last → 0.
+    expect(ranked[0]!.percentile).toBe(100);
+    expect(ranked[1]!.percentile).toBe(50);
+    expect(ranked[2]!.percentile).toBe(0);
+  });
+  test("drops drivers with a null value for the metric", () => {
+    const rows = [
+      standing({ driverId: 1, loopRaces: 10, closerScore: 0.2 }),
+      standing({ driverId: 2, loopRaces: 10, closerScore: null }),
+    ];
+    const ranked = rankByMetric(rows, "closerScore");
+    expect(ranked).toHaveLength(1);
+    expect(ranked[0]!.driverId).toBe(1);
+    expect(ranked[0]!.percentile).toBe(100); // single-driver field
   });
 });
 

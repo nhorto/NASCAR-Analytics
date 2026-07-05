@@ -1,6 +1,6 @@
 import type { RaceDetails, RaceResultWithLoop } from "../../domains/data-ingestion/types.ts";
-import type { SeasonStanding, FormLeader } from "../../domains/analytics/types.ts";
-import { esc, fmt, badge, card, fmtDate, withSeries, TRACK_TYPE_LABELS } from "../html.ts";
+import type { SeasonStanding, FormLeader, SeasonMetricBoard } from "../../domains/analytics/types.ts";
+import { esc, fmt, signed, badge, card, fmtDate, withSeries, TRACK_TYPE_LABELS } from "../html.ts";
 
 export function homeContent(data: {
   seriesId: number;
@@ -8,6 +8,7 @@ export function homeContent(data: {
   latestResults: RaceResultWithLoop[];
   standings: SeasonStanding[];
   formLeaders: FormLeader[];
+  metricBoard: SeasonMetricBoard | null;
 }): string {
   const s = data.seriesId;
   const parts: string[] = [];
@@ -32,6 +33,24 @@ export function homeContent(data: {
          <div class="h-sub">${esc(TRACK_TYPE_LABELS[r.trackType] ?? r.trackType)}${r.actualLaps ? ` · ${r.actualLaps} laps` : ""}${r.cautions !== null ? ` · ${r.cautions} cautions` : ""}${r.leadChanges !== null ? ` · ${r.leadChanges} lead changes` : ""}</div>
          ${winnerHtml}`,
         { href: `/race/${r.raceId}`, label: "Full breakdown →" },
+      ),
+    );
+  }
+
+  const board = data.metricBoard;
+  if (board && (board.adjPass.length > 0 || board.closer.length > 0)) {
+    const leaderRow = (label: string, m: (typeof board.adjPass)[number] | undefined, digits: number) =>
+      m
+        ? `<tr><td class="mut">${esc(label)}</td><td><a href="${withSeries(`/drivers/${m.driverId}`, s)}">${esc(m.fullName)}</a></td><td class="r num ${m.value >= 0 ? "pos" : "neg"}"><b>${signed(m.value, digits)}</b></td></tr>`
+        : "";
+    parts.push(
+      card(
+        "Beyond the Box Score",
+        `<table><tr><th>Metric</th><th>Leader</th><th class="r">Value</th></tr>
+          ${leaderRow("Adj Pass Eff", board.adjPass[0], 1)}
+          ${leaderRow("Closer Score", board.closer[0], 2)}
+        </table>`,
+        { href: withSeries("/metrics", s), label: "Full leaderboards →" },
       ),
     );
   }

@@ -27,3 +27,12 @@ export function handleDriver(p: Db, idParam: string, url: URL): Response {
   if (!driver) return Response.json({ error: "driver not found" }, { status: 404 });
   return Response.json({ driver, raceLog: service.driverRaceLog(p, id, seriesId) });
 }
+
+/** Cross-series career; series-agnostic (driver_id is global). */
+export function handleDriverCareer(p: Db, idParam: string): Response {
+  const id = Number.parseInt(idParam, 10);
+  if (Number.isNaN(id)) return Response.json({ error: "invalid driver id" }, { status: 400 });
+  const career = service.driverCareer(p, id);
+  if (!career) return Response.json({ error: "driver not found" }, { status: 404 });
+  return Response.json(career);
+}

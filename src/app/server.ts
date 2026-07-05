@@ -67,13 +67,21 @@ export function createServer(p: Providers, port: number) {
       if (path === "/api/drivers") return driversRuntime.handleDriverIndex(p, url);
       m = path.match(/^\/api\/drivers\/(\d+)$/);
       if (m) return driversRuntime.handleDriver(p, m[1]!, url);
+      m = path.match(/^\/api\/driver\/(\d+)\/career$/);
+      if (m) return driversRuntime.handleDriverCareer(p, m[1]!);
       m = path.match(/^\/api\/drivers\/(\d+)\/stats$/);
       if (m) return analyticsRuntime.handleDriverStats(p, m[1]!, url);
       m = path.match(/^\/api\/standings\/(\d+)$/);
       if (m) return analyticsRuntime.handleStandings(p, m[1]!, url);
       if (path === "/api/tracks") return analyticsRuntime.handleTrackLeaderboard(p, url);
+      if (path === "/api/metrics") return analyticsRuntime.handleMetrics(p, url);
 
-      // --- race pages: un-prefixed, series derived from the race ---
+      // --- career + race pages: un-prefixed (driver_id / race_id are global) ---
+      m = path.match(/^\/driver\/(\d+)$/);
+      if (m) {
+        const html = render.renderCareer(p, Number(m[1]));
+        return html ? htmlResponse(html) : notFound(SERIES.cup, "Driver");
+      }
       m = path.match(/^\/race\/(\d+)$/);
       if (m) {
         const html = render.renderRacePage(p, Number(m[1]));
@@ -98,6 +106,10 @@ export function createServer(p: Providers, port: number) {
       if (m) {
         const html = render.renderRacesIndex(p, seriesId, Number(m[1]));
         return html ? htmlResponse(html) : notFound(seriesId, "Season");
+      }
+      if (rest === "/metrics") {
+        const html = render.renderMetrics(p, seriesId);
+        return html ? htmlResponse(html) : notFound(seriesId, "Metrics");
       }
       if (rest === "/compare") return htmlResponse(render.renderCompare(p, seriesId));
       if (rest === "/tracks") return htmlResponse(render.renderTracks(p, seriesId));

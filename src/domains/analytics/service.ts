@@ -10,12 +10,16 @@ import type {
   SeasonStanding,
   TrackTypeLeaderRow,
   FormLeader,
+  MetricKey,
+  MetricRank,
+  SeasonMetricBoard,
 } from "./types.ts";
 import {
   DEFAULT_SERIES_ID,
   PS_BUCKET_WIDTH,
   FORM_WINDOW_RACES,
   FORM_LEADER_MIN_SEASON_SHARE,
+  METRIC_LEADER_MIN_LOOP_SHARE,
 } from "./config.ts";
 import * as repo from "./repo.ts";
 
@@ -354,6 +358,74 @@ export function trackTypeLeaderboard(
 
 export function formLeaders(p: Db, limit = 5, seriesId = DEFAULT_SERIES_ID): FormLeader[] {
   return repo.formLeaders(p.db, seriesId, limit, FORM_LEADER_MIN_SEASON_SHARE);
+}
+
+// ---- Proprietary-metric leaderboards (pure ranking over precomputed rows) ----
+
+/**
+ * The loop-data regulars for a season: drivers who ran at least `share` of the
+ * season's max loop-race count. Empty when nobody has loop data yet.
+ */
+export function qualifiedRegulars(rows: SeasonStanding[], share: number): SeasonStanding[] {
+  const maxLoop = rows.reduce((m, r) => Math.max(m, r.loopRaces), 0);
+  if (maxLoop === 0) return [];
+  const threshold = share * maxLoop;
+  return rows.filter((r) => r.loopRaces >= threshold);
+}
+
+/**
+ * Rank drivers by one proprietary metric, best (highest) first. Percentile is
+ * the share of the ranked field a driver beats (rank 1 → 100, last → 0). Drivers
+ * with a null value for this metric are dropped from its board.
+ */
+export function rankByMetric(rows: SeasonStanding[], key: MetricKey): MetricRank[] {
+  const scored = rows
+    .map((r) => ({ r, v: r[key] }))
+    .filter((x): x is { r: SeasonStanding; v: number } => x.v !== null)
+    .sort((a, b) => b.v - a.v);
+  const n = scored.length;
+  return scored.map(({ r, v }, i) => ({
+    driverId: r.driverId,
+    fullName: r.fullName,
+    loopRaces: r.loopRaces,
+    value: v,
+    rank: i + 1,
+    field: n,
+    percentile: n <= 1 ? 100 : Math.round(((n - 1 - i) / (n - 1)) * 100),
+  }));
+}
+
+/** Both proprietary-metric leaderboards for a season, over the qualified field. */
+export function seasonMetricBoard(
+  p: Db,
+  season: number,
+  seriesId = DEFAULT_SERIES_ID,
+): SeasonMetricBoard {
+  const qualified = qualifiedRegulars(
+    repo.standingsForSeason(p.db, season, seriesId),
+    METRIC_LEADER_MIN_LOOP_SHARE,
+  );
+  return {
+    seriesId,
+    season,
+    qualified: qualified.length,
+    adjPass: rankByMetric(qualified, "adjPassEfficiency"),
+    closer: rankByMetric(qualified, "closerScore"),
+  };
+}
+
+/** A driver's rank in each proprietary metric for a season (null if unranked). */
+export function driverMetricRanks(
+  p: Db,
+  driverId: number,
+  season: number,
+  seriesId = DEFAULT_SERIES_ID,
+): { adjPass: MetricRank | null; closer: MetricRank | null } {
+  const board = seasonMetricBoard(p, season, seriesId);
+  return {
+    adjPass: board.adjPass.find((m) => m.driverId === driverId) ?? null,
+    closer: board.closer.find((m) => m.driverId === driverId) ?? null,
+  };
 }
 
 export function currentSeason(p: Db, seriesId = DEFAULT_SERIES_ID): number | null {

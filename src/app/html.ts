@@ -40,6 +40,22 @@ export function pct(n: number | null | undefined): string {
   return n === null || n === undefined ? "—" : `${Math.round(n * 100)}%`;
 }
 
+/** Ordinal string for a rank: 1 → "1st", 2 → "2nd", 23 → "23rd". */
+export function ordinal(n: number): string {
+  const rem100 = n % 100;
+  if (rem100 >= 11 && rem100 <= 13) return `${n}th`;
+  switch (n % 10) {
+    case 1:
+      return `${n}st`;
+    case 2:
+      return `${n}nd`;
+    case 3:
+      return `${n}rd`;
+    default:
+      return `${n}th`;
+  }
+}
+
 /** Start→finish delta arrow cell, colored by direction. */
 export function deltaArrow(start: number | null, finish: number): string {
   if (start === null || start <= 0) return `<span class="mut">·</span>`;
