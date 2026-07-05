@@ -201,6 +201,7 @@ export function createServer(p: Providers, port: number) {
             season: current,
             content: tracksContent({
               seriesId,
+              seasons: ingestionService.seasonsAvailable(p, seriesId),
               leaders: analyticsService.trackTypeLeaderboard(p, {
                 trackType,
                 fromSeason,

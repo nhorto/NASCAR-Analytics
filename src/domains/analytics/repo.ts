@@ -254,22 +254,42 @@ export function trackTypeLeaderboard(
     ) as unknown as TrackTypeLeaderRow[];
 }
 
-/** Form rows at the most recent race that has form data, best average finish first. */
-export function formLeaders(db: Database, seriesId: number, limit: number): FormLeader[] {
+/**
+ * Form rows at the most recent race with form data, best average finish first —
+ * restricted to season regulars (ran >= `minSeasonShare` of the season's points
+ * races so far) so a part-timer's few strong starts can't top the board.
+ */
+export function formLeaders(
+  db: Database,
+  seriesId: number,
+  limit: number,
+  minSeasonShare: number,
+): FormLeader[] {
   return db
     .query(
-      `SELECT f.driver_id AS driverId, d.full_name AS fullName, f.race_id AS raceId,
+      `WITH latest AS (
+         SELECT race_id, season FROM driver_form
+         WHERE series_id = ? ORDER BY race_date_utc DESC LIMIT 1
+       ),
+       season_total AS (
+         SELECT COUNT(DISTINCT race_id) AS n FROM driver_form
+         WHERE series_id = ? AND season = (SELECT season FROM latest)
+       )
+       SELECT f.driver_id AS driverId, d.full_name AS fullName, f.race_id AS raceId,
               f.window_races AS windowRaces, f.avg_finish AS avgFinish, f.avg_rating AS avgRating
        FROM driver_form f
        JOIN drivers d ON d.driver_id = f.driver_id
        WHERE f.series_id = ?
-         AND f.race_id = (SELECT race_id FROM driver_form WHERE series_id = ?
-                          ORDER BY race_date_utc DESC LIMIT 1)
+         AND f.race_id = (SELECT race_id FROM latest)
          AND f.window_races >= 4
+         AND (SELECT COUNT(*) FROM driver_form x
+              WHERE x.driver_id = f.driver_id AND x.series_id = f.series_id
+                AND x.season = f.season)
+             >= ? * (SELECT n FROM season_total)
        ORDER BY f.avg_finish
        LIMIT ?`,
     )
-    .all(seriesId, seriesId, limit) as unknown as FormLeader[];
+    .all(seriesId, seriesId, seriesId, minSeasonShare, limit) as unknown as FormLeader[];
 }
 
 export function latestSeasonWithStats(db: Database, seriesId: number): number | null {

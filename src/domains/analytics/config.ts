@@ -16,3 +16,10 @@ export const PS_BUCKET_WIDTH = 5;
 
 /** Trailing points-race window for driver form. */
 export const FORM_WINDOW_RACES = 6;
+
+/**
+ * "In Form" leaders must be series regulars — having run at least this share of
+ * the season's points races so far — so a part-timer's few strong starts don't
+ * top the board.
+ */
+export const FORM_LEADER_MIN_SEASON_SHARE = 0.5;

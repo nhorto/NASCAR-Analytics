@@ -18,8 +18,11 @@ const SORTS: Array<{ key: TrackSort; label: string }> = [
   { key: "closerScore", label: "Closer" },
 ];
 
+const MIN_STARTS_OPTIONS = [3, 5, 8, 10];
+
 export function tracksContent(data: {
   seriesId: number;
+  seasons: number[];
   leaders: TrackTypeLeaderRow[];
   trackType: string;
   fromSeason: number;
@@ -30,19 +33,47 @@ export function tracksContent(data: {
   const parts: string[] = [];
   const sid = data.seriesId;
 
+  // One href builder so every link carries the full filter state; vary one param.
+  const href = (over: { type?: string; from?: number; min?: number; sort?: TrackSort }) =>
+    withSeries(
+      `/tracks?type=${over.type ?? data.trackType}&from=${over.from ?? data.fromSeason}&min=${over.min ?? data.minStarts}&sort=${over.sort ?? data.sort}`,
+      sid,
+    );
+
   const seg = SEGMENTS.map(
     (s) =>
-      `<a href="${withSeries(`/tracks?type=${s.type}&from=${data.fromSeason}&sort=${data.sort}`, sid)}" class="${s.type === data.trackType ? "on" : ""}">${s.label}</a>`,
+      `<a href="${href({ type: s.type })}" class="${s.type === data.trackType ? "on" : ""}">${s.label}</a>`,
   ).join("");
   parts.push(`<div class="seg seg-tracks">${seg}</div>`);
 
   const sortLinks = SORTS.map((s) =>
     s.key === data.sort
       ? `<b style="color:var(--accent)">${s.label}</b>`
-      : `<a href="${withSeries(`/tracks?type=${data.trackType}&from=${data.fromSeason}&sort=${s.key}`, sid)}">${s.label}</a>`,
+      : `<a href="${href({ sort: s.key })}">${s.label}</a>`,
   ).join(" · ");
+
+  // On-screen filters: since-year + min-starts. Hidden fields keep type/sort/series
+  // through the GET submit; auto-submit on change.
+  const seriesField = sid === 1 ? "" : `<input type="hidden" name="series" value="${sid}">`;
+  const yearOptions = data.seasons
+    .filter((y) => y <= data.toSeason)
+    .map((y) => `<option value="${y}" ${y === data.fromSeason ? "selected" : ""}>${y}</option>`)
+    .join("");
+  const minOptions = MIN_STARTS_OPTIONS.map(
+    (m) => `<option value="${m}" ${m === data.minStarts ? "selected" : ""}>${m}</option>`,
+  ).join("");
+  parts.push(`<form class="inline filters" method="get" action="/tracks">
+    ${seriesField}
+    <input type="hidden" name="type" value="${esc(data.trackType)}">
+    <input type="hidden" name="sort" value="${esc(data.sort)}">
+    <label class="note" for="from">Since</label>
+    <select id="from" name="from" onchange="this.form.submit()">${yearOptions}</select>
+    <label class="note" for="min">Min starts</label>
+    <select id="min" name="min" onchange="this.form.submit()">${minOptions}</select>
+    <noscript><button type="submit">Apply</button></noscript>
+  </form>`);
   parts.push(
-    `<div class="filter-row"><span class="note num">${data.fromSeason}–${data.toSeason} · points races · min ${data.minStarts} starts</span><span class="note">${sortLinks}</span></div>`,
+    `<div class="filter-row"><span class="note num">${data.fromSeason}–${data.toSeason} · points races</span><span class="note">${sortLinks}</span></div>`,
   );
 
   const sorted = [...data.leaders].sort((a, b) => {

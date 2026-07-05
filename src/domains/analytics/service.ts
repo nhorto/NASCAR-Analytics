@@ -11,7 +11,12 @@ import type {
   TrackTypeLeaderRow,
   FormLeader,
 } from "./types.ts";
-import { DEFAULT_SERIES_ID, PS_BUCKET_WIDTH, FORM_WINDOW_RACES } from "./config.ts";
+import {
+  DEFAULT_SERIES_ID,
+  PS_BUCKET_WIDTH,
+  FORM_WINDOW_RACES,
+  FORM_LEADER_MIN_SEASON_SHARE,
+} from "./config.ts";
 import * as repo from "./repo.ts";
 
 type Db = Pick<Providers, "db">;
@@ -348,7 +353,7 @@ export function trackTypeLeaderboard(
 }
 
 export function formLeaders(p: Db, limit = 5, seriesId = DEFAULT_SERIES_ID): FormLeader[] {
-  return repo.formLeaders(p.db, seriesId, limit);
+  return repo.formLeaders(p.db, seriesId, limit, FORM_LEADER_MIN_SEASON_SHARE);
 }
 
 export function currentSeason(p: Db, seriesId = DEFAULT_SERIES_ID): number | null {

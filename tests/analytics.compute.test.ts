@@ -78,4 +78,29 @@ describe("computeAll", () => {
     const board = analyticsService.seasonLeaderboard({ db }, 2024);
     expect(board[0]!.driverId).toBe(10);
   });
+
+  test("formLeaders excludes elite part-timers who ran too few of the season", () => {
+    const db = testDb();
+    seedDriver(db, 1, "Regular Runner");
+    seedDriver(db, 2, "Part Timer");
+    // 10-race season, one race per day so dates order cleanly.
+    for (let i = 1; i <= 10; i++) {
+      seedRace(db, {
+        raceId: 100 + i,
+        season: 2024,
+        raceDateUtc: `2024-03-${String(10 + i).padStart(2, "0")}T18:00:00`,
+        raceName: `R${i}`,
+      });
+      seedResult(db, { raceId: 100 + i, driverId: 1, finish: 10, points: 20 }); // regular: all 10, mediocre
+    }
+    // Part-timer: 4 starts incl. the finale (race 110), all P1 — passes the
+    // window_races >= 4 gate and ran the latest race, but 4/10 = 0.4 < 0.5 share.
+    for (const rid of [101, 102, 103, 110]) {
+      seedResult(db, { raceId: rid, driverId: 2, finish: 1, points: 40 });
+    }
+    analyticsService.computeAll({ db });
+    const ids = analyticsService.formLeaders({ db }, 10).map((l) => l.driverId);
+    expect(ids).toContain(1); // the regular
+    expect(ids).not.toContain(2); // the elite part-timer
+  });
 });
