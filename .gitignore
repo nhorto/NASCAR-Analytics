@@ -1,6 +1,7 @@
 node_modules/
 data/
 dist/
+.wrangler/
 *.db
 *.db-journal
 *.db-wal

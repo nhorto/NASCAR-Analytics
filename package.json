@@ -10,10 +10,12 @@
     "compute": "bun run src/app/index.ts compute",
     "serve": "bun run src/app/index.ts serve",
     "export": "bun run src/app/index.ts export",
+    "capture": "bun run src/app/index.ts capture",
     "refresh": "bun run src/app/index.ts refresh",
     "test": "bun test"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260705.1",
     "@types/bun": "^1.3.0"
   }
 }

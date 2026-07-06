@@ -8,11 +8,13 @@ import { analyticsRuntime } from "../domains/analytics/index.ts";
 import { driversRuntime } from "../domains/drivers/index.ts";
 import { htmlResponse } from "./layout.ts";
 import * as render from "./render.ts";
-import { seasonStatsPayload, trackTypePayload } from "./data.ts";
+import { seasonStatsPayload, trackTypePayload, baselinesPayload } from "./data.ts";
 
 const STYLE_URL = new URL("./style.css", import.meta.url);
 const COMPARE_JS_URL = new URL("./client/compare.js", import.meta.url);
 const TRACKS_JS_URL = new URL("./client/tracks.js", import.meta.url);
+const LIVE_JS_URL = new URL("./client/live.js", import.meta.url);
+const HOME_LIVE_JS_URL = new URL("./client/home-live.js", import.meta.url);
 
 const SERIES = ingestionConfig.SERIES;
 const VALID_SERIES = new Set<number>([SERIES.cup, SERIES.xfinity, SERIES.trucks]);
@@ -50,6 +52,8 @@ export function createServer(p: Providers, port: number) {
       if (path === "/style.css") return file(STYLE_URL, "text/css; charset=utf-8");
       if (path === "/compare.js") return file(COMPARE_JS_URL, "text/javascript; charset=utf-8");
       if (path === "/tracks.js") return file(TRACKS_JS_URL, "text/javascript; charset=utf-8");
+      if (path === "/live.js") return file(LIVE_JS_URL, "text/javascript; charset=utf-8");
+      if (path === "/home-live.js") return file(HOME_LIVE_JS_URL, "text/javascript; charset=utf-8");
 
       // --- client-page data ---
       let m = path.match(/^\/data\/season-stats-(\d+)\.json$/);
@@ -61,6 +65,11 @@ export function createServer(p: Providers, port: number) {
       if (m) {
         const s = Number(m[1]);
         return VALID_SERIES.has(s) ? json(trackTypePayload(p, s)) : json([]);
+      }
+      m = path.match(/^\/data\/baselines-(\d+)\.json$/);
+      if (m) {
+        const s = Number(m[1]);
+        return VALID_SERIES.has(s) ? json(baselinesPayload(p, s)) : json(null);
       }
 
       // --- JSON API (dev convenience; not part of the static export) ---
@@ -124,6 +133,7 @@ export function createServer(p: Providers, port: number) {
       }
       if (rest === "/compare") return htmlResponse(render.renderCompare(p, seriesId));
       if (rest === "/tracks") return htmlResponse(render.renderTracks(p, seriesId));
+      if (rest === "/live") return htmlResponse(render.renderLive(p, seriesId));
 
       return notFound(seriesId, "Page");
     },

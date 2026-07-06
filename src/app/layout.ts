@@ -1,12 +1,17 @@
-import { esc, withSeries } from "./html.ts";
+import { esc, withSeries, ASSET_VERSION } from "./html.ts";
 
-export type Tab = "home" | "recap" | "metrics" | "drivers" | "races" | "compare" | "tracks";
+/** Origin of the live-companion Worker (Phase 2/3). The static site fetches its
+ *  /api/live cross-origin (CORS is open on the Worker). */
+export const LIVE_API_BASE = "https://looplab-live.nhorton.workers.dev";
+
+export type Tab = "home" | "recap" | "metrics" | "drivers" | "live" | "races" | "compare" | "tracks";
 
 const TABS: Array<{ id: Tab; href: string; icon: string; label: string }> = [
   { id: "home", href: "/", icon: "⌂", label: "Home" },
   { id: "recap", href: "/recap", icon: "❑", label: "Recap" },
   { id: "metrics", href: "/metrics", icon: "◈", label: "Metrics" },
   { id: "drivers", href: "/drivers", icon: "◔", label: "Drivers" },
+  { id: "live", href: "/live", icon: "◉", label: "Live" },
   { id: "races", href: "/races", icon: "⚑", label: "Races" },
   { id: "compare", href: "/compare", icon: "⇄", label: "Compare" },
   { id: "tracks", href: "/tracks", icon: "◎", label: "Tracks" },
@@ -35,10 +40,11 @@ export function page(opts: {
   season: number | null;
   content: string;
 }): string {
-  const tabs = TABS.map(
-    (t) =>
-      `<a href="${withSeries(t.href, opts.seriesId)}" class="${t.id === opts.active ? "on" : ""}"><span>${t.icon}</span>${t.label}</a>`,
-  ).join("");
+  const tabs = TABS.map((t) => {
+    const cls = [t.id === opts.active ? "on" : "", t.id === "live" ? "tab-live" : ""].filter(Boolean).join(" ");
+    const dot = t.id === "live" ? `<i class="livedot" hidden></i>` : "";
+    return `<a href="${withSeries(t.href, opts.seriesId)}" class="${cls}"><span>${t.icon}</span>${t.label}${dot}</a>`;
+  }).join("");
   const seriesSwitch = SERIES_TABS.map(
     (s) =>
       `<a href="${withSeries(sectionIndex(opts.active), s.id)}" class="${s.id === opts.seriesId ? "on" : ""}">${s.short}</a>`,
@@ -50,7 +56,8 @@ export function page(opts: {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
 <title>${esc(opts.title)} · Looplab</title>
-<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/style.css?v=${ASSET_VERSION}">
+<script>window.__LIVE_API__=${JSON.stringify(LIVE_API_BASE)};window.__SERIES__=${opts.seriesId};</script>
 </head>
 <body>
 <div class="shell">
@@ -64,6 +71,11 @@ ${opts.content}
   </main>
   <nav class="tabbar">${tabs}</nav>
 </div>
+<script>
+(function(){try{var a=window.__LIVE_API__,s=window.__SERIES__||1;if(!a)return;
+fetch(a+"/api/live/status?series="+s,{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
+if(d&&d.live){var el=document.querySelector(".tabbar .tab-live .livedot");if(el)el.hidden=false;}}).catch(function(){});}catch(e){}})();
+</script>
 </body>
 </html>`;
 }

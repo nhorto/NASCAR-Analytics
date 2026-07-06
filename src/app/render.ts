@@ -12,6 +12,7 @@ import { driversIndexContent, driverProfileContent } from "./pages/drivers.ts";
 import { racesIndexContent, racePageContent } from "./pages/races.ts";
 import { compareShell } from "./pages/compare.ts";
 import { tracksShell } from "./pages/tracks.ts";
+import { liveShell } from "./pages/live.ts";
 import { metricsContent } from "./pages/metrics.ts";
 import { careerContent } from "./pages/career.ts";
 import { recapContent } from "./pages/recap.ts";
@@ -198,6 +199,16 @@ export function renderTracks(p: P, seriesId: number): string {
     seriesId,
     season: currentSeason(p, seriesId),
     content: tracksShell(seriesId),
+  });
+}
+
+export function renderLive(p: P, seriesId: number): string {
+  return page({
+    title: "Live",
+    active: "live",
+    seriesId,
+    season: currentSeason(p, seriesId),
+    content: liveShell(seriesId),
   });
 }
 

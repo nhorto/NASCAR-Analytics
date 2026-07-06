@@ -901,3 +901,19 @@ export function allTrackTypeStats(
 ): Array<DriverTrackTypeStats & { fullName: string }> {
   return repo.allTrackTypeStatsWithNames(p.db, seriesId);
 }
+
+/**
+ * Per-series league baselines in a JSON-friendly shape (Record keyed by bucket
+ * index), for the live race companion. The live metric estimates are residuals
+ * against these — the same buildLeagueExpectations math the compute run uses,
+ * serialized so the edge/live layer can compare live feed inputs to league norms.
+ */
+export function leagueBaselines(p: Db, seriesId = DEFAULT_SERIES_ID) {
+  const exp = buildLeagueExpectations(repo.pointsLoopStats(p.db, seriesId));
+  return {
+    seriesId,
+    bucketWidth: PS_BUCKET_WIDTH,
+    passEffByBucket: Object.fromEntries(exp.passEfficiencyByAvgPs) as Record<string, number>,
+    closerByBucket: Object.fromEntries(exp.closingGainByClosingPs) as Record<string, number>,
+  };
+}

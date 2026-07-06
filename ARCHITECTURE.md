@@ -9,11 +9,12 @@ NASCAR Analytics is a modern web platform that ingests NASCAR race data (loop da
 ```
 src/
 ├── app/                     Application wiring, CLI, web server, and static export
-│   ├── index.ts             CLI: backfill / sync / status / compute / driver / serve / export / refresh
+│   ├── index.ts             CLI: backfill / sync / status / compute / driver / serve / export / capture / refresh
 │   ├── render.ts            Page-render functions (shared by server + export)
 │   ├── server.ts            Bun.serve(): prefix-aware router mirroring the static URL scheme
 │   ├── export.ts            Static-site generator → dist/ (Cloudflare Pages)
-│   ├── data.ts              Compact JSON payloads for the client pages
+│   ├── capture.ts           Live-feed capture ops tool (`bun run capture`) — raw snapshots for fixtures/validation
+│   ├── data.ts              Compact JSON payloads for the client pages (+ per-series live baselines)
 │   ├── layout.ts            Page shell (app bar, series switch, tab bar), 404
 │   ├── html.ts              esc/fmt/badge/sparkline/card helpers + path-based withSeries
 │   ├── style.css            Design tokens + components (per docs/DESIGN.md)
@@ -33,21 +34,34 @@ src/
 │   │   ├── service.ts       Driver index, lookup, identity-integrity check
 │   │   ├── runtime.ts       JSON API handlers (/api/drivers…)
 │   │   └── index.ts         Barrel
-│   └── analytics/           Pre-computed metrics (`bun run compute`)  [BUILT]
-│       ├── types.ts         Source rows, league expectations, computed stat rows
-│       ├── config.ts        Points filter (+ race 5580 override), buckets, form window
-│       ├── repo.ts          Source reads + computed-table writes/reads
-│       ├── service.ts       Metric math (pure) + computeAll orchestration
-│       ├── runtime.ts       JSON API handlers (/api/standings, /api/tracks…)
-│       └── index.ts         Barrel
+│   ├── analytics/           Pre-computed metrics (`bun run compute`)  [BUILT]
+│   │   ├── types.ts         Source rows, league expectations, computed stat rows
+│   │   ├── config.ts        Points filter (+ race 5580 override), buckets, form window
+│   │   ├── repo.ts          Source reads + computed-table writes/reads
+│   │   ├── service.ts       Metric math (pure) + computeAll orchestration + leagueBaselines
+│   │   ├── runtime.ts       JSON API handlers (/api/standings, /api/tracks…)
+│   │   └── index.ts         Barrel
+│   └── live/                Live race companion — pure metrics/alerts  [PHASE 2 BUILT]
+│       ├── types.ts         Raw live-feed shapes + normalized snapshot/row/alert/baseline + LivePayload
+│       ├── config.ts        Flag enum, poll cadence, alert thresholds, bucket width, BROWSER_UA
+│       ├── service.ts       PURE + Workers-safe: normalizeFeed, computeLiveMetrics, deriveAlerts, pitCycleModel
+│       ├── runtime.ts       PURE processFeed(): composes service steps into the LivePayload the edge serves
+│       └── index.ts         Barrel (no repo — runs in Bun AND Cloudflare Workers)
 ├── providers/
 │   ├── index.ts             Providers interface + factory
 │   ├── db.ts                bun:sqlite connection + schema (incl. computed tables)
 │   ├── nascar-cdn.ts        Rate-limited, retrying CDN fetch client
 │   └── raw-archive.ts       Verbatim raw-JSON archival (CDN insurance)
 └── utils/                   Generic reusable helpers
+worker/                      Edge deploy target — the `looplab-live` Cloudflare Worker (OUTSIDE src; exempt from the src layer test)
+├── index.ts                 LiveCoordinator Durable Object (single poll loop) + fetch router (/api/live, /) + self-contained live page; imports only the pure `live` domain
+├── baselines.ts             GENERATED — baked per-series league baselines (from dist/data/baselines-*.json)
+├── wrangler.toml            Worker config: DO binding + sqlite migration + workers_dev
+└── tsconfig.json            Cloudflare-types typecheck (separate from root)
+scripts/
+└── gen-worker-baselines.ts  Regenerates worker/baselines.ts from the exported dist data
 tests/
-├── architecture.test.ts     Enforces the layer rules below (part of `bun test`)
+├── architecture.test.ts     Enforces the layer rules below (part of `bun test`; scans src/ only)
 ├── seed.ts                  In-memory db + row factories for domain tests
 └── fixtures/                Trimmed real CDN responses
 data/                        (gitignored) SQLite db + raw JSON archive
@@ -162,7 +176,9 @@ export interface Providers {
 - **Weekly race recap (2026-07-05)**: `/recap` (each series' latest completed race) and `/recap/{raceId}` (un-prefixed, race_id is global) — an auto-generated post-race page composing four sections: result summary (winner + podium), "What the Loop Data Saw" (per-race adjPE + Closer standouts from `race_metric_standouts`), "Championship Picture" (points-standings movement vs. the prior race with a per-series cut line, `PLAYOFF_CUT_BY_SERIES`), and form-vs-result driver callouts. New Recap nav tab; the Home "Last Race" card links in; `/api/recap/:id`. All analytics is pure/unit-tested (`computeRaceStandouts`, `computeStandingsMovement`, `pickFormCallouts`, `regularSeasonField`, `playoffStandings`) reading precomputed tables; regenerated by the standard sync → compute → export chain. The "Championship Picture" is a **season-phase-aware playoff model** (`playoffPicture`): the regular season shows the real win-and-in field (race winners in the top 30 locked, remaining spots by points, with the cut line + bubble); the playoffs show the round (16→12→8→4, per `PLAYOFF_FORMAT_BY_SERIES`) with race-winner auto-advance and eliminations. Phase is derived from the last-N races of the season schedule. Approximations (waivers, exact reset totals, ties) are logged in the tech-debt tracker.
 - **Series switching (2026-07-05)**: a Cup/Xfinity/Trucks segmented switcher (top-level nav axis, under the app bar). Series lives in the URL **path** (`/`, `/xfinity`, `/trucks`) so each series is its own static file; threaded through every page and internal link. A race page (`/race/{id}`, un-prefixed) derives its series from the race itself.
 - **Automated weekly refresh (2026-07-05)**: `bun run refresh` — one portable, runner-agnostic command that backfills + computes all three series, exports, and deploys (deploy self-gates on `CLOUDFLARE_API_TOKEN`). Scheduled by `.github/workflows/weekly-refresh.yml` (Mondays 12:00 UTC + manual dispatch), which caches the DB across runs so the weekly run is incremental and a cold cache self-heals to full history. Env-configurable (`NASCAR_DATA_DIR`, `NASCAR_PAGES_PROJECT`) so the same command can later run in a Cloudflare Container with the DB in R2. See [docs/DEPLOY.md](docs/DEPLOY.md).
-- **Static export + deployment (2026-07-05)**: `bun run export` pre-renders the whole site to `dist/` (~1,800 pages) using the same `render.ts` as the dev server, plus client JSON for the two interactive pages. Deployed to **Cloudflare Pages** via Direct Upload (`bunx wrangler pages deploy dist`) — the ~160MB DB stays local, only static output ships. Compare + track explorer render client-side from `dist/data/*.json`. See [docs/DEPLOY.md](docs/DEPLOY.md).
+- **Static export + deployment (2026-07-05)**: `bun run export` pre-renders the whole site to `dist/` (~2,400 pages) using the same `render.ts` as the dev server, plus client JSON for the two interactive pages. Deployed to **Cloudflare Pages** via Direct Upload (`bunx wrangler pages deploy dist`) — the ~284MB DB stays local, only static output ships. Compare + track explorer render client-side from `dist/data/*.json`. See [docs/DEPLOY.md](docs/DEPLOY.md).
+- **Live in — deployed on two hosts (2026-07-05)**: the static site is live and public on **Cloudflare Pages** (`looplab-arh.pages.dev`, project `looplab`, wrangler account `nhorton@fabricationis.com`) and on **Vercel** (`looplab-murex.vercel.app`, project `looplab`). Same `dist/` build serves either; Cloudflare additionally honors `dist/_headers` cache rules.
+- **Live race companion — Phases 1–3 LIVE (2026-07-05)**: the pure, Workers-safe `live` domain computes a normalized snapshot, live proprietary-metric estimates (live pass efficiency + adjusted residual vs. per-bucket baselines, a closing-laps Closer estimate), race alerts (`deriveAlerts`), a pit-cycle model, and — from a rolling per-lap **history** — segbar trends, movers, battles, field-leader and tire-falloff derivations. The **`looplab-live` Cloudflare Worker** (`worker/`, at **[looplab-live.nhorton.workers.dev](https://looplab-live.nhorton.workers.dev)**) runs a `LiveCoordinator` **Durable Object** as the single upstream poller (per series via `?series=`; 5s live / 60s idle / stops after 15 min unwatched), enriches the payload against **baked baselines**, keeps the history, fetches the schedule for the idle "Next Up", and serves `GET /api/live`, `/api/live/status`, and a self-contained `GET /` page. The **main site** now has a `/live` page (`client/live.js`, per series) with the layered board (tap-to-drill), a Loop Rating ★ sort, Race Overview, Strategy, and My Driver sub-tabs, plus a permanent Live nav tab (🔴 dot when live) and a home LIVE banner — **live on Cloudflare Pages ([looplab-arh.pages.dev/live](https://looplab-arh.pages.dev/live))**, validated against the eero 400 green-flag feed. Deploy: `cd worker && bunx wrangler deploy` + `bun run export && bunx wrangler pages deploy dist`. See [the plan](docs/exec-plans/active/2026-07-05-live-race-companion.md).
 - Known data holes are documented in [the re-verification doc](docs/research/2026-07-05_data-sources-reverification.md) (2025 YellaWood 500 results; exhibition heat races).
 
 ## What Does NOT Exist Here
@@ -171,7 +187,10 @@ export interface Providers {
 
 - No cross-series *statistical* comparison (e.g. normalizing a Cup season against an Xfinity season side by side) — the career page unifies a driver's Cup+Xfinity+Truck record, but the analytics/compare/tracks views still each stay within one series
 - The weekly refresh is automated (`.github/workflows/weekly-refresh.yml` → `bun run refresh`, Mondays 12:00 UTC); what's NOT automated is the deploy leg *until* the two Cloudflare secrets are added — before then the CI builds + artifacts `dist/` but skips the upload
-- Not yet live — the static export is built and verified locally; the one-time Cloudflare Pages connect (needs the owner's login) is pending, per docs/DEPLOY.md
+- The main-site Live page (`/live`, `client/live.js`) reads the live Worker **cross-origin** — it depends on `looplab-live.nhorton.workers.dev` being up; if the Worker is down the page shows its connecting/idle state rather than site data
+- The **Vercel mirror** (`looplab-murex.vercel.app`) may lag the Cloudflare deploy — the `/live` page shipped to **Cloudflare Pages** (`looplab-arh.pages.dev`); a Vercel redeploy was pending (transient upload error) at last update
+- Live proprietary metrics are **estimates from live loop counters**, not the authoritative post-race `loopstats/prod` values; the DO does not yet swap to the official numbers after the checkered flag. Live baselines are **baked into the Worker** and must be regenerated + redeployed after a weekly refresh (see tech-debt tracker)
+- The DO stops polling after ~15 min with no `/api/live` traffic, so alert diffs can jump across a gap when it restarts (no cron keep-warm) — fine while testers keep a tab open, revisit for unattended coverage
 - No odds integration (deferred — see exec plan)
 - No user authentication (deliberately out of MVP scope)
 - Not yet running on Cloudflare-native infra — the refresh command is portable (runs in a Cloudflare Container later with the DB in R2), but today the scheduler is GitHub Actions, not a Cloudflare Cron Worker

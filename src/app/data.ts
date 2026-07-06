@@ -26,6 +26,11 @@ export function seasonStatsPayload(p: P, seriesId: number) {
   }));
 }
 
+/** Per-series league baselines the live companion compares live metrics against. */
+export function baselinesPayload(p: P, seriesId: number) {
+  return analyticsService.leagueBaselines(p, seriesId);
+}
+
 /** One row per (driver, season, track-type) — powers the client track explorer. */
 export function trackTypePayload(p: P, seriesId: number) {
   return analyticsService.allTrackTypeStats(p, seriesId).map((t) => ({
