@@ -1,6 +1,6 @@
 # Strategy Model Calibration — Tire / Fuel / Pit (from backfill)
 
-**Status:** ACTIVE — Phases 1–3 DONE + deployed (2026-07-06 local rebuild); only Phase 4 (backtest / error bars) remains. The within-stint OLS falloff was replaced with the pit-discontinuity method and the fuel-window reframed to a behavioral typical-run (see the 2026-07-05 validation below).
+**Status:** COMPLETE (2026-07-06) — Phases 1–4 done + deployed. The within-stint OLS falloff was replaced with the pit-discontinuity method, the fuel-window reframed to a behavioral typical-run, and the pit-cadence prediction **held-out backtested** (see below). The within-stint OLS falloff was validated as broken and the new model validated against real data.
 **Started:** 2026-07-06
 **Research:** [docs/research/2026-07-06_tire-fuel-strategy-data-and-modeling.md](../../research/2026-07-06_tire-fuel-strategy-data-and-modeling.md)
 **Spike:** run 2026-07-06 against `tests/fixtures/live-pit-data.json` (see Findings)
@@ -108,12 +108,33 @@ Darlington). → **Replace `fitFalloff` with the discontinuity method:** per-tra
   unused field), so the two deploys are independent.
 - 185 tests pass; root + worker + scripts typecheck clean.
 
-### Still open — Phase 4 (backtest)
-- No held-out backtest yet: predicted vs. actual green-flag pit laps, with published error bars.
-- A physical fuel *capacity* remains deliberately unmodeled (not cleanly recoverable — see the
-  validation above); `lapsToTypicalPit` is a behavioral cadence, not a fuel gauge. A true
-  fuel-mileage feature would need fuel-mileage-race identification and is out of scope here.
-- Bristol reads LOW tire deg (n small, and modern concrete Bristol genuinely has little falloff
+### Phase 4 — held-out backtest (done 2026-07-06)
+`bun run backtest` (`scripts/backtest-strategy.ts`) — temporal split, **train seasons < 2022,
+test 2022** (predict the newer season from older history; no leakage). Target: predict a car's
+green-flag stint length (== next green pit lap). Full results:
+[docs/research/2026-07-06_strategy-backtest.md](../../research/2026-07-06_strategy-backtest.md).
+
+Headline (754 held-out stints, all series):
+
+| Predictor | MAE (laps) | ±10 laps |
+|---|---|---|
+| flat40 (old constant) | 15.0 | 39% |
+| global median | 13.1 | 50% |
+| byType (per track type) | 6.5 | 81% |
+| **byTrack (shipped)** | **6.0** | **86%** |
+
+- **byTrack is 60% lower MAE than the flat-40 it replaced** (15.0 → 6.0) and 55% below a global
+  median. Most of the gain is already at the track-*type* level (6.5); per-track refines it ~0.5.
+- Best: superspeedway (MAE 3.5). Worst: intermediate (10.1 — widest strategy variance). The
+  irreducible floor is real: teams pit early for track position + cautions, not just fuel/tires.
+- Tire severity is validated by face-validity ordering (Darlington→Talladega, cross-series
+  consistent), not a numeric backtest — there's no ground-truth tire-wear label to score against.
+
+### Deliberately out of scope / notes
+- A physical fuel *capacity* remains unmodeled (not cleanly recoverable — see the validation);
+  `lapsToTypicalPit` is a behavioral cadence, not a fuel gauge. A true fuel-mileage feature would
+  need fuel-mileage-race identification.
+- Bristol reads LOW tire deg (small n, and modern concrete Bristol genuinely has little falloff
   most years) — correct for the typical race, but worth a note when a soft-tire compound is run.
 
 ## Problem
