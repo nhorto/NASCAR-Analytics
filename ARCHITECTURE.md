@@ -44,7 +44,7 @@ src/
 │   └── live/                Live race companion — pure metrics/alerts  [PHASE 2 BUILT]
 │       ├── types.ts         Raw live-feed shapes + normalized snapshot/row/alert/baseline + LivePayload
 │       ├── config.ts        Flag enum, poll cadence, alert thresholds, bucket width, BROWSER_UA
-│       ├── service.ts       PURE + Workers-safe: normalizeFeed, computeLiveMetrics, deriveAlerts, pitCycleModel
+│       ├── service.ts       PURE + Workers-safe: normalizeFeed, computeLiveMetrics, deriveAlerts, pitCycleModel; strategy calibration (reconstructStints, greenStintLengths, fitFalloff)
 │       ├── runtime.ts       PURE processFeed(): composes service steps into the LivePayload the edge serves
 │       └── index.ts         Barrel (no repo — runs in Bun AND Cloudflare Workers)
 ├── providers/
@@ -54,12 +54,14 @@ src/
 │   └── raw-archive.ts       Verbatim raw-JSON archival (CDN insurance)
 └── utils/                   Generic reusable helpers
 worker/                      Edge deploy target — the `looplab-live` Cloudflare Worker (OUTSIDE src; exempt from the src layer test)
-├── index.ts                 LiveCoordinator Durable Object (single poll loop) + fetch router (/api/live, /) + self-contained live page; imports only the pure `live` domain
+├── index.ts                 LiveCoordinator Durable Object (single poll loop; fetches live-feed + live-pit-data) + fetch router (/api/live, /) + self-contained live page; imports only the pure `live` domain
 ├── baselines.ts             GENERATED — baked per-series league baselines (from dist/data/baselines-*.json)
+├── track-strategy.ts        GENERATED — baked per-track fuel/tire calibration (from `bun run calibrate`); checked-in EMPTY until run locally
 ├── wrangler.toml            Worker config: DO binding + sqlite migration + workers_dev
 └── tsconfig.json            Cloudflare-types typecheck (separate from root)
 scripts/
-└── gen-worker-baselines.ts  Regenerates worker/baselines.ts from the exported dist data
+├── gen-worker-baselines.ts  Regenerates worker/baselines.ts from the exported dist data
+└── calibrate-strategy.ts    `bun run calibrate` — fits per-track fuel/tire constants from the backfill → track-strategy.ts (LOCAL: needs CDN/backfill)
 tests/
 ├── architecture.test.ts     Enforces the layer rules below (part of `bun test`; scans src/ only)
 ├── seed.ts                  In-memory db + row factories for domain tests
@@ -191,6 +193,7 @@ export interface Providers {
 - The **Vercel mirror** (`looplab-murex.vercel.app`) may lag the Cloudflare deploy — the `/live` page shipped to **Cloudflare Pages** (`looplab-arh.pages.dev`); a Vercel redeploy was pending (transient upload error) at last update
 - Live proprietary metrics are **estimates from live loop counters**, not the authoritative post-race `loopstats/prod` values; the DO does not yet swap to the official numbers after the checkered flag. Live baselines are **baked into the Worker** and must be regenerated + redeployed after a weekly refresh (see tech-debt tracker)
 - The DO stops polling after ~15 min with no `/api/live` traffic, so alert diffs can jump across a gap when it restarts (no cron keep-warm) — fine while testers keep a tab open, revisit for unattended coverage
+- The live **Strategy** tab's fuel/tire numbers are **uncalibrated in production**: the pure calibration logic + the real-pit-feed wiring shipped (`bun run calibrate`, `pitCycleModel` uses `live-pit-data.json`), but `worker/track-strategy.ts` is an EMPTY stub until calibration is run locally against the backfill and the worker redeployed — so the fuel window still falls back to the flat `DEFAULT_STINT_LAPS`. Tire falloff remains a single-run estimate that conflates tire wear and fuel burn. See [the plan](docs/exec-plans/active/2026-07-06-strategy-model-calibration.md) + tech-debt tracker
 - No odds integration (deferred — see exec plan)
 - No user authentication (deliberately out of MVP scope)
 - Not yet running on Cloudflare-native infra — the refresh command is portable (runs in a Cloudflare Container later with the DB in R2), but today the scheduler is GitHub Actions, not a Cloudflare Cron Worker

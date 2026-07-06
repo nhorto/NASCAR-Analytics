@@ -1,9 +1,41 @@
 # Strategy Model Calibration — Tire / Fuel / Pit (from backfill)
 
-**Status:** PROPOSED — awaiting owner approval before implementation
+**Status:** ACTIVE — Phase 1 (pure logic) + the cheap win landed in this PR; the calibration RUN + Phases 2–4 are local follow-ups.
 **Started:** 2026-07-06
 **Research:** [docs/research/2026-07-06_tire-fuel-strategy-data-and-modeling.md](../../research/2026-07-06_tire-fuel-strategy-data-and-modeling.md)
 **Spike:** run 2026-07-06 against `tests/fixtures/live-pit-data.json` (see Findings)
+
+## Implementation status (read this first if you're the local agent)
+
+**Done in this PR (cloud session — no CDN/backfill access, so pure logic + tests only):**
+- **Pure calibration functions** in `src/domains/live/service.ts`, Workers-safe & unit-tested
+  against the real pit fixture: `pitStopsFromLivePitData`, `reconstructStints`,
+  `greenStintLengths`, `fitFalloff`, `median`. New types (`NormalizedPitStop`, `Stint`,
+  `TrackStrategy`, `TrackStrategyTable`) + config (`MIN_GREEN_STINT_LAPS`,
+  `MIN_GREEN_STINT_SAMPLES`, `MIN_FALLOFF_SAMPLES`, `PIT_FLAG_GREEN`).
+- **Cheap win — real pit feed wired into the live model.** `pitCycleModel` now takes
+  `{ pitStops, feed, trackStrategy }`: it prefers `live-pit-data.json` (green-flag stops only)
+  over the placeholder-zeroed `live-feed` `pit_stops`, adds a `lapsOfFuelLeft` estimate, and
+  reads the per-track fuel window from calibration. The worker fetches `live-pit-data.json`
+  (`fetchPitStops`) and passes it through `processFeed`.
+- **Calibration harness** `scripts/calibrate-strategy.ts` (`bun run calibrate`) — reads the
+  backfill DB (`lap_times`, `cautions`, `results`, `races`) + archived `weekend-feed.json`
+  `pit_reports`, runs the pure functions, aggregates per track / track-type, writes
+  `dist/data/track-strategy-{series}.json` and regenerates `worker/track-strategy.ts`.
+- **`worker/track-strategy.ts`** checked in as an EMPTY stub → the live model falls back to
+  `DEFAULT_STINT_LAPS` until calibration is run. Correct, just uncalibrated.
+- 184 tests pass; root + worker + scripts typecheck clean.
+
+**TODO locally (needs the CDN + backfill this cloud env can't reach):**
+1. **Run the real spike/calibration:** `bun run backfill` (if needed) → `bun run calibrate --series 1`
+   (then 2, 3). Confirm the `pit_reports` key names in `pitStopsFromWeekendPitReports()` actually
+   parse (the repo fixture's `pit_reports` is empty, so that adapter is UNVALIDATED — if it logs
+   "0 races had parseable pit_reports", fix the key list). Sanity-check the emitted per-track fuel
+   windows against known values (e.g. Talladega ~45).
+2. **Validate the falloff fit** separates tire from fuel (see the arXiv 2512.00640 lead) — the
+   current single-run OLS slope conflates them; this is the real modeling work (Phase 1 finish).
+3. Redeploy the worker with the regenerated `track-strategy.ts`; then Phases 2–4 (UI honesty,
+   backtest).
 
 ## Problem
 

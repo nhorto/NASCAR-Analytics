@@ -55,10 +55,36 @@ export const VEHICLE_STATUS_RUNNING = 1;
 
 /**
  * Fallback green-flag stint length (laps) for the pit-cycle estimate when a
- * car's own pit history is too thin to infer one. Coarse on purpose — refined
- * per-track with live/historical data in a later phase.
+ * car's own pit history is too thin to infer one AND no per-track calibration
+ * (track-strategy.json) is available. Coarse on purpose — the calibrated
+ * `greenStintLaps` per track supersedes it once the backfill has been run.
  */
 export const DEFAULT_STINT_LAPS = 40;
+
+// ---- strategy calibration (tire/fuel/pit) ----
+
+/** Numeric flag_state meaning a green (racing) pit stop. Matches FLAG_STATES. */
+export const PIT_FLAG_GREEN = 1;
+
+/**
+ * Ignore green "stints" shorter than this when calibrating a fuel window — a
+ * handful of laps is a splash-and-go or a damage stop, not a fuel run.
+ */
+export const MIN_GREEN_STINT_LAPS = 10;
+
+/**
+ * Minimum clean green-flag samples before we trust a per-track fuel window;
+ * below this the live model falls back to the track-type aggregate, then the
+ * flat DEFAULT_STINT_LAPS. (The 2026-07-06 spike showed one race yields ~3 —
+ * so a credible per-track number needs many races.)
+ */
+export const MIN_GREEN_STINT_SAMPLES = 8;
+
+/**
+ * Minimum (lap, lapTime) points in a green run before we fit a falloff slope.
+ * Short runs are dominated by out-lap noise and fuel-burn, not tire wear.
+ */
+export const MIN_FALLOFF_SAMPLES = 8;
 
 // ---- history / trend derivation (Phase 3) ----
 

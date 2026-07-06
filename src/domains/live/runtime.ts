@@ -24,7 +24,9 @@ import type {
   LivePayload,
   LiveSnapshot,
   NextRace,
+  NormalizedPitStop,
   PitCyclePrediction,
+  TrackStrategy,
 } from "./types.ts";
 
 export interface ProcessFeedOptions {
@@ -40,6 +42,13 @@ export interface ProcessFeedOptions {
   prevHistory?: LiveHistory | null;
   /** Next scheduled session for the idle "Next Up" card. */
   nextRace?: NextRace | null;
+  /**
+   * Authoritative pit stops from live-pit-data.json (green-flag aware). When
+   * present, supersedes the coarse/placeholder-zeroed live-feed pit_stops.
+   */
+  pitStops?: NormalizedPitStop[];
+  /** Per-track strategy calibration (fuel window). Null ⇒ default stint. */
+  trackStrategy?: TrackStrategy | null;
   /** Wall-clock ms the caller stamps the payload with (DO passes Date.now()). */
   fetchedAt: number;
 }
@@ -79,7 +88,11 @@ export function processFeed(feed: LiveFeed, opts: ProcessFeedOptions): ProcessFe
   const maxAlerts = opts.maxAlerts ?? 40;
   const alerts = [...newAlerts, ...(opts.prevAlerts ?? [])].slice(0, maxAlerts);
 
-  const pitCycles: PitCyclePrediction[] = pitCycleModel(snapshot, feed);
+  const pitCycles: PitCyclePrediction[] = pitCycleModel(snapshot, {
+    pitStops: opts.pitStops,
+    feed,
+    trackStrategy: opts.trackStrategy ?? null,
+  });
   const movers = deriveMovers(drivers);
   const battles = deriveBattles(drivers, opts.prevSnapshot?.drivers ?? null);
   const fieldLeaders = deriveFieldLeaders(drivers);
