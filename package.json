@@ -10,6 +10,8 @@
     "compute": "bun run src/app/index.ts compute",
     "serve": "bun run src/app/index.ts serve",
     "export": "bun run src/app/index.ts export",
+    "calibrate": "bun run scripts/calibrate-strategy.ts",
+    "backtest": "bun run scripts/backtest-strategy.ts",
     "capture": "bun run src/app/index.ts capture",
     "refresh": "bun run src/app/index.ts refresh",
     "test": "bun test"

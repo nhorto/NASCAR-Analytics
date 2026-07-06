@@ -8,10 +8,15 @@ import {
   deriveFieldLeaders,
   deriveMovers,
   flagOf,
+  greenStintLengths,
   normalizeFeed,
   passEfficiency,
   pitCycleModel,
+  pitStopsFromLivePitData,
+  reconstructStints,
   sumLapsLed,
+  tireDropForStop,
+  tireTierOf,
   updateHistory,
 } from "../src/domains/live/service.ts";
 import type {
@@ -294,13 +299,14 @@ describe("pitCycleModel", () => {
       ],
     };
     const snap = normalizeFeed(raw);
-    const preds = pitCycleModel(snap, raw);
+    const preds = pitCycleModel(snap, { feed: raw });
     expect(preds).toHaveLength(1);
     const p = preds[0]!;
     expect(p.lastGreenPitLap).toBe(70);
     expect(p.stintLength).toBe(40); // median gap between 30 and 70
     expect(p.lapsSincePit).toBe(95 - 70);
     expect(p.estimatedNextPitLap).toBe(70 + 40);
+    expect(p.source).toBe("feed");
   });
 
   test("falls back to the default stint when a car has fewer than 2 stops", () => {
@@ -326,10 +332,107 @@ describe("pitCycleModel", () => {
       ],
     };
     const snap = normalizeFeed(raw);
-    const p = pitCycleModel(snap, raw)[0]!;
+    const p = pitCycleModel(snap, { feed: raw })[0]!;
     expect(p.lastGreenPitLap).toBe(40);
     expect(p.stintLength).toBe(40); // DEFAULT_STINT_LAPS
     expect(p.estimatedNextPitLap).toBe(80);
+  });
+
+  test("uses the real pit feed (green stops only) and calibrated typical run", () => {
+    const raw: LiveFeed = {
+      race_id: 1, series_id: 1, lap_number: 60, laps_in_race: 200, laps_to_go: 140,
+      elapsed_time: 0, flag_state: 1,
+      vehicles: [
+        {
+          running_position: 1, vehicle_number: "11",
+          driver: { driver_id: 300, full_name: "Real Pit" }, delta: 0,
+          average_running_position: 2, status: 1, is_on_track: true,
+          // live-feed pit_stops are placeholder-zeroed — must be ignored when pit data is present.
+          pit_stops: [{ pit_in_lap_count: 0 }, { pit_in_lap_count: 0 }],
+        },
+      ],
+    };
+    const snap = normalizeFeed(raw);
+    const pitStops = [
+      { carNumber: "11", driverId: null, lap: 25, flagStatus: 2, tiresChanged: 4 }, // caution stop — ignored
+      { carNumber: "11", driverId: null, lap: 45, flagStatus: 1, tiresChanged: 4 }, // green stop — used
+    ];
+    const trackStrategy = {
+      trackId: 42, trackType: "intermediate",
+      typicalStintLaps: 55, stintN: 30,
+      tireSeconds: 0.7, tirePerLap: 0.013, tireTier: "moderate" as const, tireN: 300, races: 6,
+    };
+    const p = pitCycleModel(snap, { pitStops, feed: raw, trackStrategy })[0]!;
+    expect(p.source).toBe("pit-data");
+    expect(p.lastGreenPitLap).toBe(45); // the GREEN stop, not the L25 caution stop
+    expect(p.stintLength).toBe(55); // calibrated typical run, not the flat 40
+    expect(p.estimatedNextPitLap).toBe(45 + 55);
+    expect(p.lapsToTypicalPit).toBe(55 - (60 - 45)); // typical run − lapsSinceGreenPit
+  });
+});
+
+// ---- strategy calibration (pure) ----
+
+describe("strategy calibration", () => {
+  test("reconstructStints classifies clean green runs and greenStintLengths filters them", () => {
+    const pits = [
+      { carNumber: "9", driverId: null, lap: 40, flagStatus: 1, tiresChanged: 4 }, // green
+      { carNumber: "9", driverId: null, lap: 55, flagStatus: 2, tiresChanged: 4 }, // caution
+      { carNumber: "9", driverId: null, lap: 100, flagStatus: 1, tiresChanged: 4 }, // green
+    ];
+    const stints = reconstructStints(pits, 200);
+    // start→40 (green), 40→55 (ended yellow), 55→100 (started yellow → not clean), 100→200 finish
+    expect(stints).toHaveLength(4);
+    expect(stints[0]).toMatchObject({ startLap: 0, endLap: 40, greenRun: true });
+    expect(stints[1]).toMatchObject({ endLap: 55, greenRun: false }); // ended under caution
+    expect(stints[3]).toMatchObject({ endLap: 200, endedFlag: -1, greenRun: false }); // finish
+    // Only the first is a clean green run of ≥ MIN_GREEN_STINT_LAPS (40 laps).
+    expect(greenStintLengths(stints)).toEqual([40]);
+  });
+
+  test("tireDropForStop measures worn−fresh gap (positive when worn was slower)", () => {
+    // Green all race. Worn laps (before L50) ≈ 31.0s; fresh laps (after L50) ≈ 30.0s.
+    const lap = (l: number) => (l < 50 ? 31.0 : 30.0);
+    const drop = tireDropForStop(50, { lapTimeAt: lap, isGreenLap: () => true })!;
+    expect(drop).toBeCloseTo(1.0, 6); // worn 31 − fresh 30
+  });
+
+  test("tireDropForStop skips caution laps and returns null without enough clean laps", () => {
+    // Only the pit lap's neighborhood is green — not enough clean laps either side.
+    const isGreen = (l: number) => l === 49 || l === 53;
+    expect(tireDropForStop(50, { lapTimeAt: () => 30, isGreenLap: isGreen })).toBeNull();
+  });
+
+  test("tireTierOf buckets by the calibrated thresholds (Darlington high, Talladega low)", () => {
+    expect(tireTierOf(1.89)).toBe("high");   // Darlington
+    expect(tireTierOf(0.70)).toBe("moderate"); // Las Vegas
+    expect(tireTierOf(-0.10)).toBe("low");    // Talladega (draft)
+    expect(tireTierOf(null)).toBeNull();
+  });
+
+  test("pitStopsFromLivePitData drops lap-0 rows and counts tires changed", () => {
+    const recs = [
+      { vehicle_number: "1", lap_count: 0, pit_in_flag_status: 8 }, // pre-race — dropped
+      {
+        vehicle_number: "1", lap_count: 60, pit_in_flag_status: 1,
+        left_front_tire_changed: true, right_front_tire_changed: true,
+        left_rear_tire_changed: false, right_rear_tire_changed: false,
+      },
+    ];
+    const out = pitStopsFromLivePitData(recs);
+    expect(out).toHaveLength(1);
+    expect(out[0]).toMatchObject({ carNumber: "1", lap: 60, flagStatus: 1, tiresChanged: 2 });
+  });
+
+  test("end-to-end on the real pit-data fixture: reconstructs stints for the field", () => {
+    const recs = require("./fixtures/live-pit-data.json");
+    const pits = pitStopsFromLivePitData(recs);
+    expect(pits.length).toBeGreaterThan(100); // 248 records, minus lap-0 placeholders
+    const stints = reconstructStints(pits, 201);
+    expect(stints.length).toBeGreaterThan(30); // one+ per car across 38 cars
+    // Green stops are the minority in this caution-heavy race (the spike finding).
+    const greens = greenStintLengths(stints);
+    expect(greens.length).toBeLessThan(stints.length / 5);
   });
 });
 

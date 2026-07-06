@@ -206,6 +206,109 @@ export interface PitCyclePrediction {
   lapsSincePit: number | null;
   stintLength: number; // assumed green-flag stint (laps) used for the estimate
   estimatedNextPitLap: number | null;
+  /**
+   * Laps until the typical pit window = typicalStintLaps − lapsSinceGreenPit
+   * (null when unknown; clamped ≥ 0). This is a behavioral cadence estimate, NOT a
+   * fuel-exhaustion reading — the data can't support a physical fuel-left number.
+   */
+  lapsToTypicalPit: number | null;
+  /** Where the pit history came from: the real pit feed vs the coarse live-feed pit_stops. */
+  source: "pit-data" | "feed";
+}
+
+// ---- pit data + strategy calibration ----
+
+/**
+ * One pit-stop record from the authoritative pit feed. This is the shape of a
+ * row in live-pit-data.json (the LIVE feed) — the historical weekend-feed
+ * `pit_reports` map onto the same normalized `NormalizedPitStop` via a separate
+ * adapter. Only the fields we read are listed; the feed is untrusted JSON.
+ */
+export interface LivePitRecord {
+  vehicle_number?: string | number;
+  driver_name?: string;
+  lap_count?: number; // lap the car pitted on
+  pit_in_flag_status?: number; // flag when it entered (see FLAG_STATES; 1 = green)
+  pit_out_flag_status?: number;
+  pit_stop_duration?: number; // stationary seconds (-1 when unmeasured)
+  left_front_tire_changed?: boolean;
+  left_rear_tire_changed?: boolean;
+  right_front_tire_changed?: boolean;
+  right_rear_tire_changed?: boolean;
+}
+
+/** A pit stop normalized across feeds — the input to stint reconstruction. */
+export interface NormalizedPitStop {
+  carNumber: string; // join key (live-pit-data carries no driver_id)
+  driverId: number | null;
+  lap: number; // lap the car pitted on (>0)
+  flagStatus: number; // numeric flag when it pitted (1 = green)
+  tiresChanged: number; // 0–4 corners changed (fuel-only stop = 0)
+}
+
+/** One reconstructed stint (green-flag run between stops). */
+export interface Stint {
+  carNumber: string;
+  startLap: number; // lap this stint began (0 = race start, or a pit-out lap)
+  endLap: number; // lap it ended (a pit-in, or the finish)
+  laps: number; // endLap − startLap
+  endedFlag: number; // flag when it ended (1 green, 2 yellow, …; -1 = finish)
+  /** True only when the car ran green the whole stint AND pitted under green. */
+  greenRun: boolean;
+}
+
+/**
+ * Per-track strategy constants fit from the historical backfill (emitted by
+ * `bun run calibrate` as dist/data/track-strategy.json and baked into the
+ * worker). Keyed by track id (string) in the table, with `type` carrying a
+ * track-type fallback for thin-data tracks. All fields are estimates — the UI
+ * must show them as such.
+ */
+export type TireTier = "high" | "moderate" | "low";
+
+export interface TrackStrategy {
+  trackId: number;
+  trackType: string; // short | intermediate | superspeedway | road | dirt | unknown
+  /**
+   * Typical green-flag run: median clean green-stint length (laps). A BEHAVIORAL
+   * number — how long cars actually run between green stops here (fuel, tires, or
+   * strategy) — NOT a physical fuel-capacity claim (that isn't cleanly recoverable
+   * from history; see the 2026-07-05 validation in the exec plan). Powers the live
+   * "due to pit ~lap Y" estimate.
+   */
+  typicalStintLaps: number | null;
+  /** Sample count behind typicalStintLaps — low n ⇒ low confidence. */
+  stintN: number;
+  /**
+   * Tire severity: median worn−fresh lap-time gap (sec) across green 4-tire stops
+   * (last laps before a stop vs. the first clean laps after). Higher ⇒ tires matter
+   * more here. Orders Darlington > … > Talladega correctly, unlike a within-stint
+   * OLS slope (fuel-burn-confounded). Null below MIN_TIRE_SAMPLES.
+   */
+  tireSeconds: number | null;
+  /** Per-lap tire-deg proxy = tireSeconds / typicalStintLaps (sec/lap). */
+  tirePerLap: number | null;
+  /** Coarse tier derived from tireSeconds, for honest UI (suppress at draft tracks). */
+  tireTier: TireTier | null;
+  /** Green 4-tire stops behind the tire numbers. */
+  tireN: number;
+  /** Races that contributed. */
+  races: number;
+}
+
+/**
+ * The baked strategy artifact: per-track records plus per-track-type fallbacks
+ * for tracks with too little history. JSON-friendly (string keys).
+ */
+export interface TrackStrategyTable {
+  byTrackId: Record<string, TrackStrategy>;
+  byTrackType: Record<string, TrackStrategy>;
+  /**
+   * Every known track id → its track type, so the live model can reach the
+   * track-type fallback for tracks with too little per-track history (the live
+   * feed carries track_id but not track type).
+   */
+  typeByTrackId: Record<string, string>;
 }
 
 /**
@@ -298,4 +401,6 @@ export interface LivePayload {
   battles: LiveBattle[];
   fieldLeaders: FieldLeader[];
   nextRace: NextRace | null;
+  /** Per-track calibrated strategy context (typical run + tire tier), or null. */
+  trackStrategy: TrackStrategy | null;
 }

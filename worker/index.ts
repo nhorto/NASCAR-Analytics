@@ -6,21 +6,26 @@
 // live page (GET /). One workers.dev URL is the whole product — no Pages
 // redeploy, no cross-origin. See docs/exec-plans/active/2026-07-05-live-race-companion.md.
 
-import { liveConfig, liveRuntime } from "../src/domains/live/index.ts";
+import { liveConfig, liveRuntime, liveService } from "../src/domains/live/index.ts";
 import type {
   LiveAlertEvent,
   LiveFeed,
   LiveHistory,
   LivePayload,
+  LivePitRecord,
   LiveSnapshot,
   NextRace,
+  NormalizedPitStop,
 } from "../src/domains/live/index.ts";
 import { BASELINES } from "./baselines.ts";
+import { strategyFor } from "./track-strategy.ts";
 
 interface Env {
   LIVE: DurableObjectNamespace;
   /** Override the upstream feed (tests / a specific series). Defaults to base. */
   LIVE_FEED_URL?: string;
+  /** Override the upstream pit feed (tests). Defaults to the per-race CDN URL. */
+  LIVE_PIT_URL?: string;
 }
 
 const DEFAULT_FEED_URL = "https://cf.nascar.com/live/feeds/live-feed.json";
@@ -75,11 +80,21 @@ export class LiveCoordinator {
         const prevHistory = (await this.state.storage.get<LiveHistory>("history")) ?? null;
         const baselines = BASELINES[feed.series_id] ?? BASELINES[1] ?? null;
 
+        // The real pit feed (green-flag aware) supersedes the live-feed's
+        // placeholder-zeroed pit_stops; the baked calibration sets the fuel window.
+        const pitStops = await fetchPitStops(this.env, feed);
+        // The live feed carries track_id + series_id but not track type; the baked
+        // table's per-track-id entry is the primary lookup (type fallback is for
+        // the batch). Series-aware — strategy differs across Cup/Xfinity/Trucks.
+        const trackStrategy = strategyFor(feed.series_id ?? series, feed.track_id ?? 0, null);
+
         const { payload, snapshot, history } = liveRuntime.processFeed(feed, {
           baselines,
           prevSnapshot,
           prevAlerts,
           prevHistory,
+          pitStops,
+          trackStrategy,
           maxAlerts: MAX_ALERTS,
           fetchedAt: Date.now(),
         });
@@ -181,6 +196,32 @@ function clampSeries(raw: string | null): number {
   return n === 2 || n === 3 ? n : 1;
 }
 
+/**
+ * The authoritative pit feed for the current race. Carries real pit-in laps AND
+ * flag status (green vs caution), unlike the live-feed's placeholder-zeroed
+ * pit_stops. Returns [] on any miss — the model degrades gracefully to the feed.
+ */
+async function fetchPitStops(env: Env, feed: LiveFeed): Promise<NormalizedPitStop[]> {
+  const series = feed.series_id || 1;
+  const raceId = feed.race_id;
+  if (!raceId) return [];
+  const url =
+    env.LIVE_PIT_URL ||
+    `https://cf.nascar.com/cacher/live/series_${series}/${raceId}/live-pit-data.json`;
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": liveConfig.BROWSER_UA, Accept: "application/json" },
+      cf: { cacheTtl: 0, cacheEverything: false },
+    });
+    if (!res.ok) return [];
+    const json = (await res.json()) as unknown;
+    if (!Array.isArray(json)) return [];
+    return liveService.pitStopsFromLivePitData(json as LivePitRecord[]);
+  } catch {
+    return [];
+  }
+}
+
 async function fetchLiveFeed(env: Env, series: number): Promise<LiveFeed | null> {
   const url = env.LIVE_FEED_URL || liveFeedUrl(series);
   const res = await fetch(url, {
@@ -234,6 +275,7 @@ function warming(): LivePayload & { warming: true } {
     battles: [],
     fieldLeaders: [],
     nextRace: null,
+    trackStrategy: null,
   };
 }
 
