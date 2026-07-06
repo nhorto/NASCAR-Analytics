@@ -1,6 +1,6 @@
 # Strategy Model Calibration — Tire / Fuel / Pit (from backfill)
 
-**Status:** ACTIVE — Phase 1 (pure logic) + the cheap win landed in this PR; the calibration RUN + Phases 2–4 are local follow-ups.
+**Status:** ACTIVE — Phases 1–3 DONE + deployed (2026-07-06 local rebuild); only Phase 4 (backtest / error bars) remains. The within-stint OLS falloff was replaced with the pit-discontinuity method and the fuel-window reframed to a behavioral typical-run (see the 2026-07-05 validation below).
 **Started:** 2026-07-06
 **Research:** [docs/research/2026-07-06_tire-fuel-strategy-data-and-modeling.md](../../research/2026-07-06_tire-fuel-strategy-data-and-modeling.md)
 **Spike:** run 2026-07-06 against `tests/fixtures/live-pit-data.json` (see Findings)
@@ -36,6 +36,85 @@
    current single-run OLS slope conflates them; this is the real modeling work (Phase 1 finish).
 3. Redeploy the worker with the regenerated `track-strategy.ts`; then Phases 2–4 (UI honesty,
    backtest).
+
+## Local validation + rebuild (2026-07-05, local session — CDN + backfill reachable)
+
+Ran the calibration and the two flagged validations against the real 298 MB backfill
+(`data/nascar.db`) + 909 archived `weekend-feed.json`. Both TODOs resolved; findings forced a
+model reframe (below). **This is the "full rebuild" the user approved.**
+
+### TODO 1 — adapter parses; but the fuel-window ESTIMATOR is wrong
+- `pitStopsFromWeekendPitReports()` **parses fine** — 256/909 archives carry non-empty
+  `pit_reports` (keys `vehicle_number`, `lap_count`, `pit_in_flag_status`, `*_tire_changed`).
+  Cup run: 107 races, 39,477 stops. No key-list fix needed. (There is **no `driver_id`** in
+  `pit_reports` — only `driver_name` — but the falloff join uses `results.car_number → driver_id`,
+  so that's fine.)
+- **But `greenStintLaps = median(clean green stints)` badly under-reads a physical fuel window**
+  at caution/tire tracks: Bristol 67 (real ~125), Martinsville 55 (~145), Richmond 48 (~105) —
+  while intermediates land close (Kansas 48, Charlotte 48, Michigan 49). Percentile sweep showed a
+  physical fuel *capacity* is **not cleanly recoverable**: under-observed where cars pit for tires
+  before fuel (Richmond max green run = 67 « 105; Talladega = 36 « 48), and over-counted where
+  reconstruction merges across a missed stop (Kansas/Charlotte/Texas p90 = 68–74 on a ~50-lap tank
+  — physically impossible). **Reframe:** ship the median as **`typicalStintLaps`** — the honest
+  *behavioral* number ("cars here pit every ~N green laps," fuel OR tires OR strategy). It's what
+  the live "due to pit ~lap Y" prediction actually needs. Drop the fabricated `lapsOfFuelLeft`
+  fuel-exhaustion math → **`lapsToTypicalPit`**.
+
+### TODO 2 — the within-stint OLS falloff is broken; pit-discontinuity works
+Within one uninterrupted green stint, tire-age and fuel-age are **perfectly collinear**
+(both = lapsIntoStint), so OLS can't separate them and the median-across-stints in the PR does
+**not** remove a *systematic* fuel-burn bias. Measured net slope (current method) vs. the
+**pit-discontinuity** signal (mean last-3 green laps before a green 4-tire stop − mean laps 3–6
+after; + = worn slower than fresh):
+
+| Track | (A) within-stint OLS *(PR)* | (B) pit-discontinuity |
+|---|---|---|
+| Darlington (eats tires) | −0.347 ❌ *tires "improve"* | **+1.89** ✅ highest |
+| Richmond (abrasive short) | −0.179 ❌ | **+1.35** ✅ |
+| Watkins Glen (road) | −0.833 ❌ | **+0.79** ✅ |
+| Las Vegas (intermediate) | +0.018 | **+0.70** ✅ |
+| Talladega (draft, tires ~n/a) | −0.032 | **+0.19** ✅ lowest |
+
+(B) orders all five **exactly** as real-world tire knowledge predicts, on huge n (1,425 stops at
+Darlington). → **Replace `fitFalloff` with the discontinuity method:** per-track
+`tireSeconds = median(worn−fresh)`, `tirePerLap = tireSeconds / typicalStintLaps`, and a
+`tireTier` (high/moderate/low) for UI honesty (suppress tire narrative at draft tracks).
+
+### Rebuild scope (this session)
+- **types:** `TrackStrategy` → `{ typicalStintLaps, stintN, tireSeconds, tirePerLap, tireTier,
+  tireN, races }`; `PitCyclePrediction.lapsOfFuelLeft` → `lapsToTypicalPit`; add `trackStrategy`
+  to `LivePayload`.
+- **config:** drop `MIN_FALLOFF_SAMPLES`; add `MIN_TIRE_SAMPLES`, `TIRE_TIER_HIGH/MODERATE`.
+- **service (pure):** remove `fitFalloff`/`FalloffFit`; add `tireDropForStop(pitLap, ctx)` +
+  `tireTierOf(sec)`; `pitCycleModel` uses `typicalStintLaps` + emits `lapsToTypicalPit`.
+- **calibrate script:** median typical-run + discontinuity tire extraction + tiers; new artifact shape.
+- **worker:** regenerate `track-strategy.ts` (all 3 series), thread `trackStrategy` into the payload.
+- **UI:** Strategy tab shows the per-track tire tier + typical-run window honestly; relabel the
+  "Tire Falloff" card (live speed is an *observed* pace read, correctly kept).
+
+### Landed + deployed (2026-07-06)
+- Calibrated all 3 series (`bun run calibrate --series 1|2|3`) → `worker/track-strategy.ts`
+  keyed by series (Cup 19 per-track + 5 type aggregates; Xfinity 17+4; Trucks 12+4). Tire tiers
+  are cross-series consistent (Darlington/Homestead/Atlanta HIGH; Talladega/Daytona LOW) — a
+  strong independent-data validation.
+- **Live-reachability fix:** the live feed carries `track_id` but not track *type*, so the
+  track-type fallback was unreachable for uncalibrated tracks (Chicagoland, Sonoma, Watkins Glen…).
+  Baked a `typeByTrackId` map into the artifact so `strategyFor(series, trackId, null)` resolves
+  the type itself. Verified live: `/api/live?series=1` now returns
+  `trackStrategy {intermediate, moderate, 39-lap run}` for Chicagoland (track 39, type fallback).
+- Deployed the worker (`looplab-live`, versions `250906e4` then `0985b84c` with the fix) and the
+  Pages site (`dist/`, asset `1thz7ac`). Old deployed client ↔ new worker and new client ↔ old
+  worker are both safe (the client ignores an absent `trackStrategy`; the payload only renamed an
+  unused field), so the two deploys are independent.
+- 185 tests pass; root + worker + scripts typecheck clean.
+
+### Still open — Phase 4 (backtest)
+- No held-out backtest yet: predicted vs. actual green-flag pit laps, with published error bars.
+- A physical fuel *capacity* remains deliberately unmodeled (not cleanly recoverable — see the
+  validation above); `lapsToTypicalPit` is a behavioral cadence, not a fuel gauge. A true
+  fuel-mileage feature would need fuel-mileage-race identification and is out of scope here.
+- Bristol reads LOW tire deg (n small, and modern concrete Bristol genuinely has little falloff
+  most years) — correct for the typical race, but worth a note when a soft-tire compound is run.
 
 ## Problem
 

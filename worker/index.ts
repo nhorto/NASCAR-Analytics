@@ -83,9 +83,10 @@ export class LiveCoordinator {
         // The real pit feed (green-flag aware) supersedes the live-feed's
         // placeholder-zeroed pit_stops; the baked calibration sets the fuel window.
         const pitStops = await fetchPitStops(this.env, feed);
-        // The live feed carries track_id but not track type; the baked table's
-        // per-track-id entry is the primary lookup (type fallback is for the batch).
-        const trackStrategy = strategyFor(feed.track_id ?? 0, null);
+        // The live feed carries track_id + series_id but not track type; the baked
+        // table's per-track-id entry is the primary lookup (type fallback is for
+        // the batch). Series-aware — strategy differs across Cup/Xfinity/Trucks.
+        const trackStrategy = strategyFor(feed.series_id ?? series, feed.track_id ?? 0, null);
 
         const { payload, snapshot, history } = liveRuntime.processFeed(feed, {
           baselines,
@@ -274,6 +275,7 @@ function warming(): LivePayload & { warming: true } {
     battles: [],
     fieldLeaders: [],
     nextRace: null,
+    trackStrategy: null,
   };
 }
 

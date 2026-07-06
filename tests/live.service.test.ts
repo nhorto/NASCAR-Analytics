@@ -7,7 +7,6 @@ import {
   deriveBattles,
   deriveFieldLeaders,
   deriveMovers,
-  fitFalloff,
   flagOf,
   greenStintLengths,
   normalizeFeed,
@@ -16,6 +15,8 @@ import {
   pitStopsFromLivePitData,
   reconstructStints,
   sumLapsLed,
+  tireDropForStop,
+  tireTierOf,
   updateHistory,
 } from "../src/domains/live/service.ts";
 import type {
@@ -337,7 +338,7 @@ describe("pitCycleModel", () => {
     expect(p.estimatedNextPitLap).toBe(80);
   });
 
-  test("uses the real pit feed (green stops only) and calibrated fuel window", () => {
+  test("uses the real pit feed (green stops only) and calibrated typical run", () => {
     const raw: LiveFeed = {
       race_id: 1, series_id: 1, lap_number: 60, laps_in_race: 200, laps_to_go: 140,
       elapsed_time: 0, flag_state: 1,
@@ -358,14 +359,15 @@ describe("pitCycleModel", () => {
     ];
     const trackStrategy = {
       trackId: 42, trackType: "intermediate",
-      greenStintLaps: 55, greenStintN: 30, falloffSecPerLap: 0.04, falloffN: 20, races: 6,
+      typicalStintLaps: 55, stintN: 30,
+      tireSeconds: 0.7, tirePerLap: 0.013, tireTier: "moderate" as const, tireN: 300, races: 6,
     };
     const p = pitCycleModel(snap, { pitStops, feed: raw, trackStrategy })[0]!;
     expect(p.source).toBe("pit-data");
     expect(p.lastGreenPitLap).toBe(45); // the GREEN stop, not the L25 caution stop
-    expect(p.stintLength).toBe(55); // calibrated fuel window, not the flat 40
+    expect(p.stintLength).toBe(55); // calibrated typical run, not the flat 40
     expect(p.estimatedNextPitLap).toBe(45 + 55);
-    expect(p.lapsOfFuelLeft).toBe(55 - (60 - 45)); // window − lapsSinceGreenPit
+    expect(p.lapsToTypicalPit).toBe(55 - (60 - 45)); // typical run − lapsSinceGreenPit
   });
 });
 
@@ -388,18 +390,24 @@ describe("strategy calibration", () => {
     expect(greenStintLengths(stints)).toEqual([40]);
   });
 
-  test("fitFalloff recovers a positive slope from a degrading run", () => {
-    // lapTime = 30 + 0.05 * lapIntoStint
-    const samples = Array.from({ length: 20 }, (_, i) => ({ lapIntoStint: i, lapTime: 30 + 0.05 * i }));
-    const fit = fitFalloff(samples)!;
-    expect(fit).not.toBeNull();
-    expect(fit.slopeSecPerLap).toBeCloseTo(0.05, 3);
-    expect(fit.r2).toBeCloseTo(1, 3);
-    expect(fit.n).toBe(20);
+  test("tireDropForStop measures worn−fresh gap (positive when worn was slower)", () => {
+    // Green all race. Worn laps (before L50) ≈ 31.0s; fresh laps (after L50) ≈ 30.0s.
+    const lap = (l: number) => (l < 50 ? 31.0 : 30.0);
+    const drop = tireDropForStop(50, { lapTimeAt: lap, isGreenLap: () => true })!;
+    expect(drop).toBeCloseTo(1.0, 6); // worn 31 − fresh 30
   });
 
-  test("fitFalloff returns null below the sample floor", () => {
-    expect(fitFalloff([{ lapIntoStint: 0, lapTime: 30 }, { lapIntoStint: 1, lapTime: 31 }])).toBeNull();
+  test("tireDropForStop skips caution laps and returns null without enough clean laps", () => {
+    // Only the pit lap's neighborhood is green — not enough clean laps either side.
+    const isGreen = (l: number) => l === 49 || l === 53;
+    expect(tireDropForStop(50, { lapTimeAt: () => 30, isGreenLap: isGreen })).toBeNull();
+  });
+
+  test("tireTierOf buckets by the calibrated thresholds (Darlington high, Talladega low)", () => {
+    expect(tireTierOf(1.89)).toBe("high");   // Darlington
+    expect(tireTierOf(0.70)).toBe("moderate"); // Las Vegas
+    expect(tireTierOf(-0.10)).toBe("low");    // Talladega (draft)
+    expect(tireTierOf(null)).toBeNull();
   });
 
   test("pitStopsFromLivePitData drops lap-0 rows and counts tires changed", () => {

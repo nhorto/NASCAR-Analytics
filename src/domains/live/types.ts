@@ -206,8 +206,12 @@ export interface PitCyclePrediction {
   lapsSincePit: number | null;
   stintLength: number; // assumed green-flag stint (laps) used for the estimate
   estimatedNextPitLap: number | null;
-  /** Laps of fuel remaining = fuelWindow − lapsSinceGreenPit (null when unknown). */
-  lapsOfFuelLeft: number | null;
+  /**
+   * Laps until the typical pit window = typicalStintLaps − lapsSinceGreenPit
+   * (null when unknown; clamped ≥ 0). This is a behavioral cadence estimate, NOT a
+   * fuel-exhaustion reading — the data can't support a physical fuel-left number.
+   */
+  lapsToTypicalPit: number | null;
   /** Where the pit history came from: the real pit feed vs the coarse live-feed pit_stops. */
   source: "pit-data" | "feed";
 }
@@ -260,16 +264,34 @@ export interface Stint {
  * track-type fallback for thin-data tracks. All fields are estimates — the UI
  * must show them as such.
  */
+export type TireTier = "high" | "moderate" | "low";
+
 export interface TrackStrategy {
   trackId: number;
   trackType: string; // short | intermediate | superspeedway | road | dirt | unknown
-  /** Empirical green-flag fuel window (median clean green-stint length, laps). */
-  greenStintLaps: number | null;
-  /** Sample count behind greenStintLaps — low n ⇒ low confidence. */
-  greenStintN: number;
-  /** Tire lap-time degradation (sec/lap), fit on green runs; null when unfit. */
-  falloffSecPerLap: number | null;
-  falloffN: number;
+  /**
+   * Typical green-flag run: median clean green-stint length (laps). A BEHAVIORAL
+   * number — how long cars actually run between green stops here (fuel, tires, or
+   * strategy) — NOT a physical fuel-capacity claim (that isn't cleanly recoverable
+   * from history; see the 2026-07-05 validation in the exec plan). Powers the live
+   * "due to pit ~lap Y" estimate.
+   */
+  typicalStintLaps: number | null;
+  /** Sample count behind typicalStintLaps — low n ⇒ low confidence. */
+  stintN: number;
+  /**
+   * Tire severity: median worn−fresh lap-time gap (sec) across green 4-tire stops
+   * (last laps before a stop vs. the first clean laps after). Higher ⇒ tires matter
+   * more here. Orders Darlington > … > Talladega correctly, unlike a within-stint
+   * OLS slope (fuel-burn-confounded). Null below MIN_TIRE_SAMPLES.
+   */
+  tireSeconds: number | null;
+  /** Per-lap tire-deg proxy = tireSeconds / typicalStintLaps (sec/lap). */
+  tirePerLap: number | null;
+  /** Coarse tier derived from tireSeconds, for honest UI (suppress at draft tracks). */
+  tireTier: TireTier | null;
+  /** Green 4-tire stops behind the tire numbers. */
+  tireN: number;
   /** Races that contributed. */
   races: number;
 }
@@ -281,6 +303,12 @@ export interface TrackStrategy {
 export interface TrackStrategyTable {
   byTrackId: Record<string, TrackStrategy>;
   byTrackType: Record<string, TrackStrategy>;
+  /**
+   * Every known track id → its track type, so the live model can reach the
+   * track-type fallback for tracks with too little per-track history (the live
+   * feed carries track_id but not track type).
+   */
+  typeByTrackId: Record<string, string>;
 }
 
 /**
@@ -373,4 +401,6 @@ export interface LivePayload {
   battles: LiveBattle[];
   fieldLeaders: FieldLeader[];
   nextRace: NextRace | null;
+  /** Per-track calibrated strategy context (typical run + tire tier), or null. */
+  trackStrategy: TrackStrategy | null;
 }

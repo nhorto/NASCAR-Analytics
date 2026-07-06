@@ -275,6 +275,29 @@
   }
 
   // ---------- strategy ----------
+  var TIRE_TIER = {
+    high: { label: "High tire deg", cls: "neg", blurb: "Fresh tires are worth real lap time here — pit strategy and tire management decide it." },
+    moderate: { label: "Moderate tire deg", cls: "warn", blurb: "Tires matter, but track position and the run of cautions weigh in too." },
+    low: { label: "Low tire deg", cls: "pos", blurb: "Tires aren't the story here — fuel, the draft, and track position decide it." },
+  };
+
+  // Honest per-track context strip: what the calibrated backfill says about this
+  // track (tire severity + typical green run), or nothing when uncalibrated.
+  function strategyContext(data) {
+    var ts = data.trackStrategy;
+    if (!ts) return "";
+    var t = ts.tireTier && TIRE_TIER[ts.tireTier];
+    var run = ts.typicalStintLaps != null ? Math.round(ts.typicalStintLaps) + "-lap typical green run" : "";
+    var thin = (ts.tireN != null && ts.tireN < 20) || (ts.stintN != null && ts.stintN < 8);
+    var dot = t ? '<span class="tdot ' + t.cls + '"></span>' : "";
+    return '<div class="card ctx"><div class="ctx-h">' + dot +
+      "<b>" + (t ? esc(t.label) : "Tire deg —") + "</b>" +
+      (run ? '<span class="ctx-run">' + esc(run) + "</span>" : "") +
+      (thin ? '<span class="ctx-thin">thin data</span>' : "") + "</div>" +
+      (t ? '<p class="note" style="margin:4px 0 0">' + esc(t.blurb) + " <span class=\"mut\">Calibrated from historical loop data — an estimate.</span></p>" : "") +
+      "</div>";
+  }
+
   function renderStrategy(data) {
     var cycles = (data.pitCycles || []).filter(function (c) { return c.estimatedNextPitLap != null; })
       .sort(function (a, b) { return a.estimatedNextPitLap - b.estimatedNextPitLap; }).slice(0, 12);
@@ -289,17 +312,24 @@
         '<div class="stint"><i class="' + (past ? "old" : "") + '" style="width:' + stintFill + '%"></i></div>' +
         '<span class="st num' + (past ? " neg" : "") + '">' + (recent ? "pitted L" + c.lastGreenPitLap : "L" + c.estimatedNextPitLap + '<small>·est</small>') + "</span></div>";
     }).join("") : '<p class="note">Pit-cycle estimates appear once cars start making green-flag stops.</p>';
-    var cycleCard = '<div class="card"><div class="card-h"><h3>Green-Flag Pit Cycle</h3><span class="more">est. window</span></div>' +
-      '<p class="note" style="margin:-2px 0 8px"><span class="pos">Green→yellow</span> = tire life left; <span class="neg">red</span> = past optimal. Just-pitted cars greyed.</p>' +
+    var cycleCard = '<div class="card"><div class="card-h"><h3>Green-Flag Pit Cycle</h3><span class="more">typical run</span></div>' +
+      '<p class="note" style="margin:-2px 0 8px"><span class="pos">Green→yellow</span> = into the run; <span class="neg">red</span> = past the typical pit window. Just-pitted cars greyed.</p>' +
       '<div class="cyc">' + cycleRows + "</div></div>";
 
     var callouts = undercutCallouts(data, byId);
     var undercutCard = '<div class="card"><div class="card-h"><h3>Undercut Watch</h3></div>' +
       (callouts.length ? callouts.join("") : '<p class="note">No clear undercut situations right now — check back after the next cycle of stops.</p>') + "</div>";
 
-    var falloff = tireFalloffChart(data, byId);
+    var ctx = strategyContext(data);
+    // At low-tire-deg tracks a "tire falloff" chart is noise — suppress the fake precision.
+    var tier = data.trackStrategy && data.trackStrategy.tireTier;
+    var falloff = tier === "low"
+      ? '<div class="card"><div class="card-h"><h3>Tire Falloff</h3></div><p class="note">' +
+        esc((data.snapshot && data.snapshot.trackName) || "This track") +
+        ' shows little tire falloff — pace here is set by the draft, fuel, and track position, not worn tires.</p></div>'
+      : tireFalloffChart(data, byId, tier);
 
-    return cycleCard + undercutCard + falloff;
+    return ctx + cycleCard + undercutCard + falloff;
   }
 
   function undercutCallouts(data, byId) {
@@ -320,16 +350,17 @@
       if (!d || !d.running) return;
       if (c.lapsSincePit != null && c.stintLength && c.lapsSincePit >= c.stintLength && (d.mover10 != null && d.mover10 < 0)) {
         out.push('<div class="alert"><div class="ai bad">▼</div><div class="at"><b>' + esc(lastName(d.driverName)) +
-          "</b> is past the tire window (" + c.lapsSincePit + " laps on tires) and slipping " + Math.abs(d.mover10) + " spots — needs to pit soon.</div></div>");
+          "</b> is past its typical run (" + c.lapsSincePit + " laps on tires) and slipping " + Math.abs(d.mover10) + " spots — likely pitting soon.</div></div>");
       }
     });
     return out;
   }
 
-  function tireFalloffChart(data, byId) {
-    // Top running contenders' recent lap-speed as falloff lines.
+  function tireFalloffChart(data, byId, tier) {
+    // Top running contenders' recent lap-speed. This is an OBSERVED pace read
+    // (fuel burn + tires + traffic), not modeled tire wear — the caption says so.
     var contenders = data.snapshot.drivers.filter(function (d) { return d.running && (d.spdTrend || []).filter(function (v) { return v != null; }).length >= 3; }).slice(0, 4);
-    if (!contenders.length) return '<div class="card"><div class="card-h"><h3>Tire Falloff · Leaders</h3></div><p class="note">Falloff lines build as green-flag laps accumulate.</p></div>';
+    if (!contenders.length) return '<div class="card"><div class="card-h"><h3>Pace Trend · Leaders</h3></div><p class="note">Pace lines build as green-flag laps accumulate.</p></div>';
     var palette = ["#34d399", "#ffd23f", "#4b83f0", "#f87171"];
     var all = [];
     contenders.forEach(function (d) { (d.spdTrend || []).forEach(function (v) { if (v != null) all.push(v); }); });
@@ -348,10 +379,13 @@
       lines += '<polyline fill="none" stroke="' + palette[idx] + '" stroke-width="2.2" points="' + coords.join(" ") + '"/>';
       legend += '<span style="color:' + palette[idx] + ';font-size:10.5px;margin-right:10px">● ' + esc(lastName(d.driverName)) + "</span>";
     });
-    return '<div class="card"><div class="card-h"><h3>Tire Falloff · Leaders</h3></div>' +
+    var cap = tier === "high"
+      ? "Recent lap speed per contender. This is a high tire-deg track, so a falling line is largely worn tires — a car sliding down is due to pit."
+      : "Recent lap speed per contender — an observed pace read (fuel burn + tires + traffic), not tire wear alone. A falling line means a car is losing pace.";
+    return '<div class="card"><div class="card-h"><h3>Pace Trend · Leaders</h3></div>' +
       '<svg viewBox="0 0 ' + W + " " + H + '" width="100%" height="' + H + '"><polyline fill="none" stroke="#2a3140" stroke-width="1" points="0,78 ' + W + ',78"/>' + lines + "</svg>" +
       '<div style="margin-top:4px">' + legend + "</div>" +
-      '<p class="note" style="margin-top:4px">Recent lap speed per contender. A falling line = losing pace on worn tires → pits sooner.</p></div>';
+      '<p class="note" style="margin-top:4px">' + cap + "</p></div>";
   }
 
   // ---------- my driver ----------

@@ -108,6 +108,7 @@ export function processFeed(feed: LiveFeed, opts: ProcessFeedOptions): ProcessFe
     battles,
     fieldLeaders,
     nextRace: opts.nextRace ?? null,
+    trackStrategy: opts.trackStrategy ?? null,
   };
 
   return { payload, snapshot, history, newAlerts };

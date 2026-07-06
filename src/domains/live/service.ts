@@ -22,6 +22,7 @@ import type {
   PitCyclePrediction,
   SegTrend,
   Stint,
+  TireTier,
   TrackStrategy,
 } from "./types.ts";
 import {
@@ -32,13 +33,15 @@ import {
   FLAG_STATES,
   HISTORY_LAPS,
   LIVE_FLAG_STATES,
-  MIN_FALLOFF_SAMPLES,
   MIN_GREEN_STINT_LAPS,
   MOVER_TOP_N,
   MOVER_WINDOW_LAPS,
   PIT_FLAG_GREEN,
   PS_BUCKET_WIDTH,
   SEG_COUNT,
+  TIRE_DROP_MIN_SIDE,
+  TIRE_TIER_HIGH,
+  TIRE_TIER_MODERATE,
   TREND_SAMPLES,
   VEHICLE_STATUS_RUNNING,
 } from "./config.ts";
@@ -318,21 +321,21 @@ export interface PitCycleOptions {
    * Authoritative pit stops (from live-pit-data.json, keyed to cars by number).
    * When present these supersede the coarse live-feed `pit_stops` — they carry
    * real lap numbers AND flag status, so we can use only GREEN stops (a caution
-   * stop doesn't set a fuel window). Preferred source.
+   * stop doesn't set a green-run cadence). Preferred source.
    */
   pitStops?: NormalizedPitStop[];
   /** Raw live-feed fallback when the pit feed is unavailable (placeholder-zeroed). */
   feed?: LiveFeed;
-  /** Per-track calibration (fuel window). Null ⇒ fall back to DEFAULT_STINT_LAPS. */
+  /** Per-track calibration (typical green run). Null ⇒ fall back to DEFAULT_STINT_LAPS. */
   trackStrategy?: TrackStrategy | null;
 }
 
 /**
- * Green-flag pit-window estimate per running car. Prefers the real pit feed
- * (green stops only) and the per-track calibrated fuel window; falls back to the
- * coarse live-feed pit_stops + DEFAULT_STINT_LAPS when neither is available.
- * The fuel window (`stintLength`) comes from calibration, NOT from a sensor —
- * `lapsOfFuelLeft` is an estimate.
+ * Green-flag pit-cycle estimate per running car. Prefers the real pit feed
+ * (green stops only) and the per-track calibrated typical-run length; falls back
+ * to the coarse live-feed pit_stops + DEFAULT_STINT_LAPS when neither is
+ * available. `stintLength` is a behavioral cadence (from calibration or the car's
+ * own observed gaps), NOT a fuel gauge — `lapsToTypicalPit` is an estimate.
  */
 export function pitCycleModel(
   snapshot: LiveSnapshot,
@@ -360,10 +363,10 @@ export function pitCycleModel(
   }
   for (const laps of greenPitLapsByCar.values()) laps.sort((a, b) => a - b);
 
-  // Fuel window: calibrated per-track green stint, else the flat default.
-  const fuelWindow =
-    opts.trackStrategy?.greenStintLaps != null && opts.trackStrategy.greenStintLaps > 0
-      ? opts.trackStrategy.greenStintLaps
+  // Typical green-flag run: calibrated per-track median, else the flat default.
+  const typicalStint =
+    opts.trackStrategy?.typicalStintLaps != null && opts.trackStrategy.typicalStintLaps > 0
+      ? opts.trackStrategy.typicalStintLaps
       : DEFAULT_STINT_LAPS;
   const source: PitCyclePrediction["source"] = usingPitData ? "pit-data" : "feed";
 
@@ -372,12 +375,12 @@ export function pitCycleModel(
     .map((d): PitCyclePrediction => {
       const laps = greenPitLapsByCar.get(d.carNumber) ?? [];
       const lastGreenPitLap = laps.length ? laps[laps.length - 1]! : null;
-      // Prefer the car's own observed cadence; else the calibrated window.
-      const stintLength = inferStint(laps, fuelWindow);
+      // Prefer the car's own observed cadence; else the calibrated typical run.
+      const stintLength = inferStint(laps, typicalStint);
       const lapsSincePit = lastGreenPitLap == null ? null : snapshot.lap - lastGreenPitLap;
       const estimatedNextPitLap = lastGreenPitLap == null ? null : lastGreenPitLap + stintLength;
-      const lapsOfFuelLeft =
-        lastGreenPitLap == null ? null : Math.max(0, fuelWindow - (snapshot.lap - lastGreenPitLap));
+      const lapsToTypicalPit =
+        lastGreenPitLap == null ? null : Math.max(0, stintLength - (snapshot.lap - lastGreenPitLap));
       return {
         driverId: d.driverId,
         carNumber: d.carNumber,
@@ -386,7 +389,7 @@ export function pitCycleModel(
         lapsSincePit,
         stintLength,
         estimatedNextPitLap,
-        lapsOfFuelLeft,
+        lapsToTypicalPit,
         source,
       };
     });
@@ -405,8 +408,11 @@ function inferStint(pitLaps: number[], fallback: number): number {
 
 // ---- strategy calibration (pure; shared by the live model + the offline batch) ----
 // No feed carries tire wear or fuel level (see docs/research/2026-07-06_*), so
-// these fit fuel windows and tire falloff from timing data. They run in the
-// Workers runtime (live) AND in the Bun calibration script (backfill). See
+// these derive a typical green-run length + a tire-severity index from timing
+// data. Tire severity uses the pit-DISCONTINUITY (fresh-vs-worn) method — a
+// within-stint OLS slope is fuel-burn-confounded and was removed after the
+// 2026-07-05 validation. They run in the Workers runtime (live) AND in the Bun
+// calibration script (backfill). See
 // docs/exec-plans/active/2026-07-06-strategy-model-calibration.md.
 
 /** live-pit-data.json rows → normalized pit stops (join key = car number). */
@@ -478,46 +484,58 @@ export function reconstructStints(pits: NormalizedPitStop[], lapsInRace: number)
   return stints;
 }
 
-/** Clean green-flag stint lengths above the noise floor — fuel-window samples. */
+/** Clean green-flag stint lengths above the noise floor — typical-run samples. */
 export function greenStintLengths(stints: Stint[]): number[] {
   return stints
     .filter((s) => s.greenRun && s.laps >= MIN_GREEN_STINT_LAPS)
     .map((s) => s.laps);
 }
 
-export interface FalloffFit {
-  slopeSecPerLap: number; // + = lap time grows (tires wearing)
-  intercept: number;
-  n: number;
-  r2: number;
+/** Lap-time lookups injected into the pure tire-drop kernel (DB-backed offline). */
+export interface TireDropContext {
+  /** Lap time for a given lap, or null if unknown / missing. */
+  lapTimeAt(lap: number): number | null;
+  /** Whether a lap ran green (not under caution). Non-green laps are skipped. */
+  isGreenLap(lap: number): boolean;
 }
 
 /**
- * Ordinary least-squares fit of lap time vs. laps-into-stint over one green run.
- * The slope is the tire-falloff rate (sec/lap). Returns null below the sample
- * floor. NOTE: fuel burn (car lightening) pushes the slope the other way, so a
- * single-run slope conflates the two — the batch controls for that by fitting
- * across many stints; see the exec plan / arXiv 2512.00640 lead.
+ * Worn−fresh lap-time gap (sec) across ONE green 4-tire pit stop: mean of the
+ * last clean green laps before pitting minus the mean of the first clean green
+ * laps after (skipping the out-lap). Positive ⇒ worn tires were slower than
+ * fresh — the real tire-degradation signal. Unlike a within-stint OLS slope this
+ * is NOT confounded by fuel burn to first order (both windows sit near a common
+ * fuel state at the stop), and it orders tracks by tire severity correctly. The
+ * remaining ~constant fuel penalty (heavier after refuel) is roughly equal
+ * across tracks, so it does not corrupt the between-track ranking. Returns null
+ * when either side lacks enough clean green laps.
  */
-export function fitFalloff(samples: Array<{ lapIntoStint: number; lapTime: number }>): FalloffFit | null {
-  const pts = samples.filter((s) => Number.isFinite(s.lapTime) && s.lapTime > 0);
-  if (pts.length < MIN_FALLOFF_SAMPLES) return null;
-  const n = pts.length;
-  let sx = 0, sy = 0, sxx = 0, sxy = 0, syy = 0;
-  for (const p of pts) {
-    sx += p.lapIntoStint; sy += p.lapTime;
-    sxx += p.lapIntoStint * p.lapIntoStint;
-    sxy += p.lapIntoStint * p.lapTime;
-    syy += p.lapTime * p.lapTime;
-  }
-  const denom = n * sxx - sx * sx;
-  if (denom === 0) return null;
-  const slope = (n * sxy - sx * sy) / denom;
-  const intercept = (sy - slope * sx) / n;
-  const rNum = n * sxy - sx * sy;
-  const rDen = Math.sqrt(denom * (n * syy - sy * sy));
-  const r2 = rDen === 0 ? 0 : (rNum / rDen) ** 2;
-  return { slopeSecPerLap: slope, intercept, n, r2 };
+export function tireDropForStop(pitLap: number, ctx: TireDropContext): number | null {
+  const collect = (from: number, step: number, limit: number): number[] => {
+    const out: number[] = [];
+    for (let l = from; out.length < 3 && Math.abs(l - from) < limit; l += step) {
+      if (l <= 0 || !ctx.isGreenLap(l)) continue;
+      const t = ctx.lapTimeAt(l);
+      if (t != null && Number.isFinite(t) && t > 0) out.push(t);
+    }
+    return out;
+  };
+  // pre: the 3 green laps immediately before pit-in (walk backward).
+  const pre = collect(pitLap - 1, -1, 8);
+  // post: green laps starting 3 laps after the stop (skip out-lap + settle).
+  const post = collect(pitLap + 3, 1, 8);
+  if (pre.length < TIRE_DROP_MIN_SIDE || post.length < TIRE_DROP_MIN_SIDE) return null;
+  const mean = (a: number[]) => a.reduce((x, y) => x + y, 0) / a.length;
+  const drop = mean(pre) - mean(post);
+  return Number.isFinite(drop) ? drop : null;
+}
+
+/** Coarse tire-severity tier from the median worn−fresh gap (sec). Null ⇒ unknown. */
+export function tireTierOf(tireSeconds: number | null): TireTier | null {
+  if (tireSeconds == null || !Number.isFinite(tireSeconds)) return null;
+  if (tireSeconds >= TIRE_TIER_HIGH) return "high";
+  if (tireSeconds >= TIRE_TIER_MODERATE) return "moderate";
+  return "low";
 }
 
 /** Median of a numeric sample (empty ⇒ null). */
