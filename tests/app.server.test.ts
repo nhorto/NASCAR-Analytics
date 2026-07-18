@@ -84,6 +84,30 @@ describe("web app", () => {
     expect(body).toContain("--accent");
   });
 
+  test("PWA: manifest, service worker (version stamped), and icons are served; pages link them", async () => {
+    const manifest = await fetch(`${base}/manifest.webmanifest`);
+    expect(manifest.status).toBe(200);
+    const mf = (await manifest.json()) as any;
+    expect(mf.short_name).toBe("Looplab");
+    expect(mf.display).toBe("standalone");
+    expect(mf.icons.some((i: any) => i.purpose === "maskable")).toBe(true);
+
+    const sw = await get("/sw.js");
+    expect(sw.status).toBe(200);
+    expect(sw.body).not.toContain("__ASSET_VERSION__"); // cache key stamped
+    expect(sw.body).toContain("looplab-");
+
+    const icon = await fetch(`${base}/icons/icon-192.png`);
+    expect(icon.status).toBe(200);
+    expect(icon.headers.get("content-type")).toBe("image/png");
+    expect(await fetch(`${base}/icons/nope.png`).then((r) => r.status)).toBe(404);
+
+    const home = await get("/");
+    expect(home.body).toContain('rel="manifest"');
+    expect(home.body).toContain("serviceWorker");
+    expect(home.body).toContain("apple-touch-icon");
+  });
+
   test("drivers index lists and filters", async () => {
     const all = await get("/drivers");
     expect(all.status).toBe(200);

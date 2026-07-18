@@ -9,6 +9,7 @@ import { ingestionService, ingestionConfig } from "../domains/data-ingestion/ind
 import { driversService } from "../domains/drivers/index.ts";
 import * as render from "./render.ts";
 import { seasonStatsPayload, trackTypePayload, baselinesPayload } from "./data.ts";
+import { ASSET_VERSION } from "./html.ts";
 
 const DIST = "dist";
 const SERIES_PREFIX: Record<number, string> = { 1: "", 2: "/xfinity", 3: "/trucks" };
@@ -112,11 +113,23 @@ export async function exportSite(dbPath = "data/nascar.db", log?: Log): Promise<
   await Bun.write(join(DIST, "home-live.js"), Bun.file(new URL("./client/home-live.js", import.meta.url)));
   await Bun.write(join(DIST, "404.html"), render.render404(1, render.currentSeason(p, 1), "Page"));
 
+  // PWA: manifest + icons + the service worker. The SW cache is keyed to the
+  // same content-hash ASSET_VERSION that cache-busts ?v= URLs, so each deploy
+  // invalidates cleanly.
+  await Bun.write(join(DIST, "manifest.webmanifest"), Bun.file(new URL("./manifest.webmanifest", import.meta.url)));
+  for (const icon of ["icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png"]) {
+    await Bun.write(join(DIST, "icons", icon), Bun.file(new URL(`./assets/${icon}`, import.meta.url)));
+  }
+  const swSource = await Bun.file(new URL("./client/sw.js", import.meta.url)).text();
+  await Bun.write(join(DIST, "sw.js"), swSource.replaceAll("__ASSET_VERSION__", ASSET_VERSION));
+
   // Cloudflare Pages reads _headers from the output root. Data + assets change
-  // only on a weekly rebuild, so a modest cache is safe.
+  // only on a weekly rebuild, so a modest cache is safe. sw.js must revalidate
+  // every load (it carries the deploy's cache key) — its rule comes last so it
+  // overrides the /*.js one.
   await Bun.write(
     join(DIST, "_headers"),
-    `/data/*\n  Cache-Control: public, max-age=3600\n/*.css\n  Cache-Control: public, max-age=3600\n/*.js\n  Cache-Control: public, max-age=3600\n`,
+    `/data/*\n  Cache-Control: public, max-age=3600\n/*.css\n  Cache-Control: public, max-age=3600\n/*.js\n  Cache-Control: public, max-age=3600\n/icons/*\n  Cache-Control: public, max-age=86400\n/manifest.webmanifest\n  Cache-Control: public, max-age=3600\n/sw.js\n  Cache-Control: no-cache\n`,
   );
 
   db.close();

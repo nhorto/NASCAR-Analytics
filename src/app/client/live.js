@@ -16,6 +16,7 @@
     data: null,
     lastOkAt: 0,
     rosterSig: "",
+    lastAlertSig: null, // newest alert seen last poll (device-notification diffing)
   };
 
   var elStatus = document.getElementById("live-status");
@@ -433,12 +434,18 @@
     var feedCard = '<div class="card"><div class="card-h"><h3>' + (me ? "His Race · Alert Feed" : "Race Feed") + "</h3></div>" +
       (feed.length ? feed.map(alertRow).join("") : '<p class="note">Alerts appear as the race unfolds — lead changes, cautions, big moves, pit stops.</p>') + "</div>";
 
+    var notifOn = notifyWanted() && notifyGranted();
+    var notifBlocked = typeof Notification !== "undefined" && Notification.permission === "denied";
+    var notifNote = notifBlocked
+      ? "Notifications are blocked for this site in your browser settings."
+      : "Device notifications fire for your driver's events (plus cautions/restarts) while Looplab is open in a background tab or installed to your home screen.";
     var prefCard = '<div class="card"><div class="card-h"><h3>Alerts I Get</h3></div><div class="pit-line" id="alert-prefs">' +
       prefTag("moves", "Position changes", prefs.moves !== false) +
       prefTag("pit", "Pit in/out", prefs.pit !== false) +
       prefTag("flag", "Caution & restart", prefs.flag !== false) +
       prefTag("stage_end", "Stage results", prefs.stage_end !== false) +
-      "</div><p class=\"note\" style=\"margin-top:8px\">In-app only for MVP. Saved in this browser — no account needed.</p></div>";
+      '<span class="pit-tag' + (notifOn ? "" : " mut") + '" id="notify-toggle"><b>' + (notifOn ? "✓" : "🔔") + "</b> Device notifications</span>" +
+      "</div><p class=\"note\" style=\"margin-top:8px\">" + notifNote + " Saved in this browser — no account needed.</p></div>";
 
     return picker + card + feedCard + prefCard;
   }
@@ -457,6 +464,45 @@
   }
   function setPref(key, on) {
     var p = getPrefs(); p[key] = on; localStorage.setItem("looplab_alertprefs", JSON.stringify(p));
+  }
+
+  // ---------- device notifications (opt-in) ----------
+  // Fire real notifications for the followed driver's events (+ caution/restart)
+  // while Looplab sits in a background tab / installed PWA. True background push
+  // (site closed) needs Web Push + VAPID — a tracked follow-up, not this.
+  function notifyWanted() { return localStorage.getItem("looplab_notify") === "1"; }
+  function notifyGranted() { return typeof Notification !== "undefined" && Notification.permission === "granted"; }
+  function sigOf(a) { return a.kind + "|" + a.atLap + "|" + a.message; }
+  function notifyNew(data) {
+    var alerts = data.alerts || [];
+    var prevSig = state.lastAlertSig;
+    state.lastAlertSig = alerts.length ? sigOf(alerts[0]) : prevSig;
+    if (prevSig == null) return; // first payload of the session: don't replay history
+    if (!notifyWanted() || !notifyGranted()) return;
+    if (document.visibilityState === "visible") return; // the in-app feed covers it
+    var fresh = [];
+    for (var i = 0; i < alerts.length; i++) {
+      if (sigOf(alerts[i]) === prevSig) break;
+      fresh.push(alerts[i]);
+    }
+    var mine = fresh.filter(function (a) {
+      if (a.driverId != null && state.followId && String(a.driverId) === String(state.followId)) return true;
+      return a.kind === "caution" || a.kind === "green";
+    });
+    mine.slice(0, 3).reverse().forEach(function (a) {
+      var title = "Looplab · Lap " + a.atLap;
+      var opts = { body: a.message, icon: "/icons/icon-192.png", badge: "/icons/icon-192.png", tag: "looplab-" + sigOf(a) };
+      try {
+        if (navigator.serviceWorker && navigator.serviceWorker.getRegistration) {
+          navigator.serviceWorker.getRegistration().then(function (reg) {
+            if (reg && reg.showNotification) reg.showNotification(title, opts);
+            else new Notification(title, opts);
+          }).catch(function () {});
+        } else {
+          new Notification(title, opts);
+        }
+      } catch (e) { /* notifications unsupported — the in-app feed still has it */ }
+    });
   }
 
   // ---------- idle ----------
@@ -533,6 +579,16 @@
   elBody.addEventListener("click", function (e) {
     var seg = e.target.closest("#sortseg a");
     if (seg) { state.sort = seg.getAttribute("data-mode"); render(); return; }
+    var nt = e.target.closest("#notify-toggle");
+    if (nt) {
+      if (notifyWanted()) { localStorage.setItem("looplab_notify", "0"); render(); return; }
+      var done = function (perm) { if (perm === "granted") localStorage.setItem("looplab_notify", "1"); render(); };
+      try {
+        var p = Notification.requestPermission(done); // older Safari: callback form
+        if (p && p.then) p.then(done);
+      } catch (err) { /* Notification API unavailable */ }
+      return;
+    }
     var pref = e.target.closest("[data-pref]");
     if (pref) {
       var key = pref.getAttribute("data-pref");
@@ -561,6 +617,7 @@
       if (!d || !d.snapshot) return;
       state.data = d;
       state.lastOkAt = Date.now();
+      notifyNew(d);
       render();
     }).catch(function () { updateFoot(); });
   }

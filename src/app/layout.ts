@@ -55,7 +55,15 @@ export function page(opts: {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0a0c10">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Looplab">
 <title>${esc(opts.title)} · Looplab</title>
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
 <link rel="stylesheet" href="/style.css?v=${ASSET_VERSION}">
 <script>window.__LIVE_API__=${JSON.stringify(LIVE_API_BASE)};window.__SERIES__=${opts.seriesId};</script>
 </head>
@@ -74,7 +82,8 @@ ${opts.content}
 <script>
 (function(){try{var a=window.__LIVE_API__,s=window.__SERIES__||1;if(!a)return;
 fetch(a+"/api/live/status?series="+s,{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
-if(d&&d.live){var el=document.querySelector(".tabbar .tab-live .livedot");if(el)el.hidden=false;}}).catch(function(){});}catch(e){}})();
+if(d&&d.live){var el=document.querySelector(".tabbar .tab-live .livedot");if(el)el.hidden=false;}}).catch(function(){});}catch(e){}
+if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js").catch(function(){});}})();
 </script>
 </body>
 </html>`;

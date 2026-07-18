@@ -1,6 +1,6 @@
 # PWA: Installable Site + My-Driver Notifications
 
-**Status:** ACTIVE
+**Status:** COMPLETED 2026-07-18
 **Started:** 2026-07-18
 **Owner ask:** "Eventually I want a real app — for now, PWA-ify it" (2026-07-18).
 
@@ -42,3 +42,18 @@ my-driver alerts as real device notifications while the live page is open.
 
 - `bun test` green; export emits manifest/sw/icons; Lighthouse-style manual
   check of manifest validity; SW never caches the live API.
+
+## Outcome (2026-07-18)
+
+Built as scoped. `bun test` green (200 tests) including a new server test
+covering manifest shape (standalone + maskable icon), SW version stamping, icon
+serving, and the layout's manifest/SW/apple-touch wiring. A seeded end-to-end
+`exportSite` smoke run confirmed `dist/` gets `manifest.webmanifest`, a
+version-stamped `sw.js` (`Cache-Control: no-cache` via `_headers`),
+and `dist/icons/*`. One bug caught in verification: `String.replace` only
+stamped the FIRST `__ASSET_VERSION__` occurrence (the comment, not the code) —
+switched to `replaceAll` in both the exporter and dev server. The SW
+deliberately skips cross-origin + `/api/*` requests, so the live Worker feed is
+never served from cache. Icons reviewed visually (yellow loop ring + live-green
+dot on the dark tile). On-device install check happens after the next Pages
+deploy.

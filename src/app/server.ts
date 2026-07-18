@@ -9,12 +9,21 @@ import { driversRuntime } from "../domains/drivers/index.ts";
 import { htmlResponse } from "./layout.ts";
 import * as render from "./render.ts";
 import { seasonStatsPayload, trackTypePayload, baselinesPayload } from "./data.ts";
+import { ASSET_VERSION } from "./html.ts";
 
 const STYLE_URL = new URL("./style.css", import.meta.url);
 const COMPARE_JS_URL = new URL("./client/compare.js", import.meta.url);
 const TRACKS_JS_URL = new URL("./client/tracks.js", import.meta.url);
 const LIVE_JS_URL = new URL("./client/live.js", import.meta.url);
 const HOME_LIVE_JS_URL = new URL("./client/home-live.js", import.meta.url);
+const MANIFEST_URL = new URL("./manifest.webmanifest", import.meta.url);
+
+// PWA bits (same artifacts the exporter emits; SW gets the cache key stamped).
+const SW_SOURCE = (await Bun.file(new URL("./client/sw.js", import.meta.url)).text()).replaceAll(
+  "__ASSET_VERSION__",
+  ASSET_VERSION,
+);
+const ICON_FILES = new Set(["icon-192.png", "icon-512.png", "icon-maskable-512.png", "apple-touch-icon.png"]);
 
 const SERIES = ingestionConfig.SERIES;
 const VALID_SERIES = new Set<number>([SERIES.cup, SERIES.xfinity, SERIES.trucks]);
@@ -54,6 +63,11 @@ export function createServer(p: Providers, port: number) {
       if (path === "/tracks.js") return file(TRACKS_JS_URL, "text/javascript; charset=utf-8");
       if (path === "/live.js") return file(LIVE_JS_URL, "text/javascript; charset=utf-8");
       if (path === "/home-live.js") return file(HOME_LIVE_JS_URL, "text/javascript; charset=utf-8");
+      if (path === "/manifest.webmanifest") return file(MANIFEST_URL, "application/manifest+json; charset=utf-8");
+      if (path === "/sw.js")
+        return new Response(SW_SOURCE, { headers: { "Content-Type": "text/javascript; charset=utf-8", "Cache-Control": "no-cache" } });
+      const icon = path.match(/^\/icons\/([a-z0-9-]+\.png)$/)?.[1];
+      if (icon && ICON_FILES.has(icon)) return file(new URL(`./assets/${icon}`, import.meta.url), "image/png");
 
       // --- client-page data ---
       let m = path.match(/^\/data\/season-stats-(\d+)\.json$/);
