@@ -1,6 +1,6 @@
 # Live Race Day Companion (MVP)
 
-**Status:** ACTIVE — owner-approved 2026-07-05. Phase 0/1 complete; Phase 2 (edge Durable Object) in progress — targeting a live, tester-shareable URL for tonight's Cup race (22:00 UTC).
+**Status:** COMPLETED 2026-07-18 — Phases 0–3 shipped 2026-07-05 (Worker + main-site `/live`, validated against the eero 400 live feed); Phase 4 hardening (keep-warm cron + post-race authoritative swap) built + unit-tested 2026-07-18. Live validation of the Phase 4 pieces happens at the first race weekend after the next Worker deploy (they're exercised by CI-deployed `bun run refresh` once the Cloudflare secrets are in).
 **Started:** 2026-07-05
 **Research:** [docs/research/2026-07-05_live-race-companion.md](../../research/2026-07-05_live-race-companion.md)
 
@@ -266,6 +266,18 @@ plan to `completed/`.
    baseline). Payload gains `authoritative: true`; the UIs retitle the board
    "Final — official loop data". Retries on the idle cadence (loopstats can lag
    the checkered by minutes), bounded per race, marked done in DO storage.
+
+**Phase 4 — ✅ DONE (2026-07-18).** Both pieces built exactly as scoped: pure
+`parseScheduleUtc` / `anyRaceInWindow` / `raceHasFinished` /
+`applyAuthoritativeStats` (+ runtime `applyAuthoritative`) in the live domain,
+14 new unit tests (`tests/live.authoritative.test.ts`, incl. the captured
+loopstats fixture); the Worker gained `scheduled()` + `[triggers] crons`, and
+the DO a `withAuthoritative` step that re-applies stored official stats each
+tick (alert lineage stays on the raw feed, so the swap can't fire spurious
+position alerts; guarded to checkered / cold-complete so pre-race "cold" can't
+burn the bounded fetch attempts). Both UIs show "Final — official loop data".
+Residual: the keep-warm window is schedule-anchored (+6 h) — an extreme rain
+delay ends unwatched keep-warm early; logged Low in the tracker.
 
 ## Risks / open decisions
 

@@ -103,6 +103,30 @@ export const TIRE_DROP_MIN_SIDE = 2;
 export const TIRE_TIER_HIGH = 1.0;
 export const TIRE_TIER_MODERATE = 0.45;
 
+// ---- race-window keep-warm + post-race authoritative swap (Phase 4) ----
+
+/**
+ * The keep-warm window opens this long BEFORE a scheduled race start. The cron
+ * kicks the series' DO inside the window so the poll loop is already ticking
+ * (and alert history is gapless) when the field goes green.
+ */
+export const KEEPWARM_PRE_RACE_MS = 30 * 60 * 1000;
+
+/**
+ * The keep-warm window closes this long AFTER the scheduled start — generous
+ * enough for a full race + typical rain delay + the post-race loopstats
+ * publication lag. (A multi-hour red flag can outlast it; the swap then
+ * completes on the next viewer visit instead.)
+ */
+export const KEEPWARM_POST_RACE_MS = 6 * 60 * 60 * 1000;
+
+/**
+ * Max fetch attempts for the post-race authoritative loopstats swap (one per
+ * idle alarm tick ≈ 1/min). loopstats/prod usually populates within minutes of
+ * the checkered; the bound stops a never-published race from polling forever.
+ */
+export const AUTH_SWAP_MAX_ATTEMPTS = 90;
+
 // ---- history / trend derivation (Phase 3) ----
 
 /** Max per-lap frames the edge keeps in the rolling history buffer. */

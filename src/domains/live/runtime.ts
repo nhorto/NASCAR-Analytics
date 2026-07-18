@@ -5,6 +5,7 @@
 // here (not in the Worker) means the DO is a thin I/O adapter over tested logic.
 
 import {
+  applyAuthoritativeStats,
   attachTrends,
   computeLiveMetrics,
   deriveAlerts,
@@ -23,6 +24,7 @@ import type {
   LiveHistory,
   LivePayload,
   LiveSnapshot,
+  LoopStatsRace,
   NextRace,
   NormalizedPitStop,
   PitCyclePrediction,
@@ -112,4 +114,27 @@ export function processFeed(feed: LiveFeed, opts: ProcessFeedOptions): ProcessFe
   };
 
   return { payload, snapshot, history, newAlerts };
+}
+
+/**
+ * Post-race authoritative swap: rebuild an already-built payload with the
+ * official loopstats/prod numbers replacing the live-counter estimates (see
+ * applyAuthoritativeStats), re-deriving the field leaders from the official
+ * rows and marking the payload `authoritative`. Pure; returns null when the
+ * loopstats payload doesn't match the payload's race (caller keeps the live
+ * estimates and may retry).
+ */
+export function applyAuthoritative(
+  payload: LivePayload,
+  official: LoopStatsRace,
+  baselines: LiveBaselines | null,
+): LivePayload | null {
+  const snapshot = applyAuthoritativeStats(payload.snapshot, official, baselines);
+  if (!snapshot) return null;
+  return {
+    ...payload,
+    authoritative: true,
+    snapshot,
+    fieldLeaders: deriveFieldLeaders(snapshot.drivers),
+  };
 }

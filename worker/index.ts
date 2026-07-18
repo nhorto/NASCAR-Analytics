@@ -4,16 +4,18 @@
 // Object alarm loop, computing our live metrics + alerts via the pure `live`
 // domain, and (2) serves both the JSON API (GET /api/live) and a self-contained
 // live page (GET /). One workers.dev URL is the whole product — no Pages
-// redeploy, no cross-origin. See docs/exec-plans/active/2026-07-05-live-race-companion.md.
+// redeploy, no cross-origin. See docs/exec-plans/completed/2026-07-05-live-race-companion.md.
 
 import { liveConfig, liveRuntime, liveService } from "../src/domains/live/index.ts";
 import type {
   LiveAlertEvent,
+  LiveBaselines,
   LiveFeed,
   LiveHistory,
   LivePayload,
   LivePitRecord,
   LiveSnapshot,
+  LoopStatsRace,
   NextRace,
   NormalizedPitStop,
 } from "../src/domains/live/index.ts";
@@ -26,6 +28,8 @@ interface Env {
   LIVE_FEED_URL?: string;
   /** Override the upstream pit feed (tests). Defaults to the per-race CDN URL. */
   LIVE_PIT_URL?: string;
+  /** Override the post-race loopstats feed (tests). Defaults to loopstats/prod. */
+  LIVE_LOOPSTATS_URL?: string;
 }
 
 const DEFAULT_FEED_URL = "https://cf.nascar.com/live/feeds/live-feed.json";
@@ -103,7 +107,11 @@ export class LiveCoordinator {
         // Only the idle state needs "Next Up"; skip the schedule fetch while racing.
         if (!live) payload.nextRace = await this.getNextRace(feed.series_id || series);
 
-        await this.state.storage.put("latest", payload);
+        // Post-race: swap the live estimates for the official loopstats numbers
+        // (re-applied every tick once fetched, since each tick rebuilds payload).
+        const final = await this.withAuthoritative(payload, snapshot, baselines);
+
+        await this.state.storage.put("latest", final);
         await this.state.storage.put("prevSnapshot", snapshot);
         await this.state.storage.put("alerts", payload.alerts);
         await this.state.storage.put("history", history);
@@ -122,6 +130,41 @@ export class LiveCoordinator {
     await this.state.storage.setAlarm(Date.now() + next);
   }
 
+  /**
+   * The post-race authoritative swap (Phase 4). Once the race has finished
+   * (checkered / cold-complete), fetch the official loopstats/prod line for it
+   * — bounded attempts, one per alarm tick — and thereafter re-apply the stored
+   * official stats to every freshly built payload for that race. The alert
+   * diff keeps running against the raw-feed lineage (prevSnapshot is stored
+   * un-swapped), so the swap can't fire spurious position alerts.
+   */
+  private async withAuthoritative(
+    payload: LivePayload,
+    snapshot: LiveSnapshot,
+    baselines: LiveBaselines | null,
+  ): Promise<LivePayload> {
+    const raceId = snapshot.raceId;
+    if (raceId <= 0) return payload;
+
+    const stored = await this.state.storage.get<{ raceId: number; race: LoopStatsRace }>("authStats");
+    if (stored?.raceId === raceId) {
+      return liveRuntime.applyAuthoritative(payload, stored.race, baselines) ?? payload;
+    }
+    if (!liveService.raceHasFinished(snapshot)) return payload;
+
+    const att = await this.state.storage.get<{ raceId: number; n: number }>("authAttempts");
+    const attempts = att?.raceId === raceId ? att.n : 0;
+    if (attempts >= liveConfig.AUTH_SWAP_MAX_ATTEMPTS) return payload;
+    await this.state.storage.put("authAttempts", { raceId, n: attempts + 1 });
+
+    const race = await fetchLoopStats(this.env, snapshot.seriesId || 1, raceId);
+    if (!race) return payload; // not published yet — retry next tick
+    const swapped = liveRuntime.applyAuthoritative(payload, race, baselines);
+    if (!swapped) return payload;
+    await this.state.storage.put("authStats", { raceId, race });
+    return swapped;
+  }
+
   /** Next scheduled session for the idle "Next Up" card; schedule cached ~10 min. */
   private async getNextRace(seriesId: number): Promise<NextRace | null> {
     const CACHE_MS = 10 * 60 * 1000;
@@ -130,15 +173,10 @@ export class LiveCoordinator {
       const cached = await this.state.storage.get<{ at: number; seriesId: number; races: unknown[] }>("schedule");
       let races = cached?.races;
       if (!cached || cached.seriesId !== seriesId || now - cached.at > CACHE_MS) {
-        const year = new Date().getUTCFullYear();
-        const url = `https://cf.nascar.com/cacher/${year}/${seriesId}/schedule-feed.json`;
-        const res = await fetch(url, { headers: { "User-Agent": liveConfig.BROWSER_UA }, cf: { cacheTtl: 60 } });
-        if (res.ok) {
-          const parsed = await res.json();
-          if (Array.isArray(parsed)) {
-            races = parsed;
-            await this.state.storage.put("schedule", { at: now, seriesId, races });
-          }
+        const fetched = await fetchScheduleRaces(seriesId);
+        if (fetched.length) {
+          races = fetched;
+          await this.state.storage.put("schedule", { at: now, seriesId, races });
         }
       }
       return pickNextRace(races ?? [], seriesId);
@@ -150,10 +188,21 @@ export class LiveCoordinator {
 
 // ---- schedule helpers ----
 
-/** Parse a NASCAR schedule timestamp, tolerating a missing UTC marker. */
-function parseUtc(raw: string): number {
-  const s = /[zZ]|[+-]\d\d:?\d\d$/.test(raw) ? raw : raw.replace(" ", "T") + "Z";
-  return Date.parse(s);
+/** This year's schedule feed for one series ([] on any miss). CF-cached ~10 min. */
+async function fetchScheduleRaces(seriesId: number): Promise<unknown[]> {
+  const year = new Date().getUTCFullYear();
+  const url = `https://cf.nascar.com/cacher/${year}/${seriesId}/schedule-feed.json`;
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": liveConfig.BROWSER_UA },
+      cf: { cacheTtl: 600 },
+    });
+    if (!res.ok) return [];
+    const parsed = await res.json();
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }
 
 /** The soonest race in the schedule feed that starts after now. */
@@ -166,7 +215,7 @@ function pickNextRace(races: unknown[], seriesId: number): NextRace | null {
     const rec = r as Record<string, unknown>;
     const raw = (rec.start_time_utc ?? rec.race_date_utc ?? rec.start_time) as string | undefined;
     if (!raw) continue;
-    const t = parseUtc(raw);
+    const t = liveService.parseScheduleUtc(raw);
     if (Number.isFinite(t) && t > now && t < bestT) {
       bestT = t;
       best = rec;
@@ -219,6 +268,31 @@ async function fetchPitStops(env: Env, feed: LiveFeed): Promise<NormalizedPitSto
     return liveService.pitStopsFromLivePitData(json as LivePitRecord[]);
   } catch {
     return [];
+  }
+}
+
+/**
+ * The official post-race loop stats for one race (loopstats/prod), or null while
+ * unpublished / on any miss. The feed is an array with one race object.
+ */
+async function fetchLoopStats(env: Env, seriesId: number, raceId: number): Promise<LoopStatsRace | null> {
+  const year = new Date().getUTCFullYear();
+  const url =
+    env.LIVE_LOOPSTATS_URL ||
+    `https://cf.nascar.com/loopstats/prod/${year}/${seriesId}/${raceId}.json`;
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": liveConfig.BROWSER_UA, Accept: "application/json" },
+      cf: { cacheTtl: 0, cacheEverything: false },
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as unknown;
+    if (!Array.isArray(json) || json.length === 0) return null;
+    const race = json[0] as LoopStatsRace;
+    if (!race || typeof race !== "object" || !Array.isArray(race.drivers) || race.drivers.length === 0) return null;
+    return race;
+  } catch {
+    return null;
   }
 }
 
@@ -340,6 +414,29 @@ export default {
     }
 
     return new Response("Not found", { status: 404 });
+  },
+
+  /**
+   * Race-window keep-warm (cron, every 5 min). While any race in a series'
+   * schedule is inside its window (start − 30 min → start + 6 h), kick that
+   * series' DO so the poll loop, alert history, and post-race authoritative
+   * swap run even with zero viewers. Outside the window: three cached schedule
+   * reads, no-op.
+   */
+  async scheduled(_controller: ScheduledController, env: Env, _ctx: ExecutionContext): Promise<void> {
+    const now = Date.now();
+    await Promise.all(
+      [1, 2, 3].map(async (series) => {
+        try {
+          const races = await fetchScheduleRaces(series);
+          if (!liveService.anyRaceInWindow(races, now)) return;
+          const stub = env.LIVE.get(env.LIVE.idFromName(`live-${series}`));
+          await stub.fetch(`https://do/kick?series=${series}`);
+        } catch {
+          // Transient — the next cron tick retries.
+        }
+      }),
+    );
   },
 };
 
@@ -583,6 +680,7 @@ const PAGE_HTML = `<!doctype html>
     // board title reflects state
     if(!drivers.length){ elBoardTitle.textContent="Leaderboard"; }
     else if(live){ elBoardTitle.textContent="Live leaderboard"; }
+    else if(data.authoritative){ elBoardTitle.textContent="Final — official loop data"; }
     else if(snap.flag==="checkered"||snap.flag==="cold"){ elBoardTitle.textContent="Final — last session"; }
     else { elBoardTitle.textContent="Leaderboard"; }
     renderBoard(data);

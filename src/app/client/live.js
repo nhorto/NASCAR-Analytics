@@ -118,6 +118,7 @@
   // ---------- status header ----------
   function renderStatus(data) {
     var s = data.snapshot, fi = flagInfo(s.flag);
+    if (data.authoritative) fi = { label: "Final · official loop data", cls: "checkered" };
     var stageTxt = s.stage ? ("Stage " + s.stage.num) : "";
     var toGo = s.lapsToGo || (s.lapsInRace && s.lap ? Math.max(0, s.lapsInRace - s.lap) : 0);
     var stale = state.lastOkAt && (Date.now() - state.lastOkAt > 20000);

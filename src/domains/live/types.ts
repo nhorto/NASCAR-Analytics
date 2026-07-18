@@ -9,7 +9,7 @@
 //
 // This whole domain must run in BOTH Bun and the Cloudflare Workers runtime, so
 // types carry zero runtime imports and nothing external (enforced by architecture
-// tests). See docs/exec-plans/active/2026-07-05-live-race-companion.md.
+// tests). See docs/exec-plans/completed/2026-07-05-live-race-companion.md.
 
 // ---- Raw CDN feed ----
 
@@ -216,6 +216,36 @@ export interface PitCyclePrediction {
   source: "pit-data" | "feed";
 }
 
+// ---- post-race authoritative loop stats (loopstats/prod) ----
+
+/**
+ * One driver's official loop-data line in the post-race
+ * `loopstats/prod/{year}/{series}/{race_id}.json` feed (typed from
+ * tests/fixtures/loopstats.json — same shape the ingestion batch consumes).
+ * Only fields the swap reads are listed; untrusted JSON, coerced defensively.
+ */
+export interface LoopStatsDriver {
+  driver_id: number;
+  ps: number; // official finish position
+  closing_ps: number;
+  closing_laps_diff: number;
+  avg_ps: number;
+  passes_gf: number;
+  passed_gf: number;
+  quality_passes: number;
+  fast_laps: number;
+  lead_laps: number;
+  laps: number;
+  rating?: number;
+}
+
+/** One race in the loopstats/prod payload (the feed is an array of these). */
+export interface LoopStatsRace {
+  race_id: number;
+  series_id?: number;
+  drivers: LoopStatsDriver[];
+}
+
 // ---- pit data + strategy calibration ----
 
 /**
@@ -392,6 +422,11 @@ export interface LivePayload {
   ok: boolean;
   /** True when a session is actually on track (mirrors snapshot.isLive). */
   live: boolean;
+  /**
+   * True once the post-race swap has replaced the live-counter estimates with
+   * the official loopstats/prod numbers (absent/false while live or pending).
+   */
+  authoritative?: boolean;
   /** Wall-clock ms the snapshot was fetched from upstream. */
   fetchedAt: number;
   snapshot: LiveSnapshot;

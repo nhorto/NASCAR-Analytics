@@ -18,6 +18,7 @@ import type {
   LivePitRecord,
   LiveSnapshot,
   LiveVehicle,
+  LoopStatsRace,
   NormalizedPitStop,
   PitCyclePrediction,
   SegTrend,
@@ -32,6 +33,8 @@ import {
   DEFAULT_STINT_LAPS,
   FLAG_STATES,
   HISTORY_LAPS,
+  KEEPWARM_POST_RACE_MS,
+  KEEPWARM_PRE_RACE_MS,
   LIVE_FLAG_STATES,
   MIN_GREEN_STINT_LAPS,
   MOVER_TOP_N,
@@ -544,6 +547,100 @@ export function median(xs: number[]): number | null {
   const s = xs.slice().sort((a, b) => a - b);
   const mid = Math.floor(s.length / 2);
   return s.length % 2 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2;
+}
+
+// ---- race-window keep-warm + post-race authoritative swap (Phase 4) ----
+
+/**
+ * Parse a NASCAR schedule timestamp, tolerating the feed's missing UTC marker
+ * ("2026-07-05 22:00:00" ⇒ treated as UTC). NaN when unparseable.
+ */
+export function parseScheduleUtc(raw: string): number {
+  const s = /[zZ]|[+-]\d\d:?\d\d$/.test(raw) ? raw : raw.replace(" ", "T") + "Z";
+  return Date.parse(s);
+}
+
+/**
+ * True when `now` falls inside any race's keep-warm window
+ * (start − KEEPWARM_PRE_RACE_MS → start + KEEPWARM_POST_RACE_MS). Input is the
+ * untrusted schedule-feed array; rows without a parseable start time are
+ * skipped. Drives the cron: kick the DO only while a race could be on track.
+ */
+export function anyRaceInWindow(races: unknown[], now: number): boolean {
+  if (!Array.isArray(races)) return false;
+  for (const r of races) {
+    if (!r || typeof r !== "object") continue;
+    const rec = r as Record<string, unknown>;
+    const raw = (rec.start_time_utc ?? rec.race_date_utc ?? rec.start_time) as string | undefined;
+    if (typeof raw !== "string") continue;
+    const t = parseScheduleUtc(raw);
+    if (!Number.isFinite(t)) continue;
+    if (now >= t - KEEPWARM_PRE_RACE_MS && now <= t + KEEPWARM_POST_RACE_MS) return true;
+  }
+  return false;
+}
+
+/**
+ * True when the snapshot shows a FINISHED race the authoritative swap should
+ * target: checkered, or cold with the full distance complete. (Plain "cold"
+ * alone also describes a pre-race track — that must not trigger loopstats
+ * fetches hours early.)
+ */
+export function raceHasFinished(snapshot: LiveSnapshot): boolean {
+  if (snapshot.raceId <= 0) return false;
+  if (snapshot.flag === "checkered") return true;
+  return snapshot.flag === "cold" && snapshot.lapsInRace > 0 && snapshot.lap >= snapshot.lapsInRace;
+}
+
+/**
+ * Swap each driver's live-counter metric ESTIMATES for the official post-race
+ * loopstats numbers — the same math the analytics batch runs (pass efficiency
+ * vs the avg_ps-bucket baseline; Closer = closing_laps_diff minus the
+ * closing_ps-bucket baseline; see analytics buildLeagueExpectations). Also
+ * adopts the official finish order (`ps`) and loop counters. Drivers missing
+ * from loopstats keep their live values. Returns a NEW snapshot, or null when
+ * the loopstats payload is for a different race / carries no drivers.
+ */
+export function applyAuthoritativeStats(
+  snapshot: LiveSnapshot,
+  official: LoopStatsRace,
+  baselines: LiveBaselines | null,
+): LiveSnapshot | null {
+  if (!official || num(official.race_id) !== snapshot.raceId) return null;
+  const rows = Array.isArray(official.drivers) ? official.drivers : [];
+  if (rows.length === 0) return null;
+
+  const byId = new Map(rows.map((d) => [num(d.driver_id), d]));
+  const drivers = snapshot.drivers
+    .map((d): LiveDriverRow => {
+      const o = byId.get(d.driverId);
+      if (!o) return d;
+      const passesMade = num(o.passes_gf);
+      const timesPassed = num(o.passed_gf);
+      const avgPs = num(o.avg_ps, d.avgRunningPosition);
+      const eff = passEfficiency(passesMade, timesPassed);
+      const basePass = baselines?.passEffByBucket[String(bucketOf(avgPs))];
+      const baseCloser = baselines?.closerByBucket[String(bucketOf(num(o.closing_ps)))];
+      return {
+        ...d,
+        position: num(o.ps, d.position),
+        avgRunningPosition: avgPs,
+        lapsLed: num(o.lead_laps, d.lapsLed),
+        lapsCompleted: num(o.laps, d.lapsCompleted),
+        passesMade,
+        timesPassed,
+        passingDifferential: passesMade - timesPassed,
+        qualityPasses: num(o.quality_passes, d.qualityPasses),
+        fastestLapsRun: num(o.fast_laps, d.fastestLapsRun),
+        livePassEfficiency: eff,
+        adjPassEfficiency: eff != null && basePass != null ? (eff - basePass) * 100 : null,
+        closerEstimate:
+          baseCloser != null ? num(o.closing_laps_diff) - baseCloser : null,
+      };
+    })
+    .sort((a, b) => a.position - b.position);
+
+  return { ...snapshot, drivers };
 }
 
 // ---- rolling history + trend derivation (Phase 3) ----

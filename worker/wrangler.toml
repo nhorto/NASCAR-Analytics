@@ -18,3 +18,10 @@ class_name = "LiveCoordinator"
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["LiveCoordinator"]
+
+# Race-window keep-warm (Phase 4): every 5 min, scheduled() checks each series'
+# schedule feed and kicks that series' DO while inside a race window
+# (start − 30 min → start + 6 h) — so the poll loop, alert history, and the
+# post-race authoritative swap all run with zero viewers. A no-op off-window.
+[triggers]
+crons = ["*/5 * * * *"]
