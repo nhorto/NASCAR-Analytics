@@ -191,6 +191,27 @@ switch (command) {
     const { pages } = await exportSite(DB_PATH, log);
     log.info(`▶ exported ${pages} pages to dist/`);
 
+    // Regenerate the Worker's baked artifacts from the fresh data so the live
+    // metrics can't drift stale (the tracked 2026-07-05 debt item):
+    //  - baselines: always (reads the dist/data/baselines-*.json just exported).
+    //  - strategy calibration: self-gates inside the script — it needs the raw
+    //    pit archives (local-only); on CI it warns and keeps the committed bake.
+    const run = async (label: string, cmd: string[], cwd?: string): Promise<void> => {
+      const proc = Bun.spawn(cmd, { stdout: "inherit", stderr: "inherit", env: process.env, cwd });
+      const code = await proc.exited;
+      if (code !== 0) {
+        console.error(`${label} exited ${code}`);
+        process.exit(code || 1);
+      }
+    };
+    log.info(`▶ regenerating worker bakes (baselines + strategy)`);
+    await run("gen-worker-baselines", ["bun", "run", "scripts/gen-worker-baselines.ts"]);
+    for (const seriesId of allSeries) {
+      await run(`calibrate --series ${seriesId}`, [
+        "bun", "run", "scripts/calibrate-strategy.ts", "--series", String(seriesId),
+      ]);
+    }
+
     if (process.argv.includes("--no-deploy")) {
       console.log("--no-deploy set — skipping deploy (dist/ is ready).");
       break;
@@ -201,16 +222,12 @@ switch (command) {
     }
     const project = process.env.NASCAR_PAGES_PROJECT ?? "looplab";
     log.info(`▶ deploying dist/ to Cloudflare Pages project "${project}"`);
-    const proc = Bun.spawn(
-      ["bunx", "wrangler", "pages", "deploy", "dist", `--project-name=${project}`],
-      { stdout: "inherit", stderr: "inherit", env: process.env },
-    );
-    const code = await proc.exited;
-    if (code !== 0) {
-      console.error(`wrangler deploy exited ${code}`);
-      process.exit(code || 1);
-    }
-    console.log("✓ deployed");
+    await run("wrangler pages deploy", [
+      "bunx", "wrangler", "pages", "deploy", "dist", `--project-name=${project}`,
+    ]);
+    log.info(`▶ deploying the looplab-live Worker (fresh bakes)`);
+    await run("wrangler deploy (worker)", ["bunx", "wrangler", "deploy"], "worker");
+    console.log("✓ deployed (site + live worker)");
     break;
   }
   default:
@@ -225,7 +242,7 @@ Usage:
   bun run src/app/index.ts serve [--port 3000]
   bun run src/app/index.ts export
   bun run src/app/index.ts capture [--series ID] [--interval SEC] [--ticks N] [--out DIR]  # capture live feed
-  bun run src/app/index.ts refresh [--no-deploy]   # backfill+compute+export+deploy, all series
+  bun run src/app/index.ts refresh [--no-deploy]   # backfill+compute+export+worker bakes+deploy (site+live worker), all series
 
 Env: NASCAR_DATA_DIR (default data), NASCAR_PAGES_PROJECT (default looplab),
      CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID (enable the deploy step)`);

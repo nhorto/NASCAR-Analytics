@@ -33,6 +33,11 @@ const arg = (flag: string, fallback: number) => {
 };
 const SERIES = arg("--series", 1);
 const MIN_RACES = arg("--min-races", 3);
+// Refuse to (re)bake unless this many races had parseable pit archives. The raw
+// weekend-feed archives exist only where the full backfill ran (locally) — CI
+// keeps just the DB, so a CI run sees ≤ a handful of new races and would bake a
+// near-empty table over the good committed one. Local calibrations see 100+.
+const MIN_PIT_RACES = arg("--min-pit-races", 10);
 // Drop worn−fresh gaps beyond this (sec) — lapped traffic / damage / pit-cycle
 // artifacts, not tire wear. Real tire deg tops out ~2s even at Darlington.
 const TIRE_DROP_CAP_SEC = 8;
@@ -156,6 +161,16 @@ for (const race of races) {
   byTrack.set(race.track_id, acc);
 }
 
+if (racesWithPits < MIN_PIT_RACES) {
+  console.warn(
+    `⚠ series ${SERIES}: only ${racesWithPits}/${races.length} races had parseable raw pit archives ` +
+      `(< ${MIN_PIT_RACES}) — skipping calibration, keeping the existing bake. ` +
+      `Run where the full backfill's data/raw exists (see the 2026-07-18 refresh-worker-bake plan).`,
+  );
+  db.close();
+  process.exit(0);
+}
+
 // Build a strategy record from raw samples (per-track or per-type), applying the
 // min-sample gates. Fields below the floor stay null (the consumer falls back).
 function build(trackId: number, trackType: string, greens: number[], drops: number[], races: number): TrackStrategy {
@@ -246,8 +261,5 @@ for (const [id, s] of Object.entries(byTrackId)) {
     `  track ${id.padStart(3)} (${s.trackType.padEnd(13)}): run ${String(s.typicalStintLaps ?? "?").padStart(4)} laps (n=${s.stintN}), ` +
     `tire ${tierMark(s.tireTier)} ${s.tireSeconds?.toFixed(2) ?? "?"}s (${s.tirePerLap?.toFixed(3) ?? "?"} s/lap, n=${s.tireN}), ${s.races} races`,
   );
-}
-if (racesWithPits === 0) {
-  console.warn("⚠ 0 races had parseable pit_reports — check the pit_reports key names in pitStopsFromWeekendPitReports().");
 }
 db.close();

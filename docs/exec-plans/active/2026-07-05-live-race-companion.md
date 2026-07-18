@@ -245,6 +245,28 @@ cadence; confirm idle → $0. Update ARCHITECTURE.md (new `live` domain + `live-
 provider, "Current Guarantees", "What Does NOT Exist"), QUALITY_SCORE, and move this
 plan to `completed/`.
 
+**Phase 4 hardening scope (added 2026-07-18 — the two tracked debt items):**
+
+1. **Race-window keep-warm cron.** The DO deletes its alarm after ~15 min
+   unwatched, so with no viewers mid-race the alert diff gaps and the post-race
+   swap can't run. Add a Workers cron (`*/5 * * * *`) whose `scheduled()`
+   handler checks each series' schedule feed and, when now is inside a race
+   window (start − 30 min → start + 6 h), kicks that series' DO — which keeps
+   the alarm loop alive through the race + cool-down with zero viewers. Outside
+   the window the cron is a no-op (3 cached schedule fetches / 5 min). Window
+   logic is pure in `live/service.ts` (`anyRaceInWindow`) and unit-tested
+   against the schedule-feed fixture.
+2. **Post-race authoritative swap.** Live metrics are estimates from live
+   counters. Once the flag goes checkered/cold, the DO fetches the official
+   `loopstats/prod/{year}/{series}/{race_id}.json` (confirmed populated
+   post-race in Phase 0) and swaps the stored payload's metrics to the
+   authoritative numbers via a pure `applyAuthoritativeStats` in
+   `live/service.ts` — same math as the analytics batch (pass eff vs
+   `avg_ps`-bucket baseline; closer = `closing_laps_diff` − `closing_ps`-bucket
+   baseline). Payload gains `authoritative: true`; the UIs retitle the board
+   "Final — official loop data". Retries on the idle cadence (loopstats can lag
+   the checkered by minutes), bounded per race, marked done in DO storage.
+
 ## Risks / open decisions
 
 - **CDN is unofficial/unlicensed** — fine for a free MVP (as many fan projects do);
