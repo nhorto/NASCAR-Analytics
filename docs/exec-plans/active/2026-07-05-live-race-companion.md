@@ -256,10 +256,12 @@ track name and stage boundary. Complete Phase 4 by:
    writes build path and make CI's deployment behavior explicit.
 3. ✅ Add regression tests, run all tests (including architecture tests), and
    typecheck the Worker. Result: 190 tests pass; Worker typecheck passes.
-4. 🔄 Make cold refresh resilient to an individual CDN 5xx after retries. The
+4. ✅ Make cold refresh resilient to an individual CDN 5xx after retries. The
    first deployment run exposed one historical loop-stat endpoint returning 503;
-   record the exhausted response as missing and continue so a future incremental
-   run can fill it, while network exceptions still fail normally.
+   exhausted response is recorded as missing so a future incremental run can fill
+   it, while network exceptions still fail normally. Verified by a complete CI
+   cold rebuild on 2026-08-07: 2,433 pages exported; strategy calibrated from 107
+   Cup, 91 Xfinity, and 58 Truck races; the new cache saved successfully.
 5. ⏳ Re-check the deployed endpoints. Local production-feed validation confirms
    schedule canonicalization corrects the observed hybrid metadata. Direct deploy
    is waiting on refreshed Cloudflare authentication; the next weekly workflow is
