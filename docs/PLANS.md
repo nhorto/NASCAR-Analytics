@@ -6,8 +6,8 @@
 
 | Plan | Status | Description |
 |------|--------|-------------|
-| [Live Race Day Companion](exec-plans/active/2026-07-05-live-race-companion.md) | ACTIVE | Free, in-app, mobile-first live companion: layered live loop-data board (tap-to-expand per-driver drill-down), a "Loop Rating ★" sort by our live metric, strategy/pit-cycle tracker, my-driver alerts. Cloudflare Durable Object polls the NASCAR CDN live feed → `/api/live`. Backed by [research](research/2026-07-05_live-race-companion.md) + the [live UI design spec](design-docs/2026-07-05-live-ui-design.md). Owner-approved 2026-07-05. Phase 0/1 DONE (pure `live` domain + tests, `baselines.json`, `bun run capture`); **Phase 2 DONE — the `looplab-live` Worker + `LiveCoordinator` DO are deployed at [looplab-live.nhorton.workers.dev](https://looplab-live.nhorton.workers.dev)** (validated against the Cup race feed); **Phase 3 (live UI on the main site) IN PROGRESS** per the design spec. |
-| _Other candidates_ | | Connect the Cloudflare deploy + add the two CI secrets (owner login), SEO/OpenGraph metadata + sitemap, cross-series statistical comparison, sharper metric baselines (era/track-type). |
+| [Live Race Day Companion](exec-plans/active/2026-07-05-live-race-companion.md) | ACTIVE | Free, in-app, mobile-first live companion: layered live loop-data board, proprietary live metrics, strategy/pit-cycle tracking, and driver alerts. **Phases 0–3 are built and deployed. Phase 4 is in progress (2026-08-07): harden partially rolled upstream session metadata, automate generated Worker artifacts/deployment in the weekly refresh, and complete a full-race soak before closing the plan.** |
+| _Other candidates_ | | SEO/OpenGraph metadata + sitemap, cross-series statistical comparison, sharper metric baselines (era/track-type). |
 
 ## Completed Plans
 

@@ -191,12 +191,33 @@ switch (command) {
     const { pages } = await exportSite(DB_PATH, log);
     log.info(`▶ exported ${pages} pages to dist/`);
 
+    // Keep the edge model in lockstep with the freshly computed dataset.
+    // Calibration fails safely if the required raw pit archives are absent.
+    const runStep = async (args: string[], label: string, cwd?: string) => {
+      log.info(`▶ ${label}`);
+      const child = Bun.spawn(args, {
+        cwd,
+        stdout: "inherit",
+        stderr: "inherit",
+        env: process.env,
+      });
+      const childCode = await child.exited;
+      if (childCode !== 0) throw new Error(`${label} exited ${childCode}`);
+    };
+    await runStep(["bun", "run", "scripts/gen-worker-baselines.ts"], "regenerating Worker baselines");
+    for (const seriesId of allSeries) {
+      await runStep(
+        ["bun", "run", "calibrate", "--series", String(seriesId)],
+        `calibrating Worker strategy for series ${seriesId}`,
+      );
+    }
+
     if (process.argv.includes("--no-deploy")) {
-      console.log("--no-deploy set — skipping deploy (dist/ is ready).");
+      console.log("--no-deploy set — skipping Pages and Worker deploys (artifacts are ready).");
       break;
     }
     if (!process.env.CLOUDFLARE_API_TOKEN) {
-      console.log("CLOUDFLARE_API_TOKEN not set — skipping deploy (dist/ is ready to upload).");
+      console.log("CLOUDFLARE_API_TOKEN not set — skipping Pages and Worker deploys (artifacts are ready).");
       break;
     }
     const project = process.env.NASCAR_PAGES_PROJECT ?? "looplab";
@@ -210,7 +231,10 @@ switch (command) {
       console.error(`wrangler deploy exited ${code}`);
       process.exit(code || 1);
     }
-    console.log("✓ deployed");
+    console.log("✓ Pages deployed");
+
+    await runStep(["bunx", "wrangler", "deploy"], "deploying live Worker", "worker");
+    console.log("✓ live Worker deployed");
     break;
   }
   default:
@@ -225,9 +249,9 @@ Usage:
   bun run src/app/index.ts serve [--port 3000]
   bun run src/app/index.ts export
   bun run src/app/index.ts capture [--series ID] [--interval SEC] [--ticks N] [--out DIR]  # capture live feed
-  bun run src/app/index.ts refresh [--no-deploy]   # backfill+compute+export+deploy, all series
+  bun run src/app/index.ts refresh [--no-deploy]   # data+site+Worker artifacts; deploy both, all series
 
 Env: NASCAR_DATA_DIR (default data), NASCAR_PAGES_PROJECT (default looplab),
-     CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID (enable the deploy step)`);
+     CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID (enable Pages + Worker deploys)`);
     if (command !== undefined) process.exit(1);
 }

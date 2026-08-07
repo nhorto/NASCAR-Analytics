@@ -28,6 +28,14 @@ interface Env {
   LIVE_PIT_URL?: string;
 }
 
+interface ScheduleRecord extends Record<string, unknown> {
+  race_id?: number;
+  run_type?: number;
+  race_name?: string;
+  track_id?: number;
+  track_name?: string;
+}
+
 const DEFAULT_FEED_URL = "https://cf.nascar.com/live/feeds/live-feed.json";
 /** Stop the poll loop after this long with no client interest; restarts on demand. */
 const STOP_AFTER_IDLE_MS = 15 * 60 * 1000;
@@ -75,20 +83,26 @@ export class LiveCoordinator {
     try {
       const feed = await fetchLiveFeed(this.env, series);
       if (feed) {
+        const schedule = await this.getSchedule(feed.series_id || series);
+        const canonicalFeed = canonicalizeFeed(feed, schedule);
         const prevSnapshot = (await this.state.storage.get<LiveSnapshot>("prevSnapshot")) ?? null;
         const prevAlerts = (await this.state.storage.get<LiveAlertEvent[]>("alerts")) ?? [];
         const prevHistory = (await this.state.storage.get<LiveHistory>("history")) ?? null;
-        const baselines = BASELINES[feed.series_id] ?? BASELINES[1] ?? null;
+        const baselines = BASELINES[canonicalFeed.series_id] ?? BASELINES[1] ?? null;
 
         // The real pit feed (green-flag aware) supersedes the live-feed's
         // placeholder-zeroed pit_stops; the baked calibration sets the fuel window.
-        const pitStops = await fetchPitStops(this.env, feed);
+        const pitStops = await fetchPitStops(this.env, canonicalFeed);
         // The live feed carries track_id + series_id but not track type; the baked
         // table's per-track-id entry is the primary lookup (type fallback is for
         // the batch). Series-aware — strategy differs across Cup/Xfinity/Trucks.
-        const trackStrategy = strategyFor(feed.series_id ?? series, feed.track_id ?? 0, null);
+        const trackStrategy = strategyFor(
+          canonicalFeed.series_id ?? series,
+          canonicalFeed.track_id ?? 0,
+          null,
+        );
 
-        const { payload, snapshot, history } = liveRuntime.processFeed(feed, {
+        const { payload, snapshot, history } = liveRuntime.processFeed(canonicalFeed, {
           baselines,
           prevSnapshot,
           prevAlerts,
@@ -100,8 +114,7 @@ export class LiveCoordinator {
         });
         live = payload.live;
 
-        // Only the idle state needs "Next Up"; skip the schedule fetch while racing.
-        if (!live) payload.nextRace = await this.getNextRace(feed.series_id || series);
+        if (!live) payload.nextRace = pickNextRace(schedule, canonicalFeed.series_id || series);
 
         await this.state.storage.put("latest", payload);
         await this.state.storage.put("prevSnapshot", snapshot);
@@ -122,8 +135,8 @@ export class LiveCoordinator {
     await this.state.storage.setAlarm(Date.now() + next);
   }
 
-  /** Next scheduled session for the idle "Next Up" card; schedule cached ~10 min. */
-  private async getNextRace(seriesId: number): Promise<NextRace | null> {
+  /** Series schedule, cached ~10 min; used for identity and the idle Next Up card. */
+  private async getSchedule(seriesId: number): Promise<unknown[]> {
     const CACHE_MS = 10 * 60 * 1000;
     try {
       const now = Date.now();
@@ -141,9 +154,9 @@ export class LiveCoordinator {
           }
         }
       }
-      return pickNextRace(races ?? [], seriesId);
+      return races ?? [];
     } catch {
-      return null;
+      return [];
     }
   }
 }
@@ -154,6 +167,26 @@ export class LiveCoordinator {
 function parseUtc(raw: string): number {
   const s = /[zZ]|[+-]\d\d:?\d\d$/.test(raw) ? raw : raw.replace(" ", "T") + "Z";
   return Date.parse(s);
+}
+
+/**
+ * The base feed can partially roll toward the next event while cold (for
+ * example, the prior race_id/name paired with the next track). The schedule's
+ * race entry is the canonical identity for a known race_id. Live counters stay
+ * untouched, and a missing schedule match degrades to the original feed.
+ */
+export function canonicalizeFeed(feed: LiveFeed, races: unknown[]): LiveFeed {
+  const matches = races
+    .filter((r): r is ScheduleRecord => Boolean(r && typeof r === "object"))
+    .filter((r) => Number(r.race_id) === feed.race_id);
+  const race = matches.find((r) => Number(r.run_type) === 3) ?? matches[0];
+  if (!race) return feed;
+  return {
+    ...feed,
+    run_name: typeof race.race_name === "string" ? race.race_name : feed.run_name,
+    track_id: Number.isFinite(Number(race.track_id)) ? Number(race.track_id) : feed.track_id,
+    track_name: typeof race.track_name === "string" ? race.track_name : feed.track_name,
+  };
 }
 
 /** The soonest race in the schedule feed that starts after now. */

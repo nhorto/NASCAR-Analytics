@@ -81,6 +81,15 @@ describe("normalizeFeed (captured fixture)", () => {
     expect(snap.drivers.length).toBe(38);
   });
 
+  test("drops an impossible stage boundary from a partially rolled feed", () => {
+    const rolled = normalizeFeed({
+      ...feed,
+      laps_in_race: 160,
+      stage: { stage_num: 3, finish_at_lap: 250, laps_in_stage: 130 },
+    });
+    expect(rolled.stage).toBeNull();
+  });
+
   test("drivers sorted by running order, leader gap 0", () => {
     expect(snap.drivers[0]!.position).toBe(1);
     expect(snap.drivers[0]!.gapToLeader).toBe(0);

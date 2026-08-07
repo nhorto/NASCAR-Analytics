@@ -205,6 +205,14 @@ for (const [trackId, acc] of byTrack) {
 const typeByTrackId: Record<string, string> = {};
 for (const r of races) typeByTrackId[String(r.track_id)] = r.track_type;
 
+if (racesWithPits === 0) {
+  db.close();
+  throw new Error(
+    `No archived weekend-feed pit reports found for series ${SERIES}; refusing to overwrite the Worker strategy bake. ` +
+    `Restore the raw weekend feeds or run a full backfill first.`,
+  );
+}
+
 const table: TrackStrategyTable = { byTrackId, byTrackType, typeByTrackId };
 
 // Emit this series' artifact, then regenerate the COMBINED worker bake keyed by
@@ -246,8 +254,5 @@ for (const [id, s] of Object.entries(byTrackId)) {
     `  track ${id.padStart(3)} (${s.trackType.padEnd(13)}): run ${String(s.typicalStintLaps ?? "?").padStart(4)} laps (n=${s.stintN}), ` +
     `tire ${tierMark(s.tireTier)} ${s.tireSeconds?.toFixed(2) ?? "?"}s (${s.tirePerLap?.toFixed(3) ?? "?"} s/lap, n=${s.tireN}), ${s.races} races`,
   );
-}
-if (racesWithPits === 0) {
-  console.warn("⚠ 0 races had parseable pit_reports — check the pit_reports key names in pitStopsFromWeekendPitReports().");
 }
 db.close();

@@ -29,37 +29,46 @@ The site is generated from `data/nascar.db` — a ~160MB SQLite file that is **g
 
 ## Every update (after a race weekend)
 
-One command does the whole loop — backfill + compute (all three series) + export
-+ deploy:
+One command does the whole loop — backfill + compute (all three series) + export,
+regenerate Worker baselines + strategy calibration, then deploy Pages + Worker:
 
 ```sh
 bun run refresh              # add --no-deploy to build dist/ without deploying
 ```
 
 `refresh` deploys only when `CLOUDFLARE_API_TOKEN` is set; otherwise it stops
-after building `dist/`. The equivalent long-hand, if you want the steps
+after building all artifacts. `--no-deploy` likewise performs no external writes.
+Strategy calibration requires the archived `weekend-feed.json` files produced by
+a full backfill and fails safely if they are absent. The equivalent long-hand
 separately:
 
 ```sh
 bun run sync                 # pull the latest completed races (all series: also --series 2 / 3)
 bun run compute              # recompute (also --series 2 / 3)
 bun run export               # regenerate dist/  (~1,800 pages, ~30s)
+bun run scripts/gen-worker-baselines.ts
+bun run calibrate --series 1
+bun run calibrate --series 2
+bun run calibrate --series 3
 bunx wrangler pages deploy dist --project-name=looplab
+cd worker && bunx wrangler deploy
 ```
 
 ## Automated weekly refresh (CI)
 
 `.github/workflows/weekly-refresh.yml` runs `bun run refresh` every Monday at
 12:00 UTC (and on manual dispatch), so the site refreshes itself after each race
-weekend. It caches the ~160MB SQLite DB across runs (via `actions/cache`) so the
-weekly run is incremental; a cold cache self-heals by rebuilding full history
-from the CDN. Every run uploads `dist/` as a downloadable artifact.
+weekend. It caches SQLite and only the archived weekend feeds needed by strategy
+calibration (via `actions/cache`) so the weekly run is incremental; a cold cache
+self-heals by rebuilding full history from the CDN. Every run uploads `dist/` as
+a downloadable artifact.
 
 **The deploy step self-gates on secrets.** Until you add them, the workflow still
 runs green and builds the site (artifact only) — it just skips the upload. To
 turn on automated deploys after the one-time project connect above:
 
-1. In Cloudflare: create an API token with the **Pages → Edit** permission, and
+1. In Cloudflare: create an API token with **Pages → Edit** and **Workers Scripts
+   → Edit** permissions, and
    note your **Account ID** (Workers & Pages → account home).
 2. In GitHub → repo **Settings → Secrets and variables → Actions**, add:
    - `CLOUDFLARE_API_TOKEN`

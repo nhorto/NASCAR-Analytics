@@ -24,7 +24,7 @@ permissions:
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 180
     env:
       # When these secrets are set (after the one-time Cloudflare connect in
       # docs/DEPLOY.md), `bun run refresh` deploys. When absent, it still builds
@@ -43,23 +43,22 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      # Persist the ~160MB SQLite DB across runs so the weekly backfill is
-      # incremental. The key is unique per run (always saves a fresh cache); the
-      # restore-keys prefix restores the most recent prior one. Only the DB is
-      # cached — data/raw/ (CDN insurance) isn't needed to build the site. On a
-      # cold/evicted cache the refresh's full backfill rebuilds correct history.
-      - name: Restore database cache
+      # Persist SQLite plus only the archived weekend feeds needed to recalibrate
+      # live strategy. v2 intentionally cold-starts once so existing DB-only
+      # caches cannot generate an empty strategy bake.
+      - name: Restore data cache
         uses: actions/cache@v4
         with:
           path: |
             data/nascar.db
             data/nascar.db-wal
             data/nascar.db-shm
-          key: nascar-db-v1-${{ github.run_id }}
+            data/raw/**/weekend-feed.json
+          key: nascar-data-v2-${{ github.run_id }}
           restore-keys: |
-            nascar-db-v1-
+            nascar-data-v2-
 
-      - name: Refresh (backfill → compute → export → deploy)
+      - name: Refresh (data → site + Worker artifacts → deploy both)
         run: bun run refresh
 
       - name: Upload built site
