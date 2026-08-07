@@ -255,8 +255,12 @@ track name and stage boundary. Complete Phase 4 by:
    enabled by Worker credentials/config. Preserve `--no-deploy` as a no-external-
    writes build path and make CI's deployment behavior explicit.
 3. ✅ Add regression tests, run all tests (including architecture tests), and
-   typecheck the Worker. Result: 188 tests pass; Worker typecheck passes.
-4. ⏳ Re-check the deployed endpoints. Local production-feed validation confirms
+   typecheck the Worker. Result: 190 tests pass; Worker typecheck passes.
+4. 🔄 Make cold refresh resilient to an individual CDN 5xx after retries. The
+   first deployment run exposed one historical loop-stat endpoint returning 503;
+   record the exhausted response as missing and continue so a future incremental
+   run can fill it, while network exceptions still fail normally.
+5. ⏳ Re-check the deployed endpoints. Local production-feed validation confirms
    schedule canonicalization corrects the observed hybrid metadata. Direct deploy
    is waiting on refreshed Cloudflare authentication; the next weekly workflow is
    configured to deploy both surfaces. A full green-flag race soak remains the final

@@ -18,6 +18,8 @@ export interface CdnClientOptions {
   retries: number;
   retryBaseDelayMs: number;
   userAgent: string;
+  /** Injectable transport for deterministic tests. */
+  fetchImpl?: typeof fetch;
 }
 
 /**
@@ -27,6 +29,7 @@ export interface CdnClientOptions {
  */
 export function createNascarCdnClient(opts: CdnClientOptions): NascarCdnClient {
   let lastFetchAt = 0;
+  const fetchImpl = opts.fetchImpl ?? fetch;
 
   async function throttle(): Promise<void> {
     const wait = lastFetchAt + opts.delayMs - Date.now();
@@ -35,7 +38,7 @@ export function createNascarCdnClient(opts: CdnClientOptions): NascarCdnClient {
   }
 
   async function fetchOnce(url: string): Promise<CdnFetchResult> {
-    const res = await fetch(url, { headers: { "User-Agent": opts.userAgent } });
+    const res = await fetchImpl(url, { headers: { "User-Agent": opts.userAgent } });
     if (res.status !== 200) {
       return { url, status: res.status, body: null, json: null };
     }
@@ -50,12 +53,14 @@ export function createNascarCdnClient(opts: CdnClientOptions): NascarCdnClient {
   return {
     async fetchJson(url: string): Promise<CdnFetchResult> {
       let lastError: unknown;
+      let lastResponse: CdnFetchResult | null = null;
       for (let attempt = 0; attempt <= opts.retries; attempt++) {
         if (attempt > 0) await sleep(opts.retryBaseDelayMs * 2 ** (attempt - 1));
         await throttle();
         try {
           const result = await fetchOnce(url);
           if (result.status >= 500) {
+            lastResponse = result;
             lastError = new Error(`HTTP ${result.status} for ${url}`);
             continue;
           }
@@ -64,6 +69,10 @@ export function createNascarCdnClient(opts: CdnClientOptions): NascarCdnClient {
           lastError = err;
         }
       }
+      // A persistent HTTP response is still a valid observation. Return it so
+      // ingestion can record the miss and continue; the next refresh retries it.
+      // Transport failures have no status to record and remain fatal.
+      if (lastResponse) return lastResponse;
       throw new Error(`CDN fetch failed after ${opts.retries + 1} attempts: ${url}`, {
         cause: lastError,
       });
