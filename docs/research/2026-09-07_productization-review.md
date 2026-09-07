@@ -358,6 +358,13 @@ maturity, which is consistent with "side income beside FabIS".
 
 ### 5.3 Business model
 
+> **Superseded 2026-09-07 (same day):** the owner chose to make the live
+> companion free and put predictions, DFS, deep tools, push alerts and the
+> preview email in Pro, with a paid launch by 2026-11-01. The binding version
+> is the decisions register in
+> [the launch exec plan](../exec-plans/active/2026-09-07-production-and-paid-launch.md)
+> and [the product spec](../product-specs/2026-09-07-v1-paid-product-spec.md).
+
 **Freemium subscription with a season pass, live companion as the hero,
 email recap as the funnel.** Ads and affiliate stay off until traffic exists.
 
