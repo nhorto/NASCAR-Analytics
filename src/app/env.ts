@@ -14,6 +14,8 @@ export interface ServerConfig {
   plausibleHost: string;
   /** Run the weekly refresh cron in-process (launch plan D18). */
   enableRefreshCron: boolean;
+  /** Run the daily upstream-feed canary in-process (launch plan WS-C). */
+  enableCanaryCron: boolean;
   /** Emit a JSON log line per request. Defaults to `production`. */
   logRequests: boolean;
 }
@@ -78,6 +80,10 @@ export function readServerEnv(env: Env): ServerEnvResult {
   if (enableRefreshCron === null)
     problems.push(`ENABLE_REFRESH_CRON must be 1/0/true/false, got "${env.ENABLE_REFRESH_CRON}"`);
 
+  const enableCanaryCron = parseBool(env.ENABLE_CANARY_CRON, false);
+  if (enableCanaryCron === null)
+    problems.push(`ENABLE_CANARY_CRON must be 1/0/true/false, got "${env.ENABLE_CANARY_CRON}"`);
+
   const logRequests = parseBool(env.LOG_REQUESTS, production);
   if (logRequests === null)
     problems.push(`LOG_REQUESTS must be 1/0/true/false, got "${env.LOG_REQUESTS}"`);
@@ -99,6 +105,7 @@ export function readServerEnv(env: Env): ServerEnvResult {
       plausibleDomain: env.PLAUSIBLE_DOMAIN || null,
       plausibleHost,
       enableRefreshCron: enableRefreshCron ?? false,
+      enableCanaryCron: enableCanaryCron ?? false,
       logRequests: logRequests ?? production,
     },
     problems,

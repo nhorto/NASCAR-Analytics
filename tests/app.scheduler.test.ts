@@ -2,6 +2,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   nextRefreshAt,
+  nextDailyAt,
   runScheduledRefresh,
   REFRESH_LOCK_NAME,
   REFRESH_LOCK_TTL_MS,
@@ -38,6 +39,29 @@ describe("nextRefreshAt", () => {
     // Sun 2026-11-01 → Mon 2026-11-02.
     expect(nextRefreshAt(new Date("2026-11-01T15:00:00Z")).toISOString()).toBe(
       "2026-11-02T12:00:00.000Z",
+    );
+  });
+});
+
+describe("nextDailyAt", () => {
+  test("before the hour fires the same day, at/after it waits until tomorrow", () => {
+    expect(nextDailyAt(new Date("2026-09-09T08:59:59Z"), 9).toISOString()).toBe(
+      "2026-09-09T09:00:00.000Z",
+    );
+    expect(nextDailyAt(new Date("2026-09-09T09:00:00Z"), 9).toISOString()).toBe(
+      "2026-09-10T09:00:00.000Z",
+    );
+    expect(nextDailyAt(new Date("2026-09-09T15:00:00Z"), 9).toISOString()).toBe(
+      "2026-09-10T09:00:00.000Z",
+    );
+  });
+
+  test("rolls across month and year boundaries", () => {
+    expect(nextDailyAt(new Date("2026-09-30T10:00:00Z"), 9).toISOString()).toBe(
+      "2026-10-01T09:00:00.000Z",
+    );
+    expect(nextDailyAt(new Date("2026-12-31T23:59:00Z"), 9).toISOString()).toBe(
+      "2027-01-01T09:00:00.000Z",
     );
   });
 });

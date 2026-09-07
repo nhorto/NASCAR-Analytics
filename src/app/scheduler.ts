@@ -75,21 +75,83 @@ export interface RefreshScheduler {
 }
 
 /** Arm a timer for the next slot; after each attempt (or failure) re-arm for the next. */
-export function startRefreshScheduler(opts: ScheduledRefreshOpts): RefreshScheduler {
-  let next = nextRefreshAt(new Date(opts.now ? opts.now() : Date.now()));
+function startTimerLoop(
+  label: string,
+  nextAt: (now: Date) => Date,
+  job: () => Promise<unknown>,
+  log: ScheduledRefreshOpts["log"],
+  now: () => number = Date.now,
+): RefreshScheduler {
+  let next = nextAt(new Date(now()));
   let timer: ReturnType<typeof setTimeout>;
   const arm = () => {
-    const delay = Math.max(0, next.getTime() - (opts.now ? opts.now() : Date.now()));
+    const delay = Math.max(0, next.getTime() - now());
     timer = setTimeout(async () => {
-      await runScheduledRefresh(opts);
-      next = nextRefreshAt(new Date(opts.now ? opts.now() : Date.now()));
+      await job();
+      next = nextAt(new Date(now()));
       arm();
     }, delay);
   };
   arm();
-  opts.log.info(logLine("info", "refresh cron armed", { nextRunAt: next.toISOString() }));
+  log.info(logLine("info", `${label} cron armed`, { nextRunAt: next.toISOString() }));
   return {
     stop: () => clearTimeout(timer),
     nextRunAt: () => next,
   };
+}
+
+export function startRefreshScheduler(opts: ScheduledRefreshOpts): RefreshScheduler {
+  const now = opts.now ?? Date.now;
+  return startTimerLoop(
+    "refresh",
+    nextRefreshAt,
+    () => runScheduledRefresh(opts),
+    opts.log,
+    now,
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Daily canary (WS-C). Same 09:00 UTC slot as the CI workflow it replaces
+// once the server is live. No lock needed — a doubled canary run is harmless
+// (feed_status rows are keyed by run time) and the CLI is cheap.
+// ---------------------------------------------------------------------------
+
+export const CANARY_HOUR_UTC = 9;
+
+/** Next `hourUtc`:00 UTC strictly after `now`. */
+export function nextDailyAt(now: Date, hourUtc: number): Date {
+  const candidate = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), hourUtc, 0, 0),
+  );
+  if (candidate.getTime() <= now.getTime()) candidate.setUTCDate(candidate.getUTCDate() + 1);
+  return candidate;
+}
+
+function spawnCanaryCli(): Promise<number> {
+  const child = Bun.spawn(["bun", "src/app/index.ts", "canary"], {
+    stdout: "inherit",
+    stderr: "inherit",
+    env: process.env,
+  });
+  return child.exited;
+}
+
+export function startCanaryScheduler(opts: {
+  log: ScheduledRefreshOpts["log"];
+  runCanary?: () => Promise<number>;
+  now?: () => number;
+}): RefreshScheduler {
+  return startTimerLoop(
+    "canary",
+    (d) => nextDailyAt(d, CANARY_HOUR_UTC),
+    async () => {
+      // The canary CLI exits 1 on any failing check — that's a report, not a
+      // scheduler error; the alerting lives inside the CLI (recordAndAlert).
+      const code = await (opts.runCanary ?? spawnCanaryCli)();
+      if (code !== 0) opts.log.warn(logLine("info", "canary reported failures", { exitCode: code }));
+    },
+    opts.log,
+    opts.now,
+  );
 }

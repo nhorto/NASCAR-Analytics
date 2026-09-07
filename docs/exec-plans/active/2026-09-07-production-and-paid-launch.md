@@ -167,32 +167,44 @@ Acceptance:
 
 ### WS-C Data resilience (weeks 2–3, in parallel with WS-B)
 
+Build detail + status: [WS-C implementation plan](2026-09-07-ws-c-data-resilience.md).
+
 Build:
-- Canary v1 on the server: daily check per endpoint pattern + shape
-  validation via the normalizers + `feed_status` table + owner email on two
-  consecutive failures + a "data delayed" notice on affected pages.
-- Fallback adapter `nascar-data.ts`: reads the `nascaR.data` CSV/Parquet
-  release for results and schedules into the same normalized rows; `bun run
-  sync --source nascar-data` path; tested against fixtures and a real
-  download.
-- SportsDataIO adapter stub against the free-trial schema (results + basic
-  driver stats), clearly marked not-for-production, so a lockout is a config
-  change plus a card.
-- "Loop metrics from lap timing" spike: recompute green-flag passes, quality
-  passes, average running position and closing laps from `lap_times` +
-  `cautions` for one full season; report agreement with official
-  `loop_stats`. Ships as a documented experiment; promotion to a production
-  path is post-launch unless agreement is >95%.
-- `docs/runbooks/feed-loss.md`: what to do in the first hour, day, and week.
-- Ingestion invariant: a race commits fully or not at all (transaction per
-  race); test with an injected mid-race failure.
+- ~~Canary v1~~ ✅ 2026-09-07 — `feed_status` table, owner email exactly at
+  the second consecutive failure (Resend provider with a log-only null client
+  until A4), "data delayed" banner on pages, daily 09:00 UTC in-process cron
+  (`ENABLE_CANARY_CRON`). Runs "on the server" once the server is deployed;
+  `canary.yml` keeps covering until then.
+- ~~Fallback adapter `nascar-data.ts`~~ ✅ 2026-09-07 — the release is
+  **Parquet-only** (plan said CSV/Parquet; CSV 404s), read via `hyparquet`
+  (first runtime dependency). `sync --source nascar-data` + `--verify-last N`;
+  joins by points-race ordinal + canonical driver name with a track-name
+  guard, config aliases for known renames. Verified against the real
+  download (see acceptance) and it fills the 2025 YellaWood 500 hole.
+- ~~SportsDataIO stub~~ ✅ 2026-09-07 — types + URL builders + normalizer
+  against their documented schema, `assertUsable` guard, never wired into
+  sync. Real-payload verification needs the owner's free-trial key.
+- ~~Spike~~ ✅ 2026-09-07 — [report](../../research/2026-09-07_loop-metrics-from-timing-spike.md).
+  Position-derived metrics recoverable exactly; raw pass counts are not
+  (scoring-loop resolution floor); the pass-efficiency ratio works as a
+  labeled estimate. >95% bar met only for position metrics → stays an
+  experiment (the plan's default).
+- ~~`docs/runbooks/feed-loss.md`~~ ✅ 2026-09-07.
+- ~~Ingestion invariant~~ ✅ 2026-09-07 — per-race transaction (fetch all,
+  then write all); injected mid-race failure rolls back everything and the
+  backfill continues; the failed race retries next run.
 
 Acceptance:
 - [ ] Canary has caught an injected 403 in staging and emailed within 24 h.
-- [ ] `sync --source nascar-data` ingests the last three Cup races with
+      (Unit-tested end-to-end with an injected transport 2026-09-07; the
+      staging run needs the deployed server + Resend key — A2/A4.)
+- [x] `sync --source nascar-data` ingests the last three Cup races with
       results matching the CDN rows exactly (finish, start, laps led).
+      ✅ 2026-09-07: 36/40/38 drivers per race, zero mismatches
+      (`--verify-last 3`; full-2025 stress test 35/36 exact, the 36th being
+      the YellaWood hole itself, which write mode then filled).
 - [ ] Runbook reviewed by owner.
-- [ ] Spike report committed under `docs/research/`.
+- [x] Spike report committed under `docs/research/`. ✅ 2026-09-07.
 
 ### WS-D Accounts and gating (week 3)
 

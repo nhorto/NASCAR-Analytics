@@ -11,8 +11,9 @@ import { driversRuntime } from "../domains/drivers/index.ts";
 import { htmlResponse, LIVE_API_BASE } from "./layout.ts";
 import * as render from "./render.ts";
 import { seasonStatsPayload, trackTypePayload, baselinesPayload } from "./data.ts";
+import { dataHealthService } from "../domains/data-health/index.ts";
 import { readServerEnv, type ServerConfig } from "./env.ts";
-import { requestId, cacheControlFor, securityHeaders, withEncoding, logLine } from "./http.ts";
+import { requestId, cacheControlFor, securityHeaders, withEncoding, injectNotice, logLine } from "./http.ts";
 
 const STYLE_URL = new URL("./style.css", import.meta.url);
 const COMPARE_JS_URL = new URL("./client/compare.js", import.meta.url);
@@ -54,6 +55,30 @@ export function createServer(p: Providers, port: number, config?: ServerConfig) 
 
   const notFound = (seriesId: number, what: string) =>
     htmlResponse(render.render404(seriesId, render.currentSeason(p, seriesId), what), 404);
+
+  // "Data delayed" notice (WS-C): when feed_status shows an active outage,
+  // HTML pages carry a banner. The outage query is cheap but per-request would
+  // still be wasteful — cache the verdict for a minute.
+  const OUTAGE_CACHE_MS = 60_000;
+  let outageCache = { at: -Infinity, message: null as string | null };
+  const dataDelayedMessage = (): string | null => {
+    const nowMs = Date.now();
+    if (nowMs - outageCache.at > OUTAGE_CACHE_MS) {
+      let message: string | null = null;
+      try {
+        const outages = dataHealthService.activeOutages(p);
+        if (outages.length > 0) {
+          const ids = outages.map((o) => o.checkId).join(", ");
+          const since = outages[0]!.since.slice(0, 10);
+          message = `Data updates are delayed — our upstream source has been failing since ${since} (${ids}). Existing stats are unaffected.`;
+        }
+      } catch {
+        message = null; // an unreadable feed_status table must never break pages
+      }
+      outageCache = { at: nowMs, message };
+    }
+    return outageCache.message;
+  };
 
   // Cheap liveness + freshness snapshot for Fly health checks and the uptime
   // monitor: proves the db is readable and says how current the dataset is.
@@ -184,6 +209,14 @@ export function createServer(p: Providers, port: number, config?: ServerConfig) 
           status: 500,
           headers: { "Content-Type": "text/plain; charset=utf-8" },
         });
+      }
+      if (res.status === 200 && (res.headers.get("Content-Type") ?? "").startsWith("text/html")) {
+        const message = dataDelayedMessage();
+        if (message)
+          res = new Response(injectNotice(await res.text(), message), {
+            status: res.status,
+            headers: res.headers,
+          });
       }
       res = await withEncoding(req, res);
       res.headers.set("X-Request-Id", id);

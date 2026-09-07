@@ -84,6 +84,16 @@ export async function withEncoding(req: Request, res: Response): Promise<Respons
   return new Response(Bun.gzipSync(buf), { status: res.status, headers });
 }
 
+/** Insert a site-wide notice card right after the opening <main> tag (the
+ * "data delayed" banner, WS-C). No-op when the marker is absent (bare pages). */
+export function injectNotice(html: string, message: string): string {
+  const marker = `<main class="screen">`;
+  const idx = html.indexOf(marker);
+  if (idx === -1) return html;
+  const banner = `\n<div class="card" role="status" data-notice="data-delayed"><p class="note">⚠ ${message}</p></div>`;
+  return html.slice(0, idx + marker.length) + banner + html.slice(idx + marker.length);
+}
+
 export interface RequestLogFields {
   id: string;
   method: string;

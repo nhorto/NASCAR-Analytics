@@ -197,6 +197,19 @@ CREATE TABLE IF NOT EXISTS race_metric_standouts (
 );
 CREATE INDEX IF NOT EXISTS idx_race_standouts_race ON race_metric_standouts(race_id);
 
+-- Data-health: one row per canary check per run (domains/data-health/repo.ts).
+-- The consecutive-failure/outage logic reads the latest runs per check.
+CREATE TABLE IF NOT EXISTS feed_status (
+  check_id TEXT NOT NULL,
+  run_at TEXT NOT NULL,
+  ok INTEGER NOT NULL,
+  http_status INTEGER NOT NULL,
+  problem TEXT,
+  ms INTEGER NOT NULL,
+  PRIMARY KEY (check_id, run_at)
+);
+CREATE INDEX IF NOT EXISTS idx_feed_status_check ON feed_status(check_id, run_at DESC);
+
 -- Cross-process advisory locks (providers/lock.ts): the in-process refresh
 -- cron and any manual CLI run coordinate through this table.
 CREATE TABLE IF NOT EXISTS app_locks (

@@ -20,6 +20,13 @@ export const LOOPSTATS_FIRST_SEASON = 2019;
 export const TRUCKS_LOOPSTATS_FIRST_SEASON = 2018;
 export const LAPTIMES_FIRST_SEASON = 2020;
 
+// Races that ARE points races despite the CDN never serving their weekend
+// feed (so race_type_id stays NULL in our table). Mirrors the analytics
+// domain's own override list. 5580 = the 2025 YellaWood 500 (weekend_race
+// null upstream — see the tech-debt tracker); counted here so fallback-source
+// ordinals (nascaR.data race numbering) stay aligned across the hole.
+export const POINTS_RACE_ID_OVERRIDES: number[] = [5580];
+
 // Polite fetch behavior against the public CDN.
 export const FETCH_DELAY_MS = 300;
 export const FETCH_RETRIES = 3;

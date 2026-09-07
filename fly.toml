@@ -12,6 +12,8 @@ primary_region = "iad"
   PORT = "8080"
   # In-process Monday 12:00 UTC refresh (D18). Requires auto_stop off below.
   ENABLE_REFRESH_CRON = "1"
+  # In-process daily 09:00 UTC upstream-feed canary (WS-C).
+  ENABLE_CANARY_CRON = "1"
 
 [mounts]
   source = "nascar_data"

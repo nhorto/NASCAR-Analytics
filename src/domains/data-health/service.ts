@@ -8,10 +8,24 @@
 import type {
   CanaryReport,
   CheckResult,
+  FallbackDriverRef,
+  FallbackMapping,
+  FallbackRaceRef,
+  FallbackResultRow,
+  FeedOutage,
+  FeedStatusRow,
   FetchedJson,
   HealthCheck,
+  NascarDataRow,
   ShapeValidator,
 } from "./types.ts";
+import type { Providers } from "../../providers/index.ts";
+import {
+  CONSECUTIVE_FAILURES_TO_ALERT,
+  FALLBACK_DRIVER_ALIASES,
+  FALLBACK_TRACK_ALIASES,
+} from "./config.ts";
+import * as repo from "./repo.ts";
 
 export type JsonFetcher = (url: string) => Promise<FetchedJson>;
 
@@ -128,6 +142,207 @@ export function formatReport(report: CanaryReport): string {
     ? `all ${report.results.length} checks healthy`
     : `${report.failures} of ${report.results.length} checks FAILED`;
   return [`canary ${report.at}`, ...lines, verdict].join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// feed_status: persistence, streaks, outages, alerting (canary v1, WS-C)
+// ---------------------------------------------------------------------------
+
+type Db = Pick<Providers, "db">;
+
+/** Persist one canary run (one feed_status row per check). */
+export function recordReport(p: Db, report: CanaryReport): void {
+  repo.recordReport(p.db, report);
+}
+
+/** Length of the failing streak at the head of a newest-first run list. */
+export function consecutiveFailures(runs: FeedStatusRow[]): number {
+  let n = 0;
+  for (const run of runs) {
+    if (run.ok) break;
+    n++;
+  }
+  return n;
+}
+
+function outageFrom(runs: FeedStatusRow[], threshold: number): FeedOutage | null {
+  const streak = consecutiveFailures(runs);
+  if (streak < threshold) return null;
+  const firstFailing = runs[streak - 1]!;
+  return {
+    checkId: firstFailing.checkId,
+    consecutiveFailures: streak,
+    since: firstFailing.runAt,
+    problem: runs[0]!.problem,
+  };
+}
+
+/** Checks currently in outage: their latest `threshold`+ runs all failed. */
+export function activeOutages(
+  p: Db,
+  threshold: number = CONSECUTIVE_FAILURES_TO_ALERT,
+): FeedOutage[] {
+  const outages: FeedOutage[] = [];
+  for (const id of repo.checkIds(p.db)) {
+    // threshold+1 runs: enough to know whether the streak is exactly at threshold.
+    const outage = outageFrom(repo.latestRuns(p.db, id, threshold + 1), threshold);
+    if (outage) outages.push(outage);
+  }
+  return outages;
+}
+
+/**
+ * Outages that crossed the threshold with the most recent run — the streak is
+ * exactly `threshold` long. Alerting on the crossing (not on every failing
+ * day) means one outage sends one email; a recovery followed by a new streak
+ * alerts again.
+ */
+export function newlyAlertableOutages(
+  p: Db,
+  threshold: number = CONSECUTIVE_FAILURES_TO_ALERT,
+): FeedOutage[] {
+  return activeOutages(p, threshold).filter((o) => o.consecutiveFailures === threshold);
+}
+
+/** Owner-alert email for one or more outages. */
+export function formatAlertEmail(
+  outages: FeedOutage[],
+  report: CanaryReport,
+): { subject: string; text: string } {
+  const ids = outages.map((o) => o.checkId).join(", ");
+  const lines = outages.map(
+    (o) =>
+      `- ${o.checkId}: ${o.consecutiveFailures} consecutive failures since ${o.since}` +
+      (o.problem ? ` (latest: ${o.problem})` : ""),
+  );
+  return {
+    subject: `[looplab canary] upstream feed outage: ${ids}`,
+    text: [
+      `The daily canary has now failed ${CONSECUTIVE_FAILURES_TO_ALERT}+ consecutive runs for:`,
+      ...lines,
+      "",
+      "Runbook: docs/runbooks/feed-loss.md",
+      "",
+      formatReport(report),
+    ].join("\n"),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Fallback adapter: nascaR.data release rows -> our result rows (pure).
+// The release has no CDN ids, so the caller supplies the joins: our points
+// races in season order (ordinal) and our known drivers (name index).
+// ---------------------------------------------------------------------------
+
+/** Case/punctuation/diacritic-insensitive driver-name key ("A.J." == "AJ"). */
+export function canonicalDriverName(name: string): string {
+  return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\((?:i|r)\)|[#*]/g, "") // entry markers some sources append
+    .replace(/[.,'’]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function canonicalTrackName(name: string): string {
+  return name
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9 ]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Alias maps, canonicalized once so lookups are spelling-insensitive.
+const TRACK_ALIAS_CANON = new Map(
+  Object.entries(FALLBACK_TRACK_ALIASES).map(([from, to]) => [
+    canonicalTrackName(from),
+    canonicalTrackName(to),
+  ]),
+);
+const DRIVER_ALIAS_CANON = new Map(
+  Object.entries(FALLBACK_DRIVER_ALIASES).map(([from, to]) => [
+    canonicalDriverName(from),
+    canonicalDriverName(to),
+  ]),
+);
+
+/** Loose equality guarding the ordinal join — a prefix either way passes
+ * ("Bristol Motor Speedway" vs "Bristol Motor Speedway Dirt"), and known
+ * renames (config aliases) resolve first. */
+export function trackNamesMatch(a: string, b: string): boolean {
+  const resolve = (n: string) => {
+    const c = canonicalTrackName(n);
+    return TRACK_ALIAS_CANON.get(c) ?? c;
+  };
+  const ca = resolve(a);
+  const cb = resolve(b);
+  return ca === cb || ca.startsWith(cb) || cb.startsWith(ca);
+}
+
+export function mapFallbackResults(
+  rows: NascarDataRow[],
+  races: FallbackRaceRef[],
+  drivers: FallbackDriverRef[],
+): FallbackMapping {
+  const raceByOrdinal = new Map(races.map((r) => [r.ordinal, r]));
+  const driverByName = new Map(drivers.map((d) => [canonicalDriverName(d.fullName), d.driverId]));
+
+  const byOrdinal = new Map<number, NascarDataRow[]>();
+  for (const row of rows) {
+    const group = byOrdinal.get(row.race);
+    if (group) group.push(row);
+    else byOrdinal.set(row.race, [row]);
+  }
+
+  const mapping: FallbackMapping = { races: [], unmatchedDrivers: [], skippedRaces: [] };
+  const unmatched = new Set<string>();
+  for (const [ordinal, group] of [...byOrdinal.entries()].sort(([a], [b]) => a - b)) {
+    const ref = raceByOrdinal.get(ordinal);
+    if (!ref) {
+      mapping.skippedRaces.push({ ordinal, reason: "no matching points race in our schedule" });
+      continue;
+    }
+    const releaseTrack = group[0]!.track;
+    if (!trackNamesMatch(ref.trackName, releaseTrack)) {
+      // An ordinal misalignment (e.g. a points race our db lacks a weekend
+      // feed for) would silently attach results to the wrong race — refuse.
+      mapping.skippedRaces.push({
+        ordinal,
+        reason: `track mismatch: ours "${ref.trackName}" vs release "${releaseTrack}"`,
+      });
+      continue;
+    }
+    const mapped: FallbackResultRow[] = [];
+    for (const row of group) {
+      const canonical = canonicalDriverName(row.driver);
+      const driverId =
+        driverByName.get(canonical) ?? driverByName.get(DRIVER_ALIAS_CANON.get(canonical) ?? "");
+      if (driverId === undefined) {
+        unmatched.add(row.driver);
+        continue;
+      }
+      mapped.push({
+        raceId: ref.raceId,
+        driverId,
+        finishingPosition: row.finish,
+        startingPosition: row.start,
+        carNumber: row.car,
+        teamName: row.team,
+        lapsLed: row.led,
+        carMake: row.make,
+        pointsEarned: row.points,
+        lapsCompleted: row.laps,
+        finishingStatus: row.status,
+      });
+    }
+    mapping.races.push({ raceId: ref.raceId, ordinal, rows: mapped });
+  }
+  mapping.unmatchedDrivers = [...unmatched].sort();
+  return mapping;
 }
 
 // ---------------------------------------------------------------------------

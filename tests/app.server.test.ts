@@ -298,6 +298,64 @@ describe("web app", () => {
     expect(body).toContain("/xfinity/drivers");
   });
 
+  test("an active feed outage puts the data-delayed banner on pages (WS-C)", async () => {
+    const { dataHealthService } = await import("../src/domains/data-health/index.ts");
+    const db = testDb();
+    const providers: Providers = {
+      db,
+      cdn: createNascarCdnClient({ delayMs: 0, retries: 0, retryBaseDelayMs: 0, userAgent: "test" }),
+      archive: createNullArchive(),
+    };
+    const failing = (at: string) => ({
+      at,
+      results: [
+        { id: "loopstats", label: "loopstats", url: "u", status: 403, ok: false, problem: "HTTP 403", ms: 1 },
+      ],
+      failures: 1,
+      healthy: false,
+    });
+    dataHealthService.recordReport(providers, failing("2026-09-06T09:00:00Z"));
+    dataHealthService.recordReport(providers, failing("2026-09-07T09:00:00Z"));
+    // Fresh server: its 60s outage cache has not been primed with "no outage".
+    const outageServer = createServer(providers, 0);
+    try {
+      const outageBase = outageServer.url.toString().replace(/\/$/, "");
+      const page = await (await fetch(`${outageBase}/`)).text();
+      expect(page).toContain('data-notice="data-delayed"');
+      expect(page).toContain("since 2026-09-06");
+      expect(page).toContain("loopstats");
+      // Non-HTML responses are untouched.
+      const health = (await (await fetch(`${outageBase}/health`)).json()) as { ok: boolean };
+      expect(health.ok).toBe(true);
+    } finally {
+      outageServer.stop(true);
+    }
+  });
+
+  test("healthy feed_status means no banner", async () => {
+    const { dataHealthService } = await import("../src/domains/data-health/index.ts");
+    const db = testDb();
+    const providers: Providers = {
+      db,
+      cdn: createNascarCdnClient({ delayMs: 0, retries: 0, retryBaseDelayMs: 0, userAgent: "test" }),
+      archive: createNullArchive(),
+    };
+    dataHealthService.recordReport(providers, {
+      at: "2026-09-07T09:00:00Z",
+      results: [{ id: "loopstats", label: "loopstats", url: "u", status: 200, ok: true, problem: null, ms: 1 }],
+      failures: 0,
+      healthy: true,
+    });
+    const cleanServer = createServer(providers, 0);
+    try {
+      const cleanBase = cleanServer.url.toString().replace(/\/$/, "");
+      const page = await (await fetch(`${cleanBase}/`)).text();
+      expect(page).not.toContain("data-notice");
+    } finally {
+      cleanServer.stop(true);
+    }
+  });
+
   test("production config enables HSTS; an unreadable db turns /health 503", async () => {
     const db = testDb();
     const providers: Providers = {
@@ -313,6 +371,7 @@ describe("web app", () => {
       plausibleDomain: null,
       plausibleHost: "https://plausible.io",
       enableRefreshCron: false,
+      enableCanaryCron: false,
       logRequests: false,
     });
     try {

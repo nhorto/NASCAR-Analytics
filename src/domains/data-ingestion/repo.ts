@@ -1,4 +1,6 @@
 import type { Database } from "bun:sqlite";
+import type { FallbackResultRow } from "../data-health/types.ts";
+import { POINTS_RACE_ID_OVERRIDES } from "./config.ts";
 import type {
   TrackRow,
   RaceRow,
@@ -126,6 +128,37 @@ export function upsertResults(db: Database, rows: ResultRow[]): void {
         r.finishingStatus,
         r.pointsPosition,
         r.disqualified ? 1 : 0,
+      );
+    }
+  });
+  run(rows);
+}
+
+/** Results reconstructed from the nascaR.data fallback (WS-C). Columns the
+ * release lacks are written as NULL — never guessed. Atomic per call. */
+export function upsertFallbackResults(db: Database, rows: FallbackResultRow[]): void {
+  const stmt = db.query(
+    `INSERT OR REPLACE INTO results (
+       race_id, driver_id, finishing_position, starting_position, car_number,
+       team_id, team_name, qualifying_position, qualifying_speed, laps_led, times_led,
+       car_make, sponsor, points_earned, playoff_points_earned, laps_completed,
+       finishing_status, points_position, disqualified
+     ) VALUES (?, ?, ?, ?, ?, NULL, ?, NULL, NULL, ?, NULL, ?, NULL, ?, NULL, ?, ?, NULL, NULL)`,
+  );
+  const run = db.transaction((items: FallbackResultRow[]) => {
+    for (const r of items) {
+      stmt.run(
+        r.raceId,
+        r.driverId,
+        r.finishingPosition,
+        r.startingPosition,
+        r.carNumber,
+        r.teamName,
+        r.lapsLed,
+        r.carMake,
+        r.pointsEarned,
+        r.lapsCompleted,
+        r.finishingStatus,
       );
     }
   });
@@ -290,6 +323,41 @@ export function racesForSeason(db: Database, season: number, seriesId: number): 
     Omit<SeasonRaceListItem, "hasResults"> & { hasResults: number }
   >;
   return rows.map((r) => ({ ...r, hasResults: r.hasResults === 1 }));
+}
+
+/** A season's completed points races in date order, with their track names —
+ * the ordinal join target for the nascaR.data fallback (its `Race` column
+ * counts completed points races 1..N). race_type_id comes from the weekend
+ * feed, so scheduled-but-unrun races are naturally excluded. */
+export function pointsRacesWithTrack(
+  db: Database,
+  season: number,
+  seriesId: number,
+): Array<{ raceId: number; season: number; trackName: string }> {
+  // The override keeps ordinals aligned across races whose weekend feed never
+  // published (race_type_id NULL) but which the season's numbering counts.
+  const overrides = POINTS_RACE_ID_OVERRIDES;
+  const placeholders = overrides.map(() => "?").join(", ") || "NULL";
+  return db
+    .query(
+      `SELECT r.race_id AS raceId, r.season AS season, t.name AS trackName
+       FROM races r JOIN tracks t ON t.track_id = r.track_id
+       WHERE r.season = ? AND r.series_id = ?
+         AND (r.race_type_id = 1 OR r.race_id IN (${placeholders}))
+       ORDER BY COALESCE(r.race_date_utc, r.race_date), r.race_id`,
+    )
+    .all(season, seriesId, ...overrides) as unknown as Array<{
+    raceId: number;
+    season: number;
+    trackName: string;
+  }>;
+}
+
+/** Every known driver — the name index for the fallback join. */
+export function allDrivers(db: Database): DriverRow[] {
+  return db
+    .query(`SELECT driver_id AS driverId, full_name AS fullName FROM drivers`)
+    .all() as unknown as DriverRow[];
 }
 
 export function latestCompletedRaceId(db: Database, seriesId: number): number | null {

@@ -72,7 +72,26 @@ switch (command) {
   }
   case "sync": {
     const p = providers();
-    await ingestionService.syncLatest(p, argValue("--series", ingestionConfig.SERIES.cup), log);
+    const seriesId = argValue("--series", ingestionConfig.SERIES.cup);
+    const source = argString("--source");
+    if (source === "nascar-data") {
+      // WS-C fallback path: official results from the nascaR.data Parquet
+      // release instead of the CDN. --verify-last N compares instead of writing.
+      const { fallbackSync } = await import("./fallback-sync.ts");
+      const verifyIdx = process.argv.indexOf("--verify-last");
+      await fallbackSync(p, {
+        seriesId,
+        season: argValue("--season", new Date().getUTCFullYear()),
+        verifyLast: verifyIdx === -1 ? undefined : argValue("--verify-last", 3),
+        log,
+      });
+      break;
+    }
+    if (source !== null) {
+      console.error(`Unknown --source "${source}" (supported: nascar-data)`);
+      process.exit(1);
+    }
+    await ingestionService.syncLatest(p, seriesId, log);
     break;
   }
   case "status": {
@@ -152,6 +171,10 @@ switch (command) {
       const { startRefreshScheduler } = await import("./scheduler.ts");
       startRefreshScheduler({ db: p.db, log });
     }
+    if (config.enableCanaryCron) {
+      const { startCanaryScheduler } = await import("./scheduler.ts");
+      startCanaryScheduler({ log });
+    }
     console.log(`Looplab running at ${server.url}`);
     break;
   }
@@ -179,11 +202,19 @@ switch (command) {
     // Non-zero exit on any failure so a scheduler can alert (see canary.ts).
     const series = argValue("--series", ingestionConfig.SERIES.cup);
     const jsonOut = argString("--json");
-    const { runCanary } = await import("./canary.ts");
+    const { runCanary, recordAndAlert } = await import("./canary.ts");
     const { dataHealthService } = await import("../domains/data-health/index.ts");
+    const { emailClientFromEnv } = await import("../providers/email.ts");
     const report = await runCanary({ seriesId: series });
     console.log(dataHealthService.formatReport(report));
     if (jsonOut) await Bun.write(jsonOut, JSON.stringify(report, null, 2));
+    // v1: persist to feed_status; email the owner when a check crosses the
+    // consecutive-failure threshold (no-ops to a log line without a Resend key).
+    const outcome = await recordAndAlert(providers(), report, emailClientFromEnv(process.env, log.warn));
+    if (outcome.alerted.length > 0)
+      log.warn(`ALERT sent for ${outcome.alerted.map((o) => o.checkId).join(", ")} — ${outcome.emailDetail}`);
+    else if (outcome.outages.length > 0)
+      log.warn(`ongoing outage (already alerted): ${outcome.outages.map((o) => o.checkId).join(", ")}`);
     if (!report.healthy) process.exit(1);
     break;
   }
@@ -267,7 +298,7 @@ switch (command) {
 
 Usage:
   bun run src/app/index.ts backfill [--from YEAR] [--to YEAR] [--series ID] [--force]
-  bun run src/app/index.ts sync [--series ID]
+  bun run src/app/index.ts sync [--series ID] [--source nascar-data [--season YEAR] [--verify-last N]]
   bun run src/app/index.ts status [--series ID]
   bun run src/app/index.ts compute [--series ID]
   bun run src/app/index.ts driver --name "Chase Elliott" | --id 4062 [--series ID]
@@ -281,6 +312,8 @@ Env: NASCAR_DATA_DIR (default data), NASCAR_PAGES_PROJECT (default looplab),
      CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID (enable Pages + Worker deploys)
 serve env: APP_ENV=production (strict env + HSTS + request logs), PORT,
      LIVE_API_BASE, PLAUSIBLE_DOMAIN [+ PLAUSIBLE_HOST],
-     ENABLE_REFRESH_CRON=1 (in-process Monday 12:00 UTC refresh), LOG_REQUESTS`);
+     ENABLE_REFRESH_CRON=1 (in-process Monday 12:00 UTC refresh),
+     ENABLE_CANARY_CRON=1 (in-process daily 09:00 UTC canary), LOG_REQUESTS
+canary env: RESEND_API_KEY + ALERT_EMAIL_TO [+ EMAIL_FROM] (owner outage emails)`);
     if (command !== undefined) process.exit(1);
 }

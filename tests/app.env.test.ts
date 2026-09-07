@@ -20,6 +20,7 @@ describe("readServerEnv", () => {
       plausibleDomain: null,
       plausibleHost: DEFAULT_PLAUSIBLE_HOST,
       enableRefreshCron: false,
+      enableCanaryCron: false,
       logRequests: false,
     });
   });

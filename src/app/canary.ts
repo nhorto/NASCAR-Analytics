@@ -14,8 +14,10 @@ import type { CdnLapTimesFeed, CdnLoopStatsRace, CdnScheduleEvent, CdnWeekendFee
 import { liveConfig, liveService } from "../domains/live/index.ts";
 import type { LiveFeed } from "../domains/live/index.ts";
 import { dataHealthConfig, dataHealthService } from "../domains/data-health/index.ts";
-import type { CanaryReport, HealthCheck } from "../domains/data-health/index.ts";
+import type { CanaryReport, FeedOutage, HealthCheck } from "../domains/data-health/index.ts";
 import { createNascarCdnClient } from "../providers/nascar-cdn.ts";
+import type { Providers } from "../providers/index.ts";
+import type { EmailClient } from "../providers/email.ts";
 
 const { expectArray, expectArrayAt, expectKeys, expectNormalizes, all } = dataHealthService;
 
@@ -157,6 +159,37 @@ export async function runCanary(opts: CanaryOptions): Promise<CanaryReport> {
   }
   const checks = buildChecks(probe.race, probe.season, opts.seriesId);
   return dataHealthService.runChecks(checks, fetchJson, now);
+}
+
+export interface AlertOutcome {
+  /** Checks currently in outage (threshold or more consecutive failures). */
+  outages: FeedOutage[];
+  /** Outages that crossed the threshold with THIS run — the ones emailed about. */
+  alerted: FeedOutage[];
+  emailDetail: string | null;
+}
+
+/**
+ * Canary v1 (WS-C): persist the run to feed_status and email the owner when a
+ * check crosses the consecutive-failure threshold — exactly at the crossing,
+ * so one outage produces one email (and a recovery + new streak alerts again).
+ */
+export async function recordAndAlert(
+  p: Pick<Providers, "db">,
+  report: CanaryReport,
+  email: { client: EmailClient; to: string | null },
+): Promise<AlertOutcome> {
+  dataHealthService.recordReport(p, report);
+  const outages = dataHealthService.activeOutages(p);
+  const alerted = dataHealthService.newlyAlertableOutages(p);
+  if (alerted.length === 0) return { outages, alerted, emailDetail: null };
+  const msg = dataHealthService.formatAlertEmail(alerted, report);
+  const sent = await email.client.send({
+    to: email.to ?? "owner@unconfigured.invalid",
+    subject: msg.subject,
+    text: msg.text,
+  });
+  return { outages, alerted, emailDetail: sent.detail };
 }
 
 /**

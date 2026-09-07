@@ -1,4 +1,5 @@
 import type { Providers } from "../../providers/index.ts";
+import type { FallbackRaceRef, FallbackResultRow } from "../data-health/types.ts";
 import type {
   CdnScheduleEvent,
   CdnWeekendFeed,
@@ -258,7 +259,13 @@ export interface RaceIngestOutcome {
 }
 
 /** Ingest all per-race feeds for one race. Missing feeds (403/404) are
- * recorded and skipped, not errors — the CDN legitimately lacks some data. */
+ * recorded and skipped, not errors — the CDN legitimately lacks some data.
+ *
+ * Atomicity (WS-C): every payload is fetched and normalized FIRST, then all
+ * rows are written in one transaction — a race commits fully or not at all,
+ * so a mid-race failure can never leave results without their cautions or a
+ * half-written lap-time table. (The raw_fetches log entries land outside the
+ * transaction on purpose: a fetch happened whether or not the write stuck.) */
 export async function ingestRaceData(
   providers: Providers,
   race: ScheduledRace,
@@ -272,8 +279,29 @@ export async function ingestRaceData(
     weekendFeedUrl(season, seriesId, raceId),
     `${season}/${seriesId}/${raceId}/weekend-feed.json`,
   );
-  if (weekendJson !== null) {
-    const weekendRace = (weekendJson as CdnWeekendFeed).weekend_race?.[0];
+  const weekendRace = weekendJson === null ? null : (weekendJson as CdnWeekendFeed).weekend_race?.[0];
+
+  let loopRows: LoopStatRow[] = [];
+  if (loopStatsExpected(season, seriesId)) {
+    const loopJson = await fetchAndArchive(
+      providers,
+      loopStatsUrl(season, seriesId, raceId),
+      `${season}/${seriesId}/${raceId}/loopstats.json`,
+    );
+    if (loopJson !== null) loopRows = normalizeLoopStats(loopJson as CdnLoopStatsRace[]);
+  }
+
+  let lapRows: LapTimeRow[] = [];
+  if (lapTimesExpected(season)) {
+    const lapJson = await fetchAndArchive(
+      providers,
+      lapTimesUrl(season, seriesId, raceId),
+      `${season}/${seriesId}/${raceId}/lap-times.json`,
+    );
+    if (lapJson !== null) lapRows = normalizeLapTimes(raceId, lapJson as CdnLapTimesFeed);
+  }
+
+  const writeAll = providers.db.transaction(() => {
     if (weekendRace && weekendRace.results.length > 0) {
       repo.updateRaceDetails(providers.db, normalizeRace(weekendRace));
       repo.upsertDrivers(providers.db, normalizeDrivers(weekendRace));
@@ -282,36 +310,21 @@ export async function ingestRaceData(
       repo.replaceRaceLeaders(providers.db, raceId, normalizeRaceLeaders(weekendRace));
       outcome.results = true;
     }
-  }
-
-  if (loopStatsExpected(season, seriesId)) {
-    const loopJson = await fetchAndArchive(
-      providers,
-      loopStatsUrl(season, seriesId, raceId),
-      `${season}/${seriesId}/${raceId}/loopstats.json`,
-    );
-    if (loopJson !== null) {
-      const rows = normalizeLoopStats(loopJson as CdnLoopStatsRace[]);
-      if (rows.length > 0) {
-        repo.upsertLoopStats(providers.db, rows);
-        outcome.loopStats = true;
-      }
+    if (loopRows.length > 0) {
+      repo.upsertLoopStats(providers.db, loopRows);
+      outcome.loopStats = true;
     }
-  }
-
-  if (lapTimesExpected(season)) {
-    const lapJson = await fetchAndArchive(
-      providers,
-      lapTimesUrl(season, seriesId, raceId),
-      `${season}/${seriesId}/${raceId}/lap-times.json`,
-    );
-    if (lapJson !== null) {
-      const rows = normalizeLapTimes(raceId, lapJson as CdnLapTimesFeed);
-      if (rows.length > 0) {
-        repo.upsertLapTimes(providers.db, rows);
-        outcome.lapTimes = true;
-      }
+    if (lapRows.length > 0) {
+      repo.upsertLapTimes(providers.db, lapRows);
+      outcome.lapTimes = true;
     }
+  });
+  try {
+    writeAll();
+  } catch (err) {
+    // Rolled back — the race is untouched and stays uncovered for the next run.
+    outcome.results = outcome.loopStats = outcome.lapTimes = false;
+    throw err;
   }
 
   if (!outcome.results) log.warn(`race ${raceId} (${season}): no results ingested`);
@@ -359,17 +372,28 @@ export async function backfill(
     const eligible = races.filter((r) => raceHasHappened(r, nowUtc));
     let ingested = 0;
     let skipped = 0;
+    let failed = 0;
     for (const race of eligible) {
       if (!opts.force && raceFullyCovered(providers, race)) {
         skipped++;
         continue;
       }
-      await ingestRaceData(providers, race, log);
-      ingested++;
+      try {
+        await ingestRaceData(providers, race, log);
+        ingested++;
+      } catch (err) {
+        // The per-race transaction rolled back; the race retries next run.
+        // One bad payload must not kill the whole weekly refresh.
+        failed++;
+        log.warn(
+          `race ${race.raceId} (${season}): ingest failed and was rolled back — ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
     log.info(
       `season ${season}: ${races.length} scheduled, ${eligible.length} run, ` +
-        `${ingested} ingested, ${skipped} already covered`,
+        `${ingested} ingested, ${skipped} already covered` +
+        (failed > 0 ? `, ${failed} FAILED (rolled back)` : ""),
     );
   }
 }
@@ -387,6 +411,50 @@ export async function syncLatest(
 
 export function coverage(providers: Providers, seriesId: number): SeasonCoverage[] {
   return repo.coverageBySeason(providers.db, seriesId);
+}
+
+// ---------------------------------------------------------------------------
+// Fallback-source support (WS-C): the joins the nascaR.data adapter needs and
+// the atomic write path for its reconstructed results. The mapping itself is
+// pure and lives in the data-health domain; the app layer composes the two.
+// ---------------------------------------------------------------------------
+
+/** A season's completed points races in date order, 1-based ordinals. */
+export function pointsRaceRefs(
+  p: Pick<Providers, "db">,
+  season: number,
+  seriesId: number,
+): FallbackRaceRef[] {
+  return repo
+    .pointsRacesWithTrack(p.db, season, seriesId)
+    .map((r, i) => ({ raceId: r.raceId, season: r.season, ordinal: i + 1, trackName: r.trackName }));
+}
+
+/** Every known driver, for the fallback's name index. */
+export function allDrivers(p: Pick<Providers, "db">): DriverRow[] {
+  return repo.allDrivers(p.db);
+}
+
+export function raceHasResults(p: Pick<Providers, "db">, raceId: number): boolean {
+  return repo.hasResults(p.db, raceId);
+}
+
+/** Write fallback results, one transaction per race (commits fully or not at all). */
+export function applyFallbackResults(
+  p: Pick<Providers, "db">,
+  races: Array<{ raceId: number; rows: FallbackResultRow[] }>,
+  log: IngestLogger,
+): { racesWritten: number; rowsWritten: number } {
+  let racesWritten = 0;
+  let rowsWritten = 0;
+  for (const race of races) {
+    if (race.rows.length === 0) continue;
+    repo.upsertFallbackResults(p.db, race.rows);
+    racesWritten++;
+    rowsWritten += race.rows.length;
+    log.info(`race ${race.raceId}: ${race.rows.length} fallback results written`);
+  }
+  return { racesWritten, rowsWritten };
 }
 
 // ---------------------------------------------------------------------------
