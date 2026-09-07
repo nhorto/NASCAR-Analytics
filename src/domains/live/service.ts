@@ -101,6 +101,7 @@ function isRunning(v: LiveVehicle): boolean {
 export function normalizeFeed(feed: LiveFeed): LiveSnapshot {
   const flag = flagOf(num(feed.flag_state));
   const vehicles = Array.isArray(feed.vehicles) ? feed.vehicles : [];
+  const lapsInRace = num(feed.laps_in_race);
 
   const drivers: LiveDriverRow[] = vehicles
     .map((v): LiveDriverRow => ({
@@ -131,10 +132,13 @@ export function normalizeFeed(feed: LiveFeed): LiveSnapshot {
     }))
     .sort((a, b) => a.position - b.position);
 
-  const stage = feed.stage
+  const stageFinish = feed.stage ? num(feed.stage.finish_at_lap) : 0;
+  // The CDN sometimes rolls individual fields to the next event while cold.
+  // An impossible stage boundary is stale metadata, not useful live state.
+  const stage = feed.stage && stageFinish > 0 && (lapsInRace <= 0 || stageFinish <= lapsInRace)
     ? {
         num: num(feed.stage.stage_num),
-        finishAtLap: num(feed.stage.finish_at_lap),
+        finishAtLap: stageFinish,
         lapsInStage: num(feed.stage.laps_in_stage),
       }
     : null;
@@ -146,7 +150,7 @@ export function normalizeFeed(feed: LiveFeed): LiveSnapshot {
     trackName: feed.track_name ?? null,
     trackLength: feed.track_length == null ? null : num(feed.track_length),
     lap: num(feed.lap_number),
-    lapsInRace: num(feed.laps_in_race),
+    lapsInRace,
     lapsToGo: num(feed.laps_to_go),
     elapsedTime: num(feed.elapsed_time),
     flag,

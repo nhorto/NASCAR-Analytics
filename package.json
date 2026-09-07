@@ -14,6 +14,7 @@
     "backtest": "bun run scripts/backtest-strategy.ts",
     "capture": "bun run src/app/index.ts capture",
     "refresh": "bun run src/app/index.ts refresh",
+    "typecheck:worker": "bunx tsc -p worker/tsconfig.json",
     "test": "bun test"
   },
   "devDependencies": {

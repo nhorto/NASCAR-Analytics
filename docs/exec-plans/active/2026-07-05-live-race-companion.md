@@ -240,10 +240,33 @@ live host). Remaining: **Phase 4** — drive a full race, tune, then move this p
   Default sort = **Running Order** (one tap to the moat). TV-sync slider + confidence
   indicator deferred to a fast-follow.
 
-**Phase 4 — Verify & document.** Drive it against a live (or replayed) race; tune
-cadence; confirm idle → $0. Update ARCHITECTURE.md (new `live` domain + `live-store`
-provider, "Current Guarantees", "What Does NOT Exist"), QUALITY_SCORE, and move this
-plan to `completed/`.
+**Phase 4 — Verify, harden automation, and document. 🔄 IN PROGRESS (2026-08-07).**
+The domain and deployment are healthy (185 tests pass; Pages + Worker return 200;
+weekly refresh runs are green), but an off-race production check exposed hybrid
+metadata in NASCAR's base feed: race 5619 / Brickyard name was paired with Iowa's
+track name and stage boundary. Complete Phase 4 by:
+
+1. ✅ Canonicalize idle/current-session identity from the schedule entry matching
+   `race_id`, so partially rolled upstream metadata cannot produce an internally
+   contradictory snapshot or choose the wrong per-track strategy calibration.
+   Keep this pure/tested and degrade gracefully if the schedule fetch is missing.
+2. ✅ Extend `bun run refresh` so, after export, it regenerates Worker baselines,
+   calibrates strategy for all three series, and deploys `worker/` when explicitly
+   enabled by Worker credentials/config. Preserve `--no-deploy` as a no-external-
+   writes build path and make CI's deployment behavior explicit.
+3. ✅ Add regression tests, run all tests (including architecture tests), and
+   typecheck the Worker. Result: 190 tests pass; Worker typecheck passes.
+4. ✅ Make cold refresh resilient to an individual CDN 5xx after retries. The
+   first deployment run exposed one historical loop-stat endpoint returning 503;
+   exhausted response is recorded as missing so a future incremental run can fill
+   it, while network exceptions still fail normally. Verified by a complete CI
+   cold rebuild on 2026-08-07: 2,433 pages exported; strategy calibrated from 107
+   Cup, 91 Xfinity, and 58 Truck races; the new cache saved successfully.
+5. ⏳ Re-check the deployed endpoints. Local production-feed validation confirms
+   schedule canonicalization corrects the observed hybrid metadata. Direct deploy
+   is waiting on refreshed Cloudflare authentication; the next weekly workflow is
+   configured to deploy both surfaces. A full green-flag race soak remains the final
+   operational observation; only after that should this plan move to `completed/`.
 
 ## Risks / open decisions
 
@@ -252,5 +275,6 @@ plan to `completed/`.
 - **Schema is source-reconstructed** — Phase 0 fixture capture de-risks the parser.
 - **Live vs. official metric** — show live *component* stats + a live *estimate* of
   our metrics during the race; swap to authoritative `loopstats/prod` post-race.
-- **First real deploy** — this rides on the still-pending one-time Cloudflare Pages
-  connect (docs/DEPLOY.md); the live endpoint adds DO+KV bindings to that project.
+- **Full-race soak** — the companion has been exercised during green-flag running,
+  but Phase 4 remains open until the hardened build is observed through an entire
+  race including cautions, pit cycles, stage transitions, and the checkered state.
