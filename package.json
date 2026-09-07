@@ -19,7 +19,8 @@
     "refresh": "bun run src/app/index.ts refresh",
     "typecheck": "bunx tsc -p tsconfig.json",
     "typecheck:worker": "bunx tsc -p worker/tsconfig.json",
-    "test": "bun test"
+    "test": "bun test",
+    "backtest:predictions": "bun scripts/backtest-predictions.ts"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260705.1",

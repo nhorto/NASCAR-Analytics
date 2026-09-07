@@ -20,6 +20,26 @@ import { seriesGated, raceGated, jsonRequestBlocked, PRO_REQUIRED_BODY } from ".
 import { handleAuthRequest } from "./auth.ts";
 import { teaserContent } from "./pages/teaser.ts";
 import { page, seriesLabel } from "./layout.ts";
+import { predictionsService } from "../domains/predictions/index.ts";
+import {
+  predictionsContent,
+  predictionsEmptyContent,
+  cupOnlyContent,
+  methodologyContent,
+} from "./pages/predictions.ts";
+import { dfsContent, dfsEmptyContent, dfsLockedContent } from "./pages/dfs.ts";
+import { featureEnabled } from "./gate.ts";
+
+// Headline numbers from the held-out backtest, shown on the methodology page.
+// Source: docs/research/2026-09-07_predictions-backtest.md (re-derive with
+// `bun run backtest:predictions`).
+const METHODOLOGY_BACKTEST = {
+  evalSeason: 2025,
+  winBrier: "0.0255 vs 0.0268 trailing-5 and 0.0256 uniform",
+  top10Brier: "0.173 vs 0.194 for both baselines, about 11% better",
+  calibrationNote:
+    "Calibration is inside ±5 points on six of seven probability bins; the seventh (60–70%, n=39) sits 5.2 off — within one standard error of exact. Win odds firm up after qualifying: the Thursday form-only run is honest about being weaker on outright winners.",
+};
 
 const STYLE_URL = new URL("./style.css", import.meta.url);
 const COMPARE_JS_URL = new URL("./client/compare.js", import.meta.url);
@@ -97,6 +117,50 @@ export function createServer(
   };
 
   const proRequired = () => json(PRO_REQUIRED_BODY, 403);
+
+  // /predictions, /predictions/methodology, /dfs (WS-F). Cup only at launch
+  // (D16) — other series get a pointer once past the Pro series gate.
+  const predictionPages = (rest: string, seriesId: number, url: URL, viewer: Viewer): Response | null => {
+    if (rest !== "/predictions" && rest !== "/predictions/methodology" && rest !== "/dfs") return null;
+    const season = render.currentSeason(p, seriesId);
+    const shell = (title: string, content: string) =>
+      htmlResponse(page({ title, active: "metrics", seriesId, season, content }));
+    if (seriesId !== SERIES.cup) return shell("Predictions", cupOnlyContent(seriesLabel(seriesId)));
+    if (rest === "/predictions/methodology")
+      return shell("Methodology", methodologyContent(METHODOLOGY_BACKTEST));
+
+    const raceId = predictionsService.latestPredictedRaceId(p, SERIES.cup);
+    if (rest === "/dfs") {
+      if (!featureEnabled("dfs", viewer)) return shell("DFS projections", dfsLockedContent());
+      const platform = url.searchParams.get("scoring") === "fd" ? "fd" : "dk";
+      const rows = raceId === null ? [] : predictionsService.latestProjections(p, raceId, platform);
+      const race = raceId === null ? null : predictionsService.raceInfo(p, raceId);
+      if (rows.length === 0 || !race) return shell("DFS projections", dfsEmptyContent());
+      return shell(
+        "DFS projections",
+        dfsContent({
+          raceName: race.raceName, season: race.season, platform,
+          stage: rows[0]!.stage, generatedAt: rows[0]!.generatedAt, rows,
+        }),
+      );
+    }
+
+    const latest = raceId === null ? null : predictionsService.latestPredictions(p, raceId);
+    const race = raceId === null ? null : predictionsService.raceInfo(p, raceId);
+    if (!latest || !race) return shell("Predictions", predictionsEmptyContent());
+    return shell(
+      "Predictions",
+      predictionsContent({
+        raceName: race.raceName, season: race.season, trackType: race.trackType,
+        stage: latest.stage,
+        generatedAt: latest.rows[0]!.generatedAt,
+        basisRaceId: latest.rows[0]!.basisRaceId,
+        rows: latest.rows,
+        actual: race.hasResults ? predictionsService.actualFinishes(p, race.raceId) : null,
+        viewerPro: viewer.pro,
+      }),
+    );
+  };
 
   // "Data delayed" notice (WS-C): when feed_status shows an active outage,
   // HTML pages carry a banner. The outage query is cheap but per-request would
@@ -219,6 +283,8 @@ export function createServer(
       // Free = Cup (D16): the whole Xfinity/Trucks section is one teaser wall
       // for non-Pro viewers.
       if (seriesGated(seriesId, viewer)) return teaser(seriesId);
+      const predRes = predictionPages(rest, seriesId, url, viewer);
+      if (predRes) return predRes;
       if (rest === "/") return htmlResponse(render.renderHome(p, seriesId));
       if (rest === "/drivers")
         return htmlResponse(render.renderDriversIndex(p, seriesId, url.searchParams.get("q")));

@@ -384,6 +384,7 @@ describe("web app", () => {
       plausibleHost: "https://plausible.io",
       enableRefreshCron: false,
       enableCanaryCron: false,
+      enablePredictionsCron: false,
       logRequests: false,
       appBaseUrl: null,
     });

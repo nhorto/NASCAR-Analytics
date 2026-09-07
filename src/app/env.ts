@@ -16,6 +16,8 @@ export interface ServerConfig {
   enableRefreshCron: boolean;
   /** Run the daily upstream-feed canary in-process (launch plan WS-C). */
   enableCanaryCron: boolean;
+  /** Run the Thursday/Saturday predictions crons in-process (WS-F). */
+  enablePredictionsCron: boolean;
   /** Emit a JSON log line per request. Defaults to `production`. */
   logRequests: boolean;
   /** Absolute origin for links in auth emails (WS-D). Null → derived from the
@@ -96,6 +98,10 @@ export function readServerEnv(env: Env): ServerEnvResult {
   if (enableCanaryCron === null)
     problems.push(`ENABLE_CANARY_CRON must be 1/0/true/false, got "${env.ENABLE_CANARY_CRON}"`);
 
+  const enablePredictionsCron = parseBool(env.ENABLE_PREDICTIONS_CRON, false);
+  if (enablePredictionsCron === null)
+    problems.push(`ENABLE_PREDICTIONS_CRON must be 1/0/true/false, got "${env.ENABLE_PREDICTIONS_CRON}"`);
+
   const logRequests = parseBool(env.LOG_REQUESTS, production);
   if (logRequests === null)
     problems.push(`LOG_REQUESTS must be 1/0/true/false, got "${env.LOG_REQUESTS}"`);
@@ -120,6 +126,7 @@ export function readServerEnv(env: Env): ServerEnvResult {
       plausibleHost,
       enableRefreshCron: enableRefreshCron ?? false,
       enableCanaryCron: enableCanaryCron ?? false,
+      enablePredictionsCron: enablePredictionsCron ?? false,
       logRequests: logRequests ?? production,
       appBaseUrl,
     },

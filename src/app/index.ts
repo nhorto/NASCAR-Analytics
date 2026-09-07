@@ -175,6 +175,10 @@ switch (command) {
       const { startCanaryScheduler } = await import("./scheduler.ts");
       startCanaryScheduler({ log });
     }
+    if (config.enablePredictionsCron) {
+      const { startPredictionsScheduler } = await import("./scheduler.ts");
+      startPredictionsScheduler({ log });
+    }
     console.log(`Looplab running at ${server.url}`);
     break;
   }
@@ -216,6 +220,24 @@ switch (command) {
     else if (outcome.outages.length > 0)
       log.warn(`ongoing outage (already alerted): ${outcome.outages.map((o) => o.checkId).join(", ")}`);
     if (!report.healthy) process.exit(1);
+    break;
+  }
+  case "predict": {
+    // WS-F: per-driver probabilities + DFS projections for one race. Defaults
+    // to the next scheduled points race without results; --stage saturday
+    // pulls the qualifying grid (weekend feed for upcoming races).
+    const stageArg = argString("--stage") ?? "thursday";
+    if (stageArg !== "thursday" && stageArg !== "saturday") {
+      console.error(`--stage must be thursday or saturday, got "${stageArg}"`);
+      process.exit(1);
+    }
+    const { runPredict } = await import("./predict.ts");
+    await runPredict(providers(), {
+      raceId: process.argv.includes("--race") ? argValue("--race", 0) : undefined,
+      stage: stageArg,
+      seriesId: argValue("--series", ingestionConfig.SERIES.cup),
+      log,
+    });
     break;
   }
   case "grant": {
@@ -332,6 +354,7 @@ Usage:
   bun run src/app/index.ts export
   bun run src/app/index.ts capture [--series ID] [--interval SEC] [--ticks N] [--out DIR]  # capture live feed
   bun run src/app/index.ts canary [--series ID] [--json PATH]   # upstream-feed health check (exit 1 on failure)
+  bun run src/app/index.ts predict [--race ID] [--stage thursday|saturday] [--series ID]   # WS-F model run
   bun run src/app/index.ts grant --email a@b.c [--until ISO] [--revoke]   # manual Pro grant (testers)
   bun run src/app/index.ts refresh [--no-deploy]   # data+site+Worker artifacts; deploy both, all series
 
@@ -341,7 +364,8 @@ serve env: APP_ENV=production (strict env + HSTS + request logs), PORT,
      APP_BASE_URL (auth email links; required in production),
      LIVE_API_BASE, PLAUSIBLE_DOMAIN [+ PLAUSIBLE_HOST],
      ENABLE_REFRESH_CRON=1 (in-process Monday 12:00 UTC refresh),
-     ENABLE_CANARY_CRON=1 (in-process daily 09:00 UTC canary), LOG_REQUESTS
+     ENABLE_CANARY_CRON=1 (in-process daily 09:00 UTC canary),
+     ENABLE_PREDICTIONS_CRON=1 (Thu 16:00 + Sat 22:00 UTC model runs), LOG_REQUESTS
 canary env: RESEND_API_KEY + ALERT_EMAIL_TO [+ EMAIL_FROM] (owner outage emails)`);
     if (command !== undefined) process.exit(1);
 }

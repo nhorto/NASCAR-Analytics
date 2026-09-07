@@ -21,6 +21,7 @@ describe("readServerEnv", () => {
       plausibleHost: DEFAULT_PLAUSIBLE_HOST,
       enableRefreshCron: false,
       enableCanaryCron: false,
+      enablePredictionsCron: false,
       logRequests: false,
       appBaseUrl: null,
     });

@@ -155,3 +155,70 @@ export function startCanaryScheduler(opts: {
     opts.now,
   );
 }
+
+// ---------------------------------------------------------------------------
+// Predictions crons (WS-F, spec §9 cadence): Thursday 16:00 UTC (entry list +
+// form) and Saturday 22:00 UTC (after qualifying — the predict CLI pulls the
+// grid from the weekend feed and degrades to form-only when quals haven't
+// run). No lock: the upsert is idempotent and last-write-wins.
+// ---------------------------------------------------------------------------
+
+export const PREDICT_THURSDAY = { dayUtc: 4, hourUtc: 16 } as const;
+export const PREDICT_SATURDAY = { dayUtc: 6, hourUtc: 22 } as const;
+
+/** Next `dayUtc` (0=Sun) at `hourUtc`:00 UTC strictly after `now`. */
+export function nextWeeklyAt(now: Date, dayUtc: number, hourUtc: number): Date {
+  const candidate = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), hourUtc, 0, 0),
+  );
+  let addDays = (dayUtc - candidate.getUTCDay() + 7) % 7;
+  if (addDays === 0 && candidate.getTime() <= now.getTime()) addDays = 7;
+  candidate.setUTCDate(candidate.getUTCDate() + addDays);
+  return candidate;
+}
+
+function spawnPredictCli(stage: "thursday" | "saturday"): Promise<number> {
+  const child = Bun.spawn(["bun", "src/app/index.ts", "predict", "--stage", stage], {
+    stdout: "inherit",
+    stderr: "inherit",
+    env: process.env,
+  });
+  return child.exited;
+}
+
+/** Two weekly slots sharing one handle; each run names its stage. */
+export function startPredictionsScheduler(opts: {
+  log: ScheduledRefreshOpts["log"];
+  runPredict?: (stage: "thursday" | "saturday") => Promise<number>;
+  now?: () => number;
+}): RefreshScheduler {
+  const run = async (stage: "thursday" | "saturday") => {
+    const code = await (opts.runPredict ?? spawnPredictCli)(stage);
+    if (code !== 0)
+      opts.log.warn(logLine("error", "predictions run failed", { stage, exitCode: code }));
+  };
+  const thursday = startTimerLoop(
+    "predictions-thursday",
+    (d) => nextWeeklyAt(d, PREDICT_THURSDAY.dayUtc, PREDICT_THURSDAY.hourUtc),
+    () => run("thursday"),
+    opts.log,
+    opts.now,
+  );
+  const saturday = startTimerLoop(
+    "predictions-saturday",
+    (d) => nextWeeklyAt(d, PREDICT_SATURDAY.dayUtc, PREDICT_SATURDAY.hourUtc),
+    () => run("saturday"),
+    opts.log,
+    opts.now,
+  );
+  return {
+    stop: () => {
+      thursday.stop();
+      saturday.stop();
+    },
+    nextRunAt: () =>
+      thursday.nextRunAt().getTime() <= saturday.nextRunAt().getTime()
+        ? thursday.nextRunAt()
+        : saturday.nextRunAt(),
+  };
+}

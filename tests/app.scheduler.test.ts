@@ -3,6 +3,8 @@ import { describe, expect, test } from "bun:test";
 import {
   nextRefreshAt,
   nextDailyAt,
+  nextWeeklyAt,
+  startPredictionsScheduler,
   runScheduledRefresh,
   REFRESH_LOCK_NAME,
   REFRESH_LOCK_TTL_MS,
@@ -128,5 +130,54 @@ describe("runScheduledRefresh", () => {
     });
     expect(outcome).toBe("failed");
     expect(acquireLock(db, REFRESH_LOCK_NAME, "other", REFRESH_LOCK_TTL_MS)).toBe(true);
+  });
+});
+
+describe("nextWeeklyAt (predictions crons, WS-F)", () => {
+  // 2026-09-07 is a Monday.
+  test("mid-week lands on the requested weekday and hour", () => {
+    expect(nextWeeklyAt(new Date("2026-09-07T10:00:00Z"), 4, 16).toISOString()).toBe(
+      "2026-09-10T16:00:00.000Z", // Thursday
+    );
+    expect(nextWeeklyAt(new Date("2026-09-07T10:00:00Z"), 6, 22).toISOString()).toBe(
+      "2026-09-12T22:00:00.000Z", // Saturday
+    );
+  });
+
+  test("on the day: before the hour fires today, at/after waits a week", () => {
+    expect(nextWeeklyAt(new Date("2026-09-10T15:59:00Z"), 4, 16).toISOString()).toBe(
+      "2026-09-10T16:00:00.000Z",
+    );
+    expect(nextWeeklyAt(new Date("2026-09-10T16:00:00Z"), 4, 16).toISOString()).toBe(
+      "2026-09-17T16:00:00.000Z",
+    );
+  });
+
+  test("rolls across month boundaries", () => {
+    expect(nextWeeklyAt(new Date("2026-09-27T00:00:00Z"), 4, 16).toISOString()).toBe(
+      "2026-10-01T16:00:00.000Z",
+    );
+  });
+});
+
+describe("startPredictionsScheduler", () => {
+  test("arms both slots and reports the sooner one; failures only log", async () => {
+    const ran: string[] = [];
+    const warned: string[] = [];
+    const scheduler = startPredictionsScheduler({
+      log: { info: () => {}, warn: (m) => warned.push(m) },
+      runPredict: async (stage) => {
+        ran.push(stage);
+        return stage === "saturday" ? 1 : 0; // saturday "fails"
+      },
+      now: () => new Date("2026-09-07T10:00:00Z").getTime(),
+    });
+    try {
+      // Monday → Thursday slot is nearer than Saturday.
+      expect(scheduler.nextRunAt().toISOString()).toBe("2026-09-10T16:00:00.000Z");
+    } finally {
+      scheduler.stop();
+    }
+    expect(ran).toEqual([]); // nothing fires synchronously
   });
 });

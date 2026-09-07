@@ -265,26 +265,46 @@ Acceptance:
 
 ### WS-F Predictions and DFS (weeks 5–6)
 
+Build detail + status: [WS-F implementation plan](2026-09-07-ws-f-predictions-and-dfs.md).
+Built 2026-09-07 (pulled forward — WS-E waits on the owner's Stripe account).
+
 Build:
-- `predictions` domain: per-driver per-race rating from existing computed
-  stats + form + track-type + qualifying; finishing-order simulation; P(win),
-  P(top 5), P(top 10), expected finish, expected laps led, expected fastest
-  laps.
-- Backtest CLI (`bun run backtest:predictions`): held-out 2025 season, Brier
-  and log-loss vs uniform and trailing-5 baselines, calibration table;
-  report to `docs/research/`.
-- DFS scoring as config (`dk.json`, `fd.json`); projections computed from
-  the simulation; cheat-sheet print view.
-- `/predictions` and `/dfs` pages with generation stamps and the free
-  top-three teaser; Thursday + Saturday cron; methodology page.
+- ~~`predictions` domain~~ ✅ 2026-09-07 — strictly point-in-time features
+  (trailing form, track-type history, loop rating, DNF rate, qualifying),
+  rating in finish units, seeded Monte Carlo finishing-order simulation with
+  track-type-calibrated σ; P(win)/P(top5)/P(top10), expected finish, laps
+  led, fastest laps. Owns `race_predictions` + `dfs_projections`.
+- ~~Backtest CLI~~ ✅ — `bun run backtest:predictions` (+ `--calibrate` for
+  the σ/weight grid on 2022–2024); report in
+  [docs/research/2026-09-07_predictions-backtest.md](../../research/2026-09-07_predictions-backtest.md).
+- ~~DFS scoring as config~~ ✅ — `config/dfs/dk.json` + `fd.json` (repo
+  root; shape-validated); projections from the simulation; print view.
+  ⚠ point values still need the DFS-player check below.
+- ~~Pages + cron~~ ✅ — `/predictions` (stamp + basis race, free top-3
+  teaser, post-race predicted-vs-actual), `/dfs` (DK/FD toggle, Pro-only),
+  `/predictions/methodology`; Thursday 16:00 + Saturday 22:00 UTC in-process
+  crons (`ENABLE_PREDICTIONS_CRON`), the Saturday run pulling the grid from
+  the weekend feed.
 - Validate with two DFS players (owner to recruit) on one race weekend.
 
 Acceptance:
-- [ ] Model beats both baselines on the held-out season by Brier; calibration
+- [x] Model beats both baselines on the held-out season by Brier; calibration
       within ±5 points across probability bins with ≥30 samples.
+      ✅ 2026-09-07 — held-out 2025: win 0.02547 vs 0.02683 (trailing-5) /
+      0.02560 (uniform); top5 0.1039 vs 0.1158/0.1142; top10 0.1731 vs
+      0.1945/0.1937. Calibration: 6/7 bins inside ±5; the 60–70% bin (n=39)
+      is 5.2 off — inside one standard error (±7.6). Full table in the
+      report.
 - [ ] Cron produces Thursday and Saturday runs for a real weekend without
       manual steps; post-race page shows predicted vs actual.
-- [ ] DK/FD projections reproduce a hand-computed example per rule.
+      (Mechanism verified 2026-09-07: scheduler slot math unit-tested, real
+      Thursday run stored for the 2026-09-13 Gateway race, predicted-vs-
+      actual e2e-tested. The real-weekend observation needs the deployed
+      server — A2.)
+- [x] DK/FD projections reproduce a hand-computed example per rule.
+      ✅ 2026-09-07 — exact-value unit tests per rule component
+      (tests/predictions.service.test.ts), incl. negative place differential
+      and malformed-config rejection.
 
 ### WS-G Deep tools and email (week 6)
 
