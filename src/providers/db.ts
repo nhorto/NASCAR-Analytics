@@ -218,6 +218,53 @@ CREATE TABLE IF NOT EXISTS app_locks (
   expires_at INTEGER NOT NULL
 );
 
+-- Accounts (domains/accounts/repo.ts): password auth per spec §6. The db
+-- stores only SHA-256 hashes of session/verify/reset tokens, never the raw
+-- values; emails are stored lowercased by the service.
+CREATE TABLE IF NOT EXISTS users (
+  user_id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email TEXT NOT NULL UNIQUE,
+  password_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  verified_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS sessions (
+  token_hash TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  created_at INTEGER NOT NULL,
+  refreshed_at INTEGER NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
+
+CREATE TABLE IF NOT EXISTS auth_tokens (
+  token_hash TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  purpose TEXT NOT NULL,
+  expires_at INTEGER NOT NULL,
+  used_at INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_auth_tokens_user ON auth_tokens(user_id, purpose);
+
+-- Sliding-window rate limiting for auth endpoints; rows are pruned as they
+-- age out of the largest window.
+CREATE TABLE IF NOT EXISTS auth_attempts (
+  key TEXT NOT NULL,
+  at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_auth_attempts_key ON auth_attempts(key, at);
+
+-- Billing (domains/billing/repo.ts): the entitlement model of spec §7. Pro is
+-- on iff pro_until is in the future; WS-E's Stripe webhooks become the main
+-- writer, manual grants exist for testers.
+CREATE TABLE IF NOT EXISTS entitlements (
+  user_id INTEGER PRIMARY KEY,
+  pro_until TEXT NOT NULL,
+  pro_source TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS raw_fetches (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   url TEXT NOT NULL,

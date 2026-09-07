@@ -8,10 +8,14 @@ export function requestId(req: Request): string {
   return req.headers.get("x-request-id") ?? req.headers.get("fly-request-id") ?? crypto.randomUUID();
 }
 
-export type CacheClass = "health" | "asset" | "data" | "page" | "error";
+export type CacheClass = "health" | "asset" | "data" | "page" | "error" | "auth";
 
-/** Route → cache class. Gated (per-user) pages will add a "private" class in WS-D. */
+// Auth-owned routes are never cacheable anywhere (they set cookies, carry
+// per-user state, or consume single-use tokens).
+const AUTH_PATH = /^\/(signup|signin|reset(\/|$)|verify\/|account$|auth\/)/;
+
 export function cacheClassFor(path: string, status: number): CacheClass {
+  if (AUTH_PATH.test(path)) return "auth";
   if (status >= 400) return "error";
   if (path === "/health") return "health";
   if (path === "/style.css" || /^\/[a-z-]+\.js$/.test(path)) return "asset";
@@ -25,13 +29,25 @@ export function cacheClassFor(path: string, status: number): CacheClass {
 const CACHE_CONTROL: Record<CacheClass, string> = {
   health: "no-store",
   error: "no-store",
+  auth: "private, no-store",
   asset: "public, max-age=86400",
   data: "public, max-age=300",
   page: "public, max-age=300, stale-while-revalidate=600",
 };
 
-export function cacheControlFor(path: string, status: number): string {
-  return CACHE_CONTROL[cacheClassFor(path, status)];
+/**
+ * `privateViewer` = the request carried a session cookie: page/data responses
+ * become per-user (gating, account state) and must not enter shared caches.
+ * Static assets stay public — they're identical for everyone.
+ */
+export function cacheControlFor(
+  path: string,
+  status: number,
+  opts?: { privateViewer?: boolean },
+): string {
+  const cls = cacheClassFor(path, status);
+  if (opts?.privateViewer && (cls === "page" || cls === "data")) return "private, no-store";
+  return CACHE_CONTROL[cls];
 }
 
 export interface SecurityHeaderOpts {

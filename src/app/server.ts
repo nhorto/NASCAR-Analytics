@@ -14,6 +14,12 @@ import { seasonStatsPayload, trackTypePayload, baselinesPayload } from "./data.t
 import { dataHealthService } from "../domains/data-health/index.ts";
 import { readServerEnv, type ServerConfig } from "./env.ts";
 import { requestId, cacheControlFor, securityHeaders, withEncoding, injectNotice, logLine } from "./http.ts";
+import { emailClientFromEnv, type EmailClient } from "../providers/email.ts";
+import { resolveViewer, hasSessionCookie, type Viewer } from "./viewer.ts";
+import { seriesGated, raceGated, jsonRequestBlocked, PRO_REQUIRED_BODY } from "./gate.ts";
+import { handleAuthRequest } from "./auth.ts";
+import { teaserContent } from "./pages/teaser.ts";
+import { page, seriesLabel } from "./layout.ts";
 
 const STYLE_URL = new URL("./style.css", import.meta.url);
 const COMPARE_JS_URL = new URL("./client/compare.js", import.meta.url);
@@ -44,8 +50,15 @@ function json(value: unknown, status = 200): Response {
   });
 }
 
-export function createServer(p: Providers, port: number, config?: ServerConfig) {
+export function createServer(
+  p: Providers,
+  port: number,
+  config?: ServerConfig,
+  deps?: { email?: EmailClient },
+) {
   const cfg = config ?? readServerEnv(process.env).config;
+  const email =
+    deps?.email ?? emailClientFromEnv(process.env, (m) => console.log(logLine("info", m, {}))).client;
   const bootedAt = Date.now();
   const secHeaders = securityHeaders({
     production: cfg.production,
@@ -55,6 +68,35 @@ export function createServer(p: Providers, port: number, config?: ServerConfig) 
 
   const notFound = (seriesId: number, what: string) =>
     htmlResponse(render.render404(seriesId, render.currentSeason(p, seriesId), what), 404);
+
+  // Pro teaser (WS-D): non-Pro requests to Xfinity/Trucks land here — real
+  // headline, decorative blurred table, one-tap /pricing. The real rows never
+  // reach a non-Pro client.
+  const teaser = (seriesId: number): Response => {
+    const season = render.currentSeason(p, seriesId);
+    const latest = ingestionService.latestCompletedRace(p, seriesId);
+    const winner = latest
+      ? (ingestionService.raceResults(p, latest.raceId).find((r) => r.finish === 1) ?? null)
+      : null;
+    return htmlResponse(
+      page({
+        title: `${seriesLabel(seriesId)} — Pro`,
+        active: "home",
+        seriesId,
+        season,
+        content: teaserContent({
+          seriesLabel: seriesLabel(seriesId),
+          headline: {
+            season,
+            latestRaceName: latest?.raceName ?? null,
+            winnerName: winner?.fullName ?? null,
+          },
+        }),
+      }),
+    );
+  };
+
+  const proRequired = () => json(PRO_REQUIRED_BODY, 403);
 
   // "Data delayed" notice (WS-C): when feed_status shows an active outage,
   // HTML pages carry a banner. The outage query is cheap but per-request would
@@ -97,10 +139,14 @@ export function createServer(p: Providers, port: number, config?: ServerConfig) 
     }
   };
 
-  const route = (url: URL): Response => {
+  const route = (url: URL, viewer: Viewer): Response => {
       const path = url.pathname;
 
       if (path === "/health") return health();
+
+      // Series-dimensioned JSON is refused for non-Pro so the teaser can't be
+      // bypassed by fetching the payloads directly (WS-D).
+      if (jsonRequestBlocked(url, viewer)) return proRequired();
 
       // --- static assets (no series prefix) ---
       if (path === "/style.css") return file(STYLE_URL, "text/css; charset=utf-8");
@@ -139,7 +185,11 @@ export function createServer(p: Providers, port: number, config?: ServerConfig) 
       if (path === "/api/tracks") return analyticsRuntime.handleTrackLeaderboard(p, url);
       if (path === "/api/metrics") return analyticsRuntime.handleMetrics(p, url);
       m = path.match(/^\/api\/recap\/(\d+)$/);
-      if (m) return analyticsRuntime.handleRecap(p, m[1]!);
+      if (m) {
+        const race = ingestionService.raceDetails(p, Number(m[1]));
+        if (race && raceGated(race.seriesId, viewer)) return proRequired();
+        return analyticsRuntime.handleRecap(p, m[1]!);
+      }
 
       // --- career + race pages: un-prefixed (driver_id / race_id are global) ---
       m = path.match(/^\/driver\/(\d+)$/);
@@ -149,17 +199,26 @@ export function createServer(p: Providers, port: number, config?: ServerConfig) 
       }
       m = path.match(/^\/race\/(\d+)$/);
       if (m) {
-        const html = render.renderRacePage(p, Number(m[1]));
+        const race = ingestionService.raceDetails(p, Number(m[1]));
+        if (!race) return notFound(SERIES.cup, "Race");
+        if (raceGated(race.seriesId, viewer)) return teaser(race.seriesId);
+        const html = render.renderRacePage(p, race.raceId);
         return html ? htmlResponse(html) : notFound(SERIES.cup, "Race");
       }
       m = path.match(/^\/recap\/(\d+)$/);
       if (m) {
-        const html = render.renderRecap(p, Number(m[1]));
+        const race = ingestionService.raceDetails(p, Number(m[1]));
+        if (!race) return notFound(SERIES.cup, "Recap");
+        if (raceGated(race.seriesId, viewer)) return teaser(race.seriesId);
+        const html = render.renderRecap(p, race.raceId);
         return html ? htmlResponse(html) : notFound(SERIES.cup, "Recap");
       }
 
       // --- series-prefixed HTML pages ---
       const { seriesId, rest } = splitSeries(path);
+      // Free = Cup (D16): the whole Xfinity/Trucks section is one teaser wall
+      // for non-Pro viewers.
+      if (seriesGated(seriesId, viewer)) return teaser(seriesId);
       if (rest === "/") return htmlResponse(render.renderHome(p, seriesId));
       if (rest === "/drivers")
         return htmlResponse(render.renderDriversIndex(p, seriesId, url.searchParams.get("q")));
@@ -192,7 +251,13 @@ export function createServer(p: Providers, port: number, config?: ServerConfig) 
       return notFound(seriesId, "Page");
   };
 
-  return Bun.serve({
+  const authDeps = {
+    email,
+    baseUrl: () => cfg.appBaseUrl ?? server.url.origin,
+    production: cfg.production,
+  };
+
+  const server = Bun.serve({
     port,
     async fetch(req) {
       const url = new URL(req.url);
@@ -200,7 +265,8 @@ export function createServer(p: Providers, port: number, config?: ServerConfig) 
       const start = performance.now();
       let res: Response;
       try {
-        res = route(url);
+        const viewer = resolveViewer(p, req, new Date());
+        res = (await handleAuthRequest(p, req, url, viewer, authDeps)) ?? route(url, viewer);
       } catch (err) {
         console.error(
           logLine("error", "unhandled route error", { id, path: url.pathname, error: String(err) }),
@@ -220,7 +286,10 @@ export function createServer(p: Providers, port: number, config?: ServerConfig) 
       }
       res = await withEncoding(req, res);
       res.headers.set("X-Request-Id", id);
-      res.headers.set("Cache-Control", cacheControlFor(url.pathname, res.status));
+      res.headers.set(
+        "Cache-Control",
+        cacheControlFor(url.pathname, res.status, { privateViewer: hasSessionCookie(req) }),
+      );
       for (const [k, v] of Object.entries(secHeaders)) res.headers.set(k, v);
       if (cfg.logRequests)
         console.log(
@@ -235,4 +304,5 @@ export function createServer(p: Providers, port: number, config?: ServerConfig) 
       return res;
     },
   });
+  return server;
 }

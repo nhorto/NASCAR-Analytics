@@ -22,6 +22,7 @@ describe("readServerEnv", () => {
       enableRefreshCron: false,
       enableCanaryCron: false,
       logRequests: false,
+      appBaseUrl: null,
     });
   });
 
@@ -93,8 +94,26 @@ describe("readServerEnv", () => {
       "PLAUSIBLE_DOMAIN not set — analytics tag disabled",
       "CLOUDFLARE_API_TOKEN not set — refresh will skip the static-fallback publish",
       "LITESTREAM_REPLICA_URL not set — the db is NOT being replicated",
+      "RESEND_API_KEY not set — verify/reset/alert emails will only be logged",
     ]);
     expect(readServerEnv({}).warnings).toEqual([]);
+  });
+
+  test("APP_BASE_URL: optional in dev, required + validated in production (WS-D)", () => {
+    expect(readServerEnv({}).config.appBaseUrl).toBeNull();
+    expect(readServerEnv({}).problems).toEqual([]);
+    const ok = readServerEnv({ APP_BASE_URL: "https://looplab.example/" });
+    expect(ok.config.appBaseUrl).toBe("https://looplab.example");
+    expect(readServerEnv({ APP_BASE_URL: "not a url" }).problems).toEqual([
+      `APP_BASE_URL must be an http(s) URL, got "not a url"`,
+    ]);
+    const prod = readServerEnv({ APP_ENV: "production" });
+    expect(prod.problems).toContain(
+      "APP_BASE_URL is required in production (verify/reset email links)",
+    );
+    expect(() =>
+      requireServerEnv({ APP_ENV: "production", APP_BASE_URL: "https://looplab.example" }),
+    ).not.toThrow();
   });
 });
 

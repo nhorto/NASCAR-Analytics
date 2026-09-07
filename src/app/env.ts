@@ -18,6 +18,10 @@ export interface ServerConfig {
   enableCanaryCron: boolean;
   /** Emit a JSON log line per request. Defaults to `production`. */
   logRequests: boolean;
+  /** Absolute origin for links in auth emails (WS-D). Null → derived from the
+   *  bound port in dev; required in production (verify/reset links break
+   *  silently otherwise). */
+  appBaseUrl: string | null;
 }
 
 export const DEFAULT_LIVE_API_BASE = "https://looplab-live.nhorton.workers.dev";
@@ -76,6 +80,14 @@ export function readServerEnv(env: Env): ServerEnvResult {
     else problems.push(`PLAUSIBLE_HOST must be an http(s) URL, got "${env.PLAUSIBLE_HOST}"`);
   }
 
+  let appBaseUrl: string | null = null;
+  if (env.APP_BASE_URL) {
+    if (validUrl(env.APP_BASE_URL)) appBaseUrl = env.APP_BASE_URL.replace(/\/$/, "");
+    else problems.push(`APP_BASE_URL must be an http(s) URL, got "${env.APP_BASE_URL}"`);
+  } else if (production) {
+    problems.push("APP_BASE_URL is required in production (verify/reset email links)");
+  }
+
   const enableRefreshCron = parseBool(env.ENABLE_REFRESH_CRON, false);
   if (enableRefreshCron === null)
     problems.push(`ENABLE_REFRESH_CRON must be 1/0/true/false, got "${env.ENABLE_REFRESH_CRON}"`);
@@ -94,6 +106,8 @@ export function readServerEnv(env: Env): ServerEnvResult {
       warnings.push("CLOUDFLARE_API_TOKEN not set — refresh will skip the static-fallback publish");
     if (!env.LITESTREAM_REPLICA_URL)
       warnings.push("LITESTREAM_REPLICA_URL not set — the db is NOT being replicated");
+    if (!env.RESEND_API_KEY)
+      warnings.push("RESEND_API_KEY not set — verify/reset/alert emails will only be logged");
   }
 
   return {
@@ -107,6 +121,7 @@ export function readServerEnv(env: Env): ServerEnvResult {
       enableRefreshCron: enableRefreshCron ?? false,
       enableCanaryCron: enableCanaryCron ?? false,
       logRequests: logRequests ?? production,
+      appBaseUrl,
     },
     problems,
     warnings,

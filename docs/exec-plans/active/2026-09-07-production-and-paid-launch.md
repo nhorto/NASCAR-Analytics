@@ -208,22 +208,39 @@ Acceptance:
 
 ### WS-D Accounts and gating (week 3)
 
+Build detail + status: [WS-D implementation plan](../completed/2026-09-07-ws-d-accounts-and-gating.md).
+Built 2026-09-07 (ahead of schedule — needs no owner accounts).
+
 Build:
-- `accounts` domain: sign-up, verify, sign-in, sign-out (all sessions),
-  reset, delete; argon2id via `Bun.password`; rate limits; CSRF on forms.
-- Session middleware and a `viewer` object available to every render.
-- Gating middleware: series gate (Xfinity/Trucks → Pro teaser for non-Pro),
-  feature gate (predictions/dfs/export/push/compare-4).
-- Teaser pages: headline stats visible, tables blurred, one-tap to `/pricing`.
-- `/account` page v0 (plan display, sign out everywhere, delete).
+- ~~`accounts` domain~~ ✅ 2026-09-07 — sign-up, verify, sign-in, sign-out (one
+  session + everywhere), reset, delete; argon2id via `Bun.password`; sliding-window
+  rate limits; CSRF double-submit on every form. Plus the WS-E-owned `billing`
+  domain's **entitlement slice** pulled forward (`pro_until`/`pro_source`, manual
+  grants via `bun run grant`, `canPurchase` verified-email guard) — gating is
+  untestable without it.
+- ~~Session middleware + `viewer`~~ ✅ — `src/app/viewer.ts` resolves cookie →
+  user → Pro status per request; cookie-bearing requests get `private, no-store`.
+- ~~Gating middleware~~ ✅ — `src/app/gate.ts`: series gate incl. un-prefixed
+  `/race/{id}`/`/recap/{id}` by derived series, 403 `pro_required` on series
+  JSON, feature-gate helper (consumers land with WS-F).
+- ~~Teaser pages~~ ✅ — real headline, decorative blurred table (real rows never
+  sent), one-tap `/pricing` (v0 pricing page exists early as the CTA target).
+- ~~`/account` v0~~ ✅ — plan display, verification state + resend, sign out /
+  sign out everywhere, password-confirmed delete.
 
 Acceptance:
-- [ ] Negative tests: wrong password, reused reset token, expired token,
+- [x] Negative tests: wrong password, reused reset token, expired token,
       unverified user attempting checkout, rate limit trip, CSRF miss.
-- [ ] Non-Pro request to `/xfinity/drivers/1` returns the teaser; Pro
+      ✅ 2026-09-07 — tests/accounts.service.test.ts,
+      tests/billing.service.test.ts, tests/app.auth.test.ts (e2e over a real
+      server with a cookie jar; exact reasons + status codes asserted).
+- [x] Non-Pro request to `/xfinity/drivers/1` returns the teaser; Pro
       returns the page; anonymous Cup pages carry public cache headers,
-      gated pages carry private.
-- [ ] Architecture tests still pass with the new domains.
+      gated pages carry private. ✅ 2026-09-07 — e2e in
+      tests/app.auth.test.ts, incl. signed-in-free → still teaser, and the
+      403 JSON path that stops teaser bypass.
+- [x] Architecture tests still pass with the new domains. ✅ 2026-09-07 —
+      354 tests / 0 fail, both typechecks green.
 
 ### WS-E Billing (week 4)
 

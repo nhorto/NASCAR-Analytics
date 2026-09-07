@@ -14,6 +14,9 @@ primary_region = "iad"
   ENABLE_REFRESH_CRON = "1"
   # In-process daily 09:00 UTC upstream-feed canary (WS-C).
   ENABLE_CANARY_CRON = "1"
+  # Absolute origin for auth email links (WS-D). Update when D2 lands a real
+  # domain; required in production (boot fails without it).
+  APP_BASE_URL = "https://looplab.fly.dev"
 
 [mounts]
   source = "nascar_data"

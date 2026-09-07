@@ -218,6 +218,32 @@ switch (command) {
     if (!report.healthy) process.exit(1);
     break;
   }
+  case "grant": {
+    // Manual Pro grants for testers/support (spec §7 `grant` source; pulled
+    // forward from WS-E so WS-D gating is testable end to end).
+    const email = argString("--email");
+    if (!email) {
+      console.error(`Usage: grant --email a@b.c [--until 2027-12-31] [--revoke]`);
+      process.exit(1);
+    }
+    const { accountsService } = await import("../domains/accounts/index.ts");
+    const { billingService } = await import("../domains/billing/index.ts");
+    const p = providers();
+    const user = accountsService.findUserByEmail(p, email!);
+    if (!user) {
+      console.error(`No account for ${email}`);
+      process.exit(1);
+    }
+    if (process.argv.includes("--revoke")) {
+      billingService.revoke(p, user.userId);
+      console.log(`✓ revoked Pro for ${user.email}`);
+      break;
+    }
+    const until = argString("--until") ?? `${new Date().getUTCFullYear() + 1}-12-31T23:59:59Z`;
+    const e = billingService.grantPro(p, user.userId, until, "grant", new Date());
+    console.log(`✓ ${user.email} is Pro until ${e.proUntil} (source: grant)`);
+    break;
+  }
   case "refresh": {
     // The portable weekend loop: backfill -> compute (all series) -> export ->
     // deploy. This is the single command any scheduler runs (GitHub Actions now,
@@ -306,11 +332,13 @@ Usage:
   bun run src/app/index.ts export
   bun run src/app/index.ts capture [--series ID] [--interval SEC] [--ticks N] [--out DIR]  # capture live feed
   bun run src/app/index.ts canary [--series ID] [--json PATH]   # upstream-feed health check (exit 1 on failure)
+  bun run src/app/index.ts grant --email a@b.c [--until ISO] [--revoke]   # manual Pro grant (testers)
   bun run src/app/index.ts refresh [--no-deploy]   # data+site+Worker artifacts; deploy both, all series
 
 Env: NASCAR_DATA_DIR (default data), NASCAR_PAGES_PROJECT (default looplab),
      CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID (enable Pages + Worker deploys)
 serve env: APP_ENV=production (strict env + HSTS + request logs), PORT,
+     APP_BASE_URL (auth email links; required in production),
      LIVE_API_BASE, PLAUSIBLE_DOMAIN [+ PLAUSIBLE_HOST],
      ENABLE_REFRESH_CRON=1 (in-process Monday 12:00 UTC refresh),
      ENABLE_CANARY_CRON=1 (in-process daily 09:00 UTC canary), LOG_REQUESTS

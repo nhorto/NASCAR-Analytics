@@ -9,11 +9,14 @@ NASCAR Analytics is a modern web platform that ingests NASCAR race data (loop da
 ```
 src/
 ├── app/                     Application wiring, CLI, web server, and static export
-│   ├── index.ts             CLI: backfill / sync / status / compute / driver / serve / export / capture / refresh
+│   ├── index.ts             CLI: backfill / sync / status / compute / driver / serve / export / capture / grant / refresh
 │   ├── render.ts            Page-render functions (shared by server + export)
 │   ├── server.ts            Bun.serve(): prefix-aware router mirroring the static URL scheme, wrapped in the production pipeline (request id → route → gzip → security/cache headers → JSON log) + GET /health
 │   ├── env.ts               Typed server config from env; production boots fail fast on malformed values
-│   ├── http.ts              Pure HTTP hardening helpers: request ids, per-route Cache-Control, CSP/HSTS security headers, gzip, JSON log lines
+│   ├── http.ts              Pure HTTP hardening helpers: request ids, per-route Cache-Control (private for cookie-bearing requests), CSP/HSTS security headers, gzip, JSON log lines
+│   ├── viewer.ts            Per-request Viewer (session cookie → accounts user + billing Pro status), cookie builders, CSRF double-submit, client IP — the accounts×billing composition point (WS-D)
+│   ├── gate.ts              PURE gating verdicts: series/race teaser gates, Pro feature flags, series-JSON blocking (WS-D)
+│   ├── auth.ts              Auth + account routes: /signup /signin /reset /verify /account /pricing + POST /auth/* (PRG, CSRF-checked, rate-limited) (WS-D)
 │   ├── scheduler.ts         In-process crons: weekly refresh (Mon 12:00 UTC, advisory lock, spawns the CLI) + daily canary (09:00 UTC) — launch plan D18/WS-C
 │   ├── fallback-sync.ts     `sync --source nascar-data`: fill missing results from the nascaR.data release, or --verify-last N against CDN rows
 │   ├── export.ts            Static-site generator → dist/ (Cloudflare Pages)
@@ -24,7 +27,7 @@ src/
 │   ├── html.ts              esc/fmt/badge/sparkline/card helpers + path-based withSeries
 │   ├── style.css            Design tokens + components (per docs/DESIGN.md)
 │   ├── client/              Browser JS for the client-rendered pages (compare.js, tracks.js)
-│   └── pages/               Page templates (home, drivers, races, metrics, career, recap) + client shells (compare, tracks)
+│   └── pages/               Page templates (home, drivers, races, metrics, career, recap) + client shells (compare, tracks) + auth/account/pricing forms and the Pro teaser (WS-D)
 ├── domains/
 │   ├── data-ingestion/      NASCAR CDN data fetching and storage  [BUILT]
 │   │   ├── types.ts         CDN feed shapes + normalized row types
@@ -51,6 +54,18 @@ src/
 │   │   ├── config.ts        Timeouts, alert threshold, race-finality buffer, fallback track/driver aliases
 │   │   ├── repo.ts          feed_status reads/writes (one row per check per canary run)
 │   │   ├── service.ts       PURE runner + validators + failure-streak/outage/alert logic + the pure nascaR.data → ResultRow mapping (ordinal join, name canonicalization, track guard)
+│   │   └── index.ts         Barrel
+│   ├── accounts/            Users, sessions, verify/reset tokens, rate limits  [WS-D 2026-09-07]
+│   │   ├── types.ts         User/Session/AuthToken records, rate-limit rules, AuthResult
+│   │   ├── config.ts        Password policy + common-password blocklist, TTLs, rate-limit rules, cookie names
+│   │   ├── repo.ts          users / sessions / auth_tokens / auth_attempts reads+writes (token hashes only)
+│   │   ├── service.ts       argon2id via Bun.password, rolling sessions, single-use tokens, sliding-window rate limiter; enumeration-safe failures
+│   │   └── index.ts         Barrel
+│   ├── billing/             Entitlement model (spec §7) — WS-D slice  [PARTIAL: reads + manual grants; Stripe webhooks are WS-E]
+│   │   ├── types.ts         ProSource, Entitlement, ProStatus
+│   │   ├── config.ts        Grace days, sources
+│   │   ├── repo.ts          entitlements upsert/read/delete
+│   │   ├── service.ts       proStatus/isPro (pro_until in the future), grantPro, canPurchase (verified-email guard)
 │   │   └── index.ts         Barrel
 │   └── live/                Live race companion — pure metrics/alerts  [PHASE 2 BUILT]
 │       ├── types.ts         Raw live-feed shapes + normalized snapshot/row/alert/baseline + LivePayload
@@ -209,6 +224,7 @@ export interface Providers {
 - **Loop-metrics-from-timing spike (2026-09-07, WS-C)**: position-derived loop metrics (laps, lead laps, top-15 laps, avg position) are recoverable from `lap_times`+`cautions` (r=1.000); raw pass counts are NOT (per-lap resolution floor, ~2× undercount); the pass-efficiency ratio holds as a labeled estimate (MAE 0.045). Documented experiment, not a production path — see [the report](docs/research/2026-09-07_loop-metrics-from-timing-spike.md).
 - **CI data cache keep-warm (2026-09-07)**: `.github/workflows/cache-keepwarm.yml` restores and re-saves the refresh's data cache every Thursday so it survives GitHub's 7-day eviction to the next Monday — until then every weekly run was a full cold backfill (observed 2026-08-24 and 08-31). Interim until the refresh moves onto the production server (launch plan D18).
 - **Production-hardened server + deploy scaffold (2026-09-07, WS-B)**: `bun run serve` is now the production entrypoint — validated env (fail-fast in `APP_ENV=production`), request ids (honoring `fly-request-id`), one JSON log line per request, per-route-class `Cache-Control` (public pages/data, `no-store` health + errors), security headers (CSP derived from the live-Worker + Plausible origins, HSTS in production, `frame-ancestors 'none'`, nosniff), gzip with `Vary: Accept-Encoding`, and `GET /health` (db-backed freshness snapshot; 503 when unreadable). The weekly refresh can run **in-process** (`ENABLE_REFRESH_CRON=1`): a Monday-12:00-UTC cron takes the `weekly-refresh` advisory lock (`app_locks`, TTL + takeover — safe against a concurrent manual run) and spawns the existing refresh CLI as a child process so compute never blocks the event loop. Deploy scaffold: Dockerfile (Bun + Litestream restore-if-missing/replicate), `fly.toml` (volume at `/data`, `/health` check, auto-stop off), `bun run restore-drill` (replica → boot → assert), runbooks (`docs/runbooks/deploy.md`, `backup-restore.md`). The live-Worker origin (`LIVE_API_BASE`) is env-overridable. **Not yet deployed** — Fly account/bucket/domain are owner steps (launch plan A1/A2/A6).
+- **Accounts + gating (2026-09-07, WS-D)**: email+password accounts per spec §6 — argon2id (`Bun.password`), 10+-char passwords checked against a common-password blocklist, enumeration-safe sign-in/reset, single-use verify (48 h) and reset (30 min) tokens stored as SHA-256 hashes, 30-day rolling httpOnly/SameSite=Lax sessions with "sign out everywhere", CSRF double-submit on every POST, sliding-window rate limits on sign-in/sign-up/reset (429 + Retry-After), and password-confirmed immediate account deletion. Entitlement per spec §7 (`entitlements`: `pro_until` + `pro_source`; `bun run grant` for manual tester grants). Gating per D4/D16: anonymous/free viewers get Cup + career pages; Xfinity/Trucks HTML (including un-prefixed `/race/{id}`, `/recap/{id}` by derived series) renders a **teaser** (real headline, decorative blurred table, `/pricing` CTA), and the series JSON endpoints return 403 `pro_required` so the teaser can't be bypassed. Requests carrying a session cookie get `private, no-store` page/data responses; anonymous Cup pages stay publicly cacheable. Pages: `/signup`, `/signin`, `/reset[/token]`, `/verify/{token}`, `/account` (plan, verification, sessions, delete), `/pricing` v0. Verification/reset emails go through the Resend provider (log-only until A4).
 - **Both TypeScript programs typecheck (2026-09-07)**: `bun run typecheck` (root: `src/` + `tests/`) and `bun run typecheck:worker` (Cloudflare types). The Worker's Cloudflare-only fetch options go through `upstreamInit()` and the pure `canonicalizeFeed` lives in `worker/canonicalize.ts`, so the root program never loads Durable Object types.
 - Known data holes are documented in [the re-verification doc](docs/research/2026-07-05_data-sources-reverification.md) (2025 YellaWood 500 results; exhibition heat races).
 
@@ -225,7 +241,10 @@ export interface Providers {
 - The DO stops polling after ~15 min with no `/api/live` traffic, so alert diffs can jump across a gap when it restarts (no cron keep-warm) — fine while testers keep a tab open, revisit for unattended coverage
 - The live **Strategy** tab is now **calibrated + deployed** (2026-07-06): per-track (with track-type fallback) **typical green run** + a **tire-severity tier** from the pit-discontinuity method, baked into `worker/track-strategy.ts` per series and shown honestly (tire narrative suppressed at low-deg draft tracks). A physical fuel *capacity* is deliberately **not** modeled — it isn't cleanly recoverable from history, so `lapsToTypicalPit` is a behavioral pit-cadence estimate, not a fuel gauge. **Held-out backtested** (`bun run backtest`, train <2022 / test 2022): per-track pit-cadence prediction is 60% lower MAE than the flat baseline (6.0 vs 15.0 laps; ±10 laps for 86% of held-out stints) — see [the results](docs/research/2026-07-06_strategy-backtest.md). The bake must be **regenerated + redeployed after a weekly refresh** (same staleness as baselines — see tech-debt). See [the plan](docs/exec-plans/completed/2026-07-06-strategy-model-calibration.md)
 - No odds integration (deferred — see exec plan)
-- No user authentication (deliberately out of MVP scope)
+- ~~No user authentication~~ built 2026-09-07 (WS-D) — see "Accounts + gating" above
+- **No payments yet**: accounts + gating exist (WS-D), but there is no Stripe checkout/portal/webhooks — Pro can only be granted manually (`bun run grant`); `/pricing` says "checkout opens soon". WS-E builds the billing state machine. Account deletion does not yet cancel a Stripe subscription (none can exist yet)
+- The **static export still contains all three series** — it predates gating and is today's live free site; it must be restricted to Cup (the "static Cup fallback" of the launch plan) at launch cutover, not before (tech-debt tracker)
+- Verification/reset **emails degrade to a log line** until the owner's Resend key exists (A4) — sign-up works, but users can't actually receive the verify link, so `canPurchase` would block real checkouts until then (correct order: A4 before WS-E goes live)
 - The production Fly.io app is scaffolded but **not deployed** — no Fly account/volume/replica bucket yet (launch plan owner steps A2 + bucket), so today's scheduler is still GitHub Actions and the public site is still the static Pages export. The CI → `--no-deploy` flip (D18) is deliberately deferred until the server refresh is verified (see the WS-B plan's "Sequencing")
 - The static-fallback wiring ("Cloudflare serves the last export when the origin is unhealthy") is a documented recipe in docs/runbooks/deploy.md, not yet configured — it needs the product domain + new Cloudflare account (A1/A6)
 

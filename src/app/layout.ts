@@ -79,6 +79,7 @@ export function page(opts: {
   <header class="appbar">
     <a class="wordmark" href="${withSeries("/", opts.seriesId)}">Loop<em>lab</em></a>
     <span class="season-pill num">${opts.season ?? "—"} Season</span>
+    <a class="account-link" href="/account" aria-label="Account">⦿</a>
   </header>
   <nav class="series-switch seg">${seriesSwitch}</nav>
   <main class="screen">

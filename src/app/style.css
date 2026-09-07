@@ -248,3 +248,27 @@ form.inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .ctx-thin { margin-left: auto; font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--accent); border: 1px solid rgba(255,210,63,.4); border-radius: 999px; padding: 2px 7px; }
 .tdot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
 .tdot.pos { background: var(--pos); } .tdot.warn { background: var(--accent); } .tdot.neg { background: var(--neg); }
+
+/* accounts + gating (WS-D) */
+.account-link { font-size: 18px; color: var(--muted); text-decoration: none; line-height: 1; padding: 4px 2px; }
+.account-link:hover { color: var(--text); }
+.auth-form { display: flex; flex-direction: column; gap: 10px; margin: 10px 0 6px; }
+.auth-form label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--muted); }
+.auth-form input { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; font-size: 14px; font-family: var(--body); }
+.auth-form button { align-self: flex-start; }
+.auth-form.inline { flex-direction: row; margin: 6px 0; }
+.auth-form button.danger { background: var(--neg, #f87171); color: #1a0c0c; }
+.form-error { color: var(--neg, #f87171); }
+.form-notice { color: var(--pos, #34d399); }
+.plan-chip { font-family: var(--display); font-size: 11px; letter-spacing: .1em; border: 1px solid var(--border); border-radius: 999px; padding: 3px 9px; color: var(--muted); }
+.plan-chip.pro { color: var(--accent); border-color: rgba(255,210,63,.5); }
+.pricing-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.pricing-table th, .pricing-table td { padding: 7px 6px; border-top: 1px solid var(--border); text-align: left; }
+.pricing-table th:not(:first-child), .pricing-table td.num { text-align: center; }
+
+/* teaser: decorative blurred table + lock overlay */
+.teaser-wrap { position: relative; margin-top: 10px; }
+.teaser-blur { width: 100%; border-collapse: collapse; font-size: 13px; filter: blur(5px); user-select: none; pointer-events: none; }
+.teaser-blur td { padding: 9px 8px; border-top: 1px solid var(--border); }
+.teaser-lock { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; text-align: center; padding: 12px; background: radial-gradient(ellipse at center, rgba(10,12,16,.55), rgba(10,12,16,.15)); }
+.teaser-cta { margin-top: 6px; background: var(--accent); color: #14150e; border-radius: 999px; padding: 9px 16px; font-weight: 700; font-size: 13px; text-decoration: none; }

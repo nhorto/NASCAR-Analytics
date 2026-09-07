@@ -3,6 +3,8 @@ import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import type { Server } from "bun";
 import { createServer } from "../src/app/server.ts";
 import { analyticsService } from "../src/domains/analytics/index.ts";
+import { accountsService } from "../src/domains/accounts/index.ts";
+import { billingService } from "../src/domains/billing/index.ts";
 import { createNullArchive } from "../src/providers/raw-archive.ts";
 import { createNascarCdnClient } from "../src/providers/nascar-cdn.ts";
 import type { Providers } from "../src/providers/index.ts";
@@ -10,8 +12,10 @@ import { testDb, seedDriver, seedRace, seedResult, seedLoop } from "./seed.ts";
 
 let server: Server<undefined>;
 let base: string;
+// WS-D gates Xfinity/Trucks behind Pro; series tests browse with this cookie.
+let proCookie: string;
 
-beforeAll(() => {
+beforeAll(async () => {
   const db = testDb();
   seedDriver(db, 10, "Alpha Driver");
   seedDriver(db, 20, "Beta Racer");
@@ -56,6 +60,12 @@ beforeAll(() => {
   };
   analyticsService.computeAll(providers); // Cup
   analyticsService.computeAll(providers, 2); // Xfinity
+
+  const signup = await accountsService.signUp(providers, "pro@example.com", "sturdy-pro-password-1", new Date());
+  if (!signup.ok) throw new Error(signup.reason);
+  billingService.grantPro(providers, signup.user.userId, "2099-01-01T00:00:00Z", "grant", new Date());
+  proCookie = `session=${accountsService.createSession(providers, signup.user.userId, new Date())}`;
+
   server = createServer(providers, 0);
   base = server.url.toString().replace(/\/$/, "");
 });
@@ -64,8 +74,8 @@ afterAll(() => {
   server.stop(true);
 });
 
-async function get(path: string): Promise<{ status: number; body: string }> {
-  const res = await fetch(`${base}${path}`);
+async function get(path: string, cookie?: string): Promise<{ status: number; body: string }> {
+  const res = await fetch(`${base}${path}`, cookie ? { headers: { cookie } } : undefined);
   return { status: res.status, body: await res.text() };
 }
 
@@ -133,7 +143,9 @@ describe("web app", () => {
     expect(cup.adjPass[0]).toHaveProperty("rank", 1);
     expect(cup.adjPass[0]).toHaveProperty("field");
 
-    const xf = (await fetch(`${base}/api/metrics?series=2`).then((r) => r.json())) as any;
+    const xf = (await fetch(`${base}/api/metrics?series=2`, {
+      headers: { cookie: proCookie },
+    }).then((r) => r.json())) as any;
     expect(xf.seriesId).toBe(2);
     expect(xf.adjPass.some((m: any) => m.fullName === "Xfinity Only")).toBe(true);
   });
@@ -221,7 +233,7 @@ describe("web app", () => {
   });
 
   test("recap is series-aware (/xfinity/recap shows the Xfinity race)", async () => {
-    const { status, body } = await get("/xfinity/recap");
+    const { status, body } = await get("/xfinity/recap", proCookie);
     expect(status).toBe(200);
     expect(body).toContain("Xfinity 250");
     expect(body).toContain("/xfinity/drivers"); // switcher reflects Xfinity
@@ -275,7 +287,7 @@ describe("web app", () => {
     expect(cup.body).toContain("Alpha Driver");
     expect(cup.body).not.toContain("Xfinity Only");
 
-    const xf = await get("/xfinity/drivers");
+    const xf = await get("/xfinity/drivers", proCookie);
     expect(xf.status).toBe(200);
     expect(xf.body).toContain("Xfinity Only");
     expect(xf.body).not.toContain("Alpha Driver");
@@ -283,15 +295,15 @@ describe("web app", () => {
     expect(xf.body).toContain("/xfinity/drivers");
   });
 
-  test("Xfinity home surfaces the Xfinity race and standings", async () => {
-    const { status, body } = await get("/xfinity");
+  test("Xfinity home surfaces the Xfinity race and standings (Pro viewer)", async () => {
+    const { status, body } = await get("/xfinity", proCookie);
     expect(status).toBe(200);
     expect(body).toContain("Xfinity 250");
     expect(body).toContain("Xfinity Only");
   });
 
   test("race page derives its own series for the switcher", async () => {
-    const { status, body } = await get("/race/200");
+    const { status, body } = await get("/race/200", proCookie);
     expect(status).toBe(200);
     expect(body).toContain("Xfinity 250");
     // Switcher/tabs reflect Xfinity even though /race/:id is un-prefixed.
@@ -373,6 +385,7 @@ describe("web app", () => {
       enableRefreshCron: false,
       enableCanaryCron: false,
       logRequests: false,
+      appBaseUrl: null,
     });
     try {
       const prodBase = prod.url.toString().replace(/\/$/, "");
@@ -391,7 +404,9 @@ describe("web app", () => {
   });
 
   test("JSON API is series-aware", async () => {
-    const xf = (await fetch(`${base}/api/drivers?series=2`).then((r) => r.json())) as any;
+    const xf = (await fetch(`${base}/api/drivers?series=2`, {
+      headers: { cookie: proCookie },
+    }).then((r) => r.json())) as any;
     expect(xf.seriesId).toBe(2);
     expect(xf.drivers.some((d: any) => d.fullName === "Xfinity Only")).toBe(true);
     expect(xf.drivers.some((d: any) => d.fullName === "Alpha Driver")).toBe(false);
