@@ -20,6 +20,7 @@ import { seriesGated, raceGated, jsonRequestBlocked, PRO_REQUIRED_BODY } from ".
 import { handleAuthRequest } from "./auth.ts";
 import { teaserContent } from "./pages/teaser.ts";
 import { page, seriesLabel } from "./layout.ts";
+import { exportBar } from "./html.ts";
 import { predictionsService } from "../domains/predictions/index.ts";
 import {
   predictionsContent,
@@ -29,6 +30,8 @@ import {
 } from "./pages/predictions.ts";
 import { dfsContent, dfsEmptyContent, dfsLockedContent } from "./pages/dfs.ts";
 import { featureEnabled } from "./gate.ts";
+import { handleDownloadRequest } from "./downloads.ts";
+import { handleWebhookRequest } from "./webhooks.ts";
 
 // Headline numbers from the held-out backtest, shown on the methodology page.
 // Source: docs/research/2026-09-07_predictions-backtest.md (re-derive with
@@ -138,6 +141,7 @@ export function createServer(
       if (rows.length === 0 || !race) return shell("DFS projections", dfsEmptyContent());
       return shell(
         "DFS projections",
+        exportBar([{ href: `/export/dfs.csv?race=${raceId}&scoring=${platform}`, label: "Projections" }], viewer.pro) +
         dfsContent({
           raceName: race.raceName, season: race.season, platform,
           stage: rows[0]!.stage, generatedAt: rows[0]!.generatedAt, rows,
@@ -150,6 +154,7 @@ export function createServer(
     if (!latest || !race) return shell("Predictions", predictionsEmptyContent());
     return shell(
       "Predictions",
+      exportBar([{ href: `/export/predictions.csv?race=${race.raceId}`, label: "Predictions" }], viewer.pro) +
       predictionsContent({
         raceName: race.raceName, season: race.season, trackType: race.trackType,
         stage: latest.stage,
@@ -208,6 +213,9 @@ export function createServer(
 
       if (path === "/health") return health();
 
+      const download = handleDownloadRequest(p, url, viewer, VALID_SERIES, SERIES.cup);
+      if (download) return download;
+
       // Series-dimensioned JSON is refused for non-Pro so the teaser can't be
       // bypassed by fetching the payloads directly (WS-D).
       if (jsonRequestBlocked(url, viewer)) return proRequired();
@@ -258,7 +266,7 @@ export function createServer(
       // --- career + race pages: un-prefixed (driver_id / race_id are global) ---
       m = path.match(/^\/driver\/(\d+)$/);
       if (m) {
-        const html = render.renderCareer(p, Number(m[1]));
+        const html = render.renderCareer(p, Number(m[1]), viewer.pro);
         return html ? htmlResponse(html) : notFound(SERIES.cup, "Driver");
       }
       m = path.match(/^\/race\/(\d+)$/);
@@ -266,7 +274,7 @@ export function createServer(
         const race = ingestionService.raceDetails(p, Number(m[1]));
         if (!race) return notFound(SERIES.cup, "Race");
         if (raceGated(race.seriesId, viewer)) return teaser(race.seriesId);
-        const html = render.renderRacePage(p, race.raceId);
+        const html = render.renderRacePage(p, race.raceId, viewer.pro);
         return html ? htmlResponse(html) : notFound(SERIES.cup, "Race");
       }
       m = path.match(/^\/recap\/(\d+)$/);
@@ -274,7 +282,7 @@ export function createServer(
         const race = ingestionService.raceDetails(p, Number(m[1]));
         if (!race) return notFound(SERIES.cup, "Recap");
         if (raceGated(race.seriesId, viewer)) return teaser(race.seriesId);
-        const html = render.renderRecap(p, race.raceId);
+        const html = render.renderRecap(p, race.raceId, viewer.pro);
         return html ? htmlResponse(html) : notFound(SERIES.cup, "Recap");
       }
 
@@ -285,36 +293,46 @@ export function createServer(
       if (seriesGated(seriesId, viewer)) return teaser(seriesId);
       const predRes = predictionPages(rest, seriesId, url, viewer);
       if (predRes) return predRes;
-      if (rest === "/") return htmlResponse(render.renderHome(p, seriesId));
+      if (rest === "/") return htmlResponse(render.renderHome(p, seriesId, viewer.pro));
       if (rest === "/drivers")
-        return htmlResponse(render.renderDriversIndex(p, seriesId, url.searchParams.get("q")));
+        return htmlResponse(
+          render.renderDriversIndex(p, seriesId, url.searchParams.get("q"), viewer.pro),
+        );
       m = rest.match(/^\/drivers\/(\d+)$/);
       if (m) {
-        const html = render.renderDriverProfile(p, seriesId, Number(m[1]));
+        const html = render.renderDriverProfile(p, seriesId, Number(m[1]), viewer.pro);
         return html ? htmlResponse(html) : notFound(seriesId, "Driver");
       }
       if (rest === "/races") {
-        const html = render.renderRacesIndex(p, seriesId);
+        const html = render.renderRacesIndex(p, seriesId, undefined, viewer.pro);
         return html ? htmlResponse(html) : notFound(seriesId, "Season data");
       }
       m = rest.match(/^\/races\/(\d{4})$/);
       if (m) {
-        const html = render.renderRacesIndex(p, seriesId, Number(m[1]));
+        const html = render.renderRacesIndex(p, seriesId, Number(m[1]), viewer.pro);
         return html ? htmlResponse(html) : notFound(seriesId, "Season");
       }
       if (rest === "/recap") {
-        const html = render.renderLatestRecap(p, seriesId);
+        const html = render.renderLatestRecap(p, seriesId, viewer.pro);
         return html ? htmlResponse(html) : notFound(seriesId, "Recap");
       }
       if (rest === "/metrics") {
-        const html = render.renderMetrics(p, seriesId);
+        const html = render.renderMetrics(p, seriesId, viewer.pro);
         return html ? htmlResponse(html) : notFound(seriesId, "Metrics");
       }
-      if (rest === "/compare") return htmlResponse(render.renderCompare(p, seriesId));
-      if (rest === "/tracks") return htmlResponse(render.renderTracks(p, seriesId));
+      if (rest === "/compare") return htmlResponse(render.renderCompare(p, seriesId, viewer.pro));
+      if (rest === "/tracks") return htmlResponse(render.renderTracks(p, seriesId, viewer.pro));
       if (rest === "/live") return htmlResponse(render.renderLive(p, seriesId));
 
       return notFound(seriesId, "Page");
+  };
+
+  const webhookDeps = {
+    secret: cfg.resendWebhookSecret,
+    log: {
+      info: (m: string) => console.log(m),
+      warn: (m: string) => console.warn(m),
+    },
   };
 
   const authDeps = {
@@ -332,7 +350,10 @@ export function createServer(
       let res: Response;
       try {
         const viewer = resolveViewer(p, req, new Date());
-        res = (await handleAuthRequest(p, req, url, viewer, authDeps)) ?? route(url, viewer);
+        res =
+          (await handleWebhookRequest(p, req, url, webhookDeps)) ??
+          (await handleAuthRequest(p, req, url, viewer, authDeps)) ??
+          route(url, viewer);
       } catch (err) {
         console.error(
           logLine("error", "unhandled route error", { id, path: url.pathname, error: String(err) }),

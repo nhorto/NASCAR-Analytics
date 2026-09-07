@@ -5,8 +5,12 @@
 import type { Providers } from "../../providers/index.ts";
 import type {
   AuthResult,
+  DigestRecipient,
+  EmailKind,
+  EmailPrefs,
   RateLimitRule,
   RateLimitVerdict,
+  SuppressionReason,
   TokenPurpose,
   User,
   UserRecord,
@@ -232,4 +236,107 @@ export function rateLimit(p: P, key: string, rule: RateLimitRule, now: Date): Ra
   }
   repo.recordAttempt(p.db, key, t);
   return { allowed: true, retryAfterSeconds: 0 };
+}
+
+// --- email preferences + deliverability (WS-G) ---
+
+/**
+ * Preferences for a user, creating the row (both lists off) on first read so
+ * every account has a stable unsubscribe token from the moment it is touched.
+ */
+export function emailPrefs(p: P, userId: number, now: Date): EmailPrefs {
+  const existing = repo.prefsFor(p.db, userId);
+  if (existing) return existing;
+  repo.insertPrefs(p.db, userId, randomToken(), now.toISOString());
+  return repo.prefsFor(p.db, userId)!;
+}
+
+export function setEmailPref(
+  p: P,
+  userId: number,
+  kind: EmailKind,
+  on: boolean,
+  now: Date,
+): EmailPrefs {
+  emailPrefs(p, userId, now); // ensure the row exists
+  repo.setPref(p.db, userId, kind, on, now.toISOString());
+  return repo.prefsFor(p.db, userId)!;
+}
+
+/**
+ * One-tap unsubscribe. Returns the affected user id so the caller can offer
+ * an undo, or null when the token is unknown (expired account, typo, forged).
+ */
+export function unsubscribe(p: P, unsubToken: string, kind: EmailKind, now: Date): number | null {
+  const prefs = repo.prefsByToken(p.db, unsubToken);
+  if (!prefs) return null;
+  repo.setPref(p.db, prefs.userId, kind, false, now.toISOString());
+  return prefs.userId;
+}
+
+/** Undo for the unsubscribe landing page — same token, opposite direction. */
+export function resubscribe(p: P, unsubToken: string, kind: EmailKind, now: Date): number | null {
+  const prefs = repo.prefsByToken(p.db, unsubToken);
+  if (!prefs) return null;
+  repo.setPref(p.db, prefs.userId, kind, true, now.toISOString());
+  return prefs.userId;
+}
+
+/** Opted-in verified non-suppressed users. Pro filtering happens in the app. */
+export function digestRecipients(p: P, kind: EmailKind): DigestRecipient[] {
+  return repo.digestRecipients(p.db, kind);
+}
+
+export function suppressAddress(
+  p: P,
+  email: string,
+  reason: SuppressionReason,
+  now: Date,
+): boolean {
+  return repo.suppressAddress(p.db, normalizeEmail(email), reason, now.toISOString());
+}
+
+export function clearSuppression(p: P, userId: number, now: Date): void {
+  repo.unsuppress(p.db, userId, now.toISOString());
+}
+
+/** False when this provider event was already recorded (webhooks retry). */
+export function recordEmailEvent(
+  p: P,
+  e: { eventId: string; type: string; email: string; detail?: string | null },
+  now: Date,
+): boolean {
+  return repo.insertEvent(p.db, {
+    eventId: e.eventId,
+    type: e.type,
+    email: normalizeEmail(e.email),
+    receivedAt: now.toISOString(),
+    detail: e.detail ?? null,
+  });
+}
+
+/** True exactly once per (user, kind, race) — the digest idempotency guard. */
+export function claimDigestSend(
+  p: P,
+  userId: number,
+  kind: EmailKind,
+  refId: number,
+  now: Date,
+): boolean {
+  return repo.claimSend(p.db, userId, kind, refId, now.toISOString());
+}
+
+export function recordDigestOutcome(
+  p: P,
+  userId: number,
+  kind: EmailKind,
+  refId: number,
+  ok: boolean,
+  detail: string,
+): void {
+  repo.recordSendOutcome(p.db, userId, kind, refId, ok, detail);
+}
+
+export function digestSendCount(p: P, kind: EmailKind, refId: number): number {
+  return repo.sendCount(p.db, kind, refId);
 }

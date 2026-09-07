@@ -53,3 +53,14 @@ export const COMMON_PASSWORDS: ReadonlySet<string> = new Set([
   "secret12345", "freedom12345", "starwars1234", "pokemon12345", "nintendo123",
   "minecraft123", "samsung12345", "google12345", "facebook1234", "linkedin1234",
 ]);
+
+/**
+ * Digest lists (WS-G). Both default OFF — the Monday recap is opt-in by plan,
+ * and the Thursday preview is opt-in *and* Pro-gated at send time.
+ */
+export const EMAIL_KINDS = ["recap", "preview"] as const;
+
+export const EMAIL_KIND_LABELS: Record<string, string> = {
+  recap: "Monday race recap",
+  preview: "Thursday race preview (Pro)",
+};

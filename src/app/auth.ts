@@ -14,6 +14,9 @@ import { ensureCsrf, csrfOk, sessionCookie, clearSessionCookie, clientIp, type V
 import * as authPages from "./pages/auth.ts";
 import { accountContent } from "./pages/account.ts";
 import { pricingContent } from "./pages/pricing.ts";
+import { unsubscribeContent } from "./pages/unsubscribe.ts";
+import * as emails from "./emails.ts";
+import type { EmailKind } from "../domains/accounts/index.ts";
 
 type P = Pick<Providers, "db">;
 
@@ -35,6 +38,7 @@ const NOTICES: Record<string, string> = {
   "signed-out": "Signed out.",
   "check-email": "Account created. We sent a verification link to your email.",
   "verify-sent": "Verification email sent.",
+  "prefs-saved": "Email preferences saved.",
 };
 
 function notice(url: URL): string | null {
@@ -69,18 +73,17 @@ function str(v: unknown): string {
   return typeof v === "string" ? v : "";
 }
 
-async function sendAuthEmail(deps: AuthDeps, to: string, subject: string, text: string): Promise<void> {
-  const result = await deps.email.send({ to, subject, text });
+async function sendAuthEmail(deps: AuthDeps, to: string, built: emails.BuiltEmail): Promise<void> {
+  const result = await deps.email.send({ to, subject: built.subject, text: built.text });
   if (!result.ok)
-    console.error(logLine("error", "auth email not sent", { to, subject, detail: result.detail }));
+    console.error(
+      logLine("error", "auth email not sent", { to, subject: built.subject, detail: result.detail }),
+    );
 }
 
-function verifyEmailText(base: string, token: string): string {
-  return `Confirm your email address to finish setting up your Looplab account:\n\n${base}/verify/${token}\n\nThe link works once and expires in 48 hours. If you didn't create this account, ignore this email.`;
-}
-
-function resetEmailText(base: string, token: string): string {
-  return `Someone (hopefully you) asked to reset your Looplab password:\n\n${base}/reset/${token}\n\nThe link works once and expires in 30 minutes. If this wasn't you, ignore this email — your password is unchanged.`;
+/** Query/form list name → the closed union, so a typo can't set a column. */
+function emailKind(raw: string | null): EmailKind | null {
+  return raw === "recap" || raw === "preview" ? raw : null;
 }
 
 /**
@@ -149,7 +152,33 @@ function handleGet(
   if (path === "/account") {
     if (!viewer.user) return redirect("/signin");
     return shell(p, "Account", accountContent({
-      viewer, csrf: csrf.token, error: null, notice: notice(url),
+      viewer,
+      csrf: csrf.token,
+      error: null,
+      notice: notice(url),
+      prefs: accountsService.emailPrefs(p, viewer.user.userId, now),
+    }), 200, cookies);
+  }
+
+  // One-tap unsubscribe from a digest footer. Acting on GET is deliberate: the
+  // cost of a link-prefetching scanner is an unwanted unsubscribe (undoable
+  // right on the page), while requiring a POST would cost real readers their
+  // one-tap opt-out — and a hard-to-leave list earns spam complaints.
+  m = path.match(/^\/unsubscribe\/([A-Za-z0-9_-]+)$/);
+  if (m) {
+    const kind = emailKind(url.searchParams.get("list"));
+    if (!kind)
+      return shell(p, "Unsubscribe", authPages.messageContent(
+        "Unknown list", "That unsubscribe link is missing which emails to stop.",
+        { href: "/account", label: "← Email settings" }), 400);
+    const userId = accountsService.unsubscribe(p, m[1]!, kind, now);
+    if (userId === null)
+      return shell(p, "Unsubscribe", authPages.messageContent(
+        "Link not recognized",
+        "That unsubscribe link is no longer valid — the account may have been deleted. You can manage email in your account settings.",
+        { href: "/account", label: "← Email settings" }), 404);
+    return shell(p, "Unsubscribed", unsubscribeContent({
+      kind, token: m[1]!, csrf: csrf.token, resubscribed: false,
     }), 200, cookies);
   }
   if (path === "/pricing") return shell(p, "Pricing", pricingContent(viewer));
@@ -203,7 +232,7 @@ async function handleCredentialPost(path: string, ctx: PostCtx): Promise<Respons
     if (!result.ok)
       return shell(p, "Sign up", authPages.signUpContent({ csrf: csrfToken, error: result.reason, email }), 400);
     const token = accountsService.createVerifyToken(p, result.user.userId, now);
-    await sendAuthEmail(deps, result.user.email, "Verify your Looplab email", verifyEmailText(deps.baseUrl(), token));
+    await sendAuthEmail(deps, result.user.email, emails.verifyEmail(deps.baseUrl(), token));
     const session = accountsService.createSession(p, result.user.userId, now);
     return redirect("/account?m=check-email", [sessionCookie(session, deps.production)]);
   }
@@ -247,7 +276,7 @@ async function handleRecoveryPost(path: string, ctx: PostCtx): Promise<Response 
       return tooMany(Math.max(ipGate.retryAfterSeconds, emailGate.retryAfterSeconds));
     const reset = accountsService.requestReset(p, email, now);
     if (reset)
-      await sendAuthEmail(deps, reset.user.email, "Reset your Looplab password", resetEmailText(deps.baseUrl(), reset.token));
+      await sendAuthEmail(deps, reset.user.email, emails.resetEmail(deps.baseUrl(), reset.token));
     return shell(p, "Reset password", authPages.resetRequestContent({
       csrf: csrfToken, error: null,
       notice: "If that email has an account, a reset link is on its way.",
@@ -268,16 +297,40 @@ async function handleRecoveryPost(path: string, ctx: PostCtx): Promise<Response 
     if (!gate.allowed) return tooMany(gate.retryAfterSeconds);
     if (!viewer.user.verifiedAt) {
       const token = accountsService.createVerifyToken(p, viewer.user.userId, now);
-      await sendAuthEmail(deps, viewer.user.email, "Verify your Looplab email", verifyEmailText(deps.baseUrl(), token));
+      await sendAuthEmail(deps, viewer.user.email, emails.verifyEmail(deps.baseUrl(), token));
     }
     return redirect("/account?m=verify-sent");
+  }
+
+  if (path === "/auth/email-prefs") {
+    if (!viewer.user) return redirect("/signin");
+    for (const kind of accountsConfig.EMAIL_KINDS)
+      accountsService.setEmailPref(p, viewer.user.userId, kind, str(form.get(kind)) === "on", now);
+    return redirect("/account?m=prefs-saved");
+  }
+
+  if (path === "/auth/resubscribe") {
+    // Undo, straight from the unsubscribe landing page — no sign-in required
+    // (the token is the proof, exactly as it was for the unsubscribe itself).
+    const kind = emailKind(str(form.get("list")));
+    const token = str(form.get("token"));
+    if (!kind || accountsService.resubscribe(p, token, kind, now) === null)
+      return shell(p, "Unsubscribe", authPages.messageContent(
+        "Link not recognized", "That link is no longer valid.",
+        { href: "/account", label: "← Email settings" }), 404);
+    return shell(p, "Resubscribed", unsubscribeContent({
+      kind, token, csrf: csrfToken, resubscribed: true,
+    }));
   }
 
   if (path === "/auth/delete") {
     if (!viewer.user) return redirect("/signin");
     const result = await accountsService.deleteAccount(p, viewer.user.userId, str(form.get("password")));
     if (!result.ok)
-      return shell(p, "Account", accountContent({ viewer, csrf: csrfToken, error: result.reason, notice: null }), 400);
+      return shell(p, "Account", accountContent({
+        viewer, csrf: csrfToken, error: result.reason, notice: null,
+        prefs: accountsService.emailPrefs(p, viewer.user.userId, now),
+      }), 400);
     // WS-E TODO: cancel any live Stripe subscription here before revoking.
     billingService.revoke(p, viewer.user.userId);
     return shell(p, "Account deleted", authPages.messageContent(

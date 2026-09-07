@@ -1,8 +1,13 @@
 // Client-side track-type explorer. Fetches per-(driver,season,track-type) rows
 // for the series and aggregates them in the browser over the chosen window,
 // mirroring the old server trackTypeLeaderboard. Controls update in place.
+//
+// WS-G added the closing end of the range (a `to` year), so an era-bounded
+// question ("road courses 2019–2021") is answerable from the page instead of
+// by hand-editing the URL, plus the CSV export link for Pro viewers.
 (function () {
   var series = window.__SERIES__ || 1;
+  var PRO = window.__PRO__ === true;
   var app = document.getElementById("tracks-app");
 
   var TYPES = [
@@ -37,13 +42,13 @@
   var DATA = [];
   var seasons = [];
   var maxSeason = 0;
-  var state = { type: "road", from: 0, min: 5, sort: "avgFinish" };
+  var state = { type: "road", from: 0, to: 0, min: 5, sort: "avgFinish" };
 
   function aggregate() {
     var byDriver = {};
     for (var i = 0; i < DATA.length; i++) {
       var r = DATA[i];
-      if (r.type !== state.type || r.season < state.from) continue;
+      if (r.type !== state.type || r.season < state.from || r.season > state.to) continue;
       var g = byDriver[r.id];
       if (!g) {
         g = byDriver[r.id] = {
@@ -87,9 +92,17 @@
     var p = new URLSearchParams();
     p.set("type", over.type || state.type);
     p.set("from", String(over.from || state.from));
+    p.set("to", String(over.to || state.to));
     p.set("min", String(over.min || state.min));
     p.set("sort", over.sort || state.sort);
     return "?" + p.toString();
+  }
+
+  function exportBar() {
+    if (!PRO) return '<p class="note export-bar"><a href="/pricing">⭳ Export CSV — Pro</a></p>';
+    var href = "/export/track-types.csv?series=" + series + "&type=" + encodeURIComponent(state.type) +
+      "&from=" + state.from + "&to=" + state.to + "&min=" + state.min;
+    return '<p class="note export-bar">⭳ Export CSV: <a href="' + href + '" download>Track-type leaders</a></p>';
   }
 
   function seriesPrefix() {
@@ -102,15 +115,18 @@
         (t.type === state.type ? "on" : "") + '">' + t.label + "</a>";
     }).join("");
 
-    var yearOpts = seasons.filter(function (y) { return y <= maxSeason; })
-      .map(function (y) {
-        return '<option value="' + y + '" ' + (y === state.from ? "selected" : "") + ">" + y + "</option>";
-      }).join("");
+    var yearOptions = function (selected) {
+      return seasons.filter(function (y) { return y <= maxSeason; })
+        .map(function (y) {
+          return '<option value="' + y + '" ' + (y === selected ? "selected" : "") + ">" + y + "</option>";
+        }).join("");
+    };
     var minOpts = MIN_OPTS.map(function (m) {
       return '<option value="' + m + '" ' + (m === state.min ? "selected" : "") + ">" + m + "</option>";
     }).join("");
     var form = '<form class="inline filters" onsubmit="return false">' +
-      '<label class="note">Since</label><select data-filter="from">' + yearOpts + "</select>" +
+      '<label class="note">From</label><select data-filter="from">' + yearOptions(state.from) + "</select>" +
+      '<label class="note">To</label><select data-filter="to">' + yearOptions(state.to) + "</select>" +
       '<label class="note">Min starts</label><select data-filter="min">' + minOpts + "</select></form>";
 
     var sortLinks = SORTS.map(function (s) {
@@ -143,8 +159,8 @@
     }
 
     app.innerHTML =
-      '<div class="seg seg-tracks">' + seg + "</div>" + form +
-      '<div class="filter-row"><span class="note num">' + state.from + "–" + maxSeason +
+      '<div class="seg seg-tracks">' + seg + "</div>" + form + exportBar() +
+      '<div class="filter-row"><span class="note num">' + state.from + "–" + state.to +
       ' · points races</span><span class="note">' + sortLinks + "</span></div>" + body +
       '<div class="card"><div class="card-h"><h3>About these numbers</h3></div>' +
       '<p class="note">Every column comes from official loop data nobody else surfaces by track type. ' +
@@ -169,6 +185,11 @@
     var f = e.target.getAttribute && e.target.getAttribute("data-filter");
     if (!f) return;
     state[f] = Number(e.target.value);
+    if (state.to < state.from) {
+      // Keep the range coherent: dragging one end past the other moves both.
+      if (f === "from") state.to = state.from;
+      else state.from = state.to;
+    }
     syncUrl();
     render();
   });
@@ -183,6 +204,9 @@
       var p = new URLSearchParams(window.location.search);
       state.type = p.get("type") || "road";
       state.from = Number(p.get("from")) || Math.max(seasons[0] || 0, maxSeason - 7);
+      state.to = Number(p.get("to")) || maxSeason;
+      // A backwards range would silently show nothing — swap instead.
+      if (state.to < state.from) { var swap = state.from; state.from = state.to; state.to = swap; }
       state.min = Number(p.get("min")) || 5;
       state.sort = p.get("sort") || "avgFinish";
       render();

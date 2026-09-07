@@ -176,3 +176,26 @@ export const TRACK_TYPE_LABELS: Record<string, string> = {
   dirt: "Dirt",
   unknown: "Unknown",
 };
+
+// --- CSV export affordance (WS-G) ---
+
+export interface ExportLink {
+  href: string;
+  label: string;
+}
+
+/**
+ * The "Export CSV" line a table page carries. `pro` is deliberately tri-state:
+ * `true` → real download links; `false` → a signed-in-but-free viewer sees the
+ * upsell; `null` → the static export, which has no /pricing page to link to and
+ * no session to gate on, so it shows nothing at all.
+ */
+export function exportBar(links: ExportLink[], pro: boolean | null): string {
+  if (pro === null || links.length === 0) return "";
+  if (!pro)
+    return `<p class="note export-bar"><a href="/pricing">⭳ Export CSV — Pro</a></p>`;
+  const items = links
+    .map((l) => `<a href="${esc(l.href)}" download>${esc(l.label)}</a>`)
+    .join(" · ");
+  return `<p class="note export-bar">⭳ Export CSV: ${items}</p>`;
+}

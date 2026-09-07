@@ -3,6 +3,7 @@
 // land with WS-E and the notifications work.
 import { esc, card, fmtDate } from "../html.ts";
 import type { Viewer } from "../viewer.ts";
+import type { EmailPrefs } from "../../domains/accounts/index.ts";
 
 function post(action: string, csrf: string, label: string, extra = "", confirm?: string): string {
   const onsubmit = confirm ? ` onsubmit="return window.confirm('${esc(confirm)}')"` : "";
@@ -11,11 +12,33 @@ function post(action: string, csrf: string, label: string, extra = "", confirm?:
 <button type="submit">${esc(label)}</button></form>`;
 }
 
+/** Checkbox row for one digest list. */
+function prefRow(name: string, label: string, hint: string, on: boolean): string {
+  return `<label class="pref-row"><input type="checkbox" name="${esc(name)}"${on ? " checked" : ""}>
+<span><b>${esc(label)}</b><br><span class="note">${esc(hint)}</span></span></label>`;
+}
+
+function emailSection(prefs: EmailPrefs, csrf: string, pro: boolean): string {
+  const suppressed = prefs.bouncedAt ?? prefs.complainedAt;
+  // A silently dead address is worse than a visible one — say so plainly.
+  const warning = suppressed
+    ? `<p class="note form-error">⚠ We stopped sending to this address on ${fmtDate(suppressed)} because
+${prefs.bouncedAt ? "it bounced" : "a message was reported as spam"}. Fix the address (or contact support) to start again.</p>`
+    : "";
+  return `${warning}
+<form class="auth-form" method="post" action="/auth/email-prefs">
+<input type="hidden" name="csrf" value="${esc(csrf)}">
+${prefRow("recap", "Monday race recap", "What the numbers said about Sunday — free.", prefs.recap)}
+${prefRow("preview", "Thursday race preview", pro ? "The model's board for the coming race — Pro." : "Pro only — you'll start getting it when you upgrade.", prefs.preview)}
+<button type="submit">Save email preferences</button></form>`;
+}
+
 export function accountContent(opts: {
   viewer: Viewer;
   csrf: string;
   error: string | null;
   notice: string | null;
+  prefs: EmailPrefs;
 }): string {
   const { viewer, csrf } = opts;
   const user = viewer.user!;
@@ -45,6 +68,7 @@ Site data (stats, races) is unaffected — only your account is removed.</p>
 
   return `${flash}
 ${card("Plan", `<p class="note">${esc(user.email)}</p>${plan}${verify}`)}
+${card("Email", emailSection(opts.prefs, csrf, viewer.pro))}
 ${card("Sessions", sessions)}
 ${card("Danger zone", del)}`;
 }

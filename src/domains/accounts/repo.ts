@@ -2,7 +2,17 @@
 // policy (hashing, TTLs, limits) lives in the service; this file only
 // reads/writes rows. Token columns hold SHA-256 hashes, never raw tokens.
 import type { Database } from "bun:sqlite";
-import type { AuthTokenRecord, SessionRecord, TokenPurpose, User, UserRecord } from "./types.ts";
+import type {
+  AuthTokenRecord,
+  DigestRecipient,
+  EmailKind,
+  EmailPrefs,
+  SessionRecord,
+  SuppressionReason,
+  TokenPurpose,
+  User,
+  UserRecord,
+} from "./types.ts";
 
 const USER_COLS = `user_id AS userId, email, password_hash AS passwordHash,
   created_at AS createdAt, verified_at AS verifiedAt`;
@@ -49,6 +59,8 @@ export function updatePassword(db: Database, userId: number, passwordHash: strin
 export function deleteUser(db: Database, userId: number): void {
   db.query(`DELETE FROM sessions WHERE user_id = ?`).run(userId);
   db.query(`DELETE FROM auth_tokens WHERE user_id = ?`).run(userId);
+  db.query(`DELETE FROM email_prefs WHERE user_id = ?`).run(userId);
+  db.query(`DELETE FROM email_sends WHERE user_id = ?`).run(userId);
   db.query(`DELETE FROM users WHERE user_id = ?`).run(userId);
 }
 
@@ -145,4 +157,164 @@ export function oldestAttemptSince(db: Database, key: string, since: number): nu
 
 export function pruneAttempts(db: Database, before: number): void {
   db.query(`DELETE FROM auth_attempts WHERE at < ?`).run(before);
+}
+
+// --- email preferences + deliverability (WS-G) ---
+
+const PREFS_COLS = `user_id AS userId, recap, preview, unsub_token AS unsubToken,
+  bounced_at AS bouncedAt, complained_at AS complainedAt, updated_at AS updatedAt`;
+
+interface PrefsRow {
+  userId: number;
+  recap: number;
+  preview: number;
+  unsubToken: string;
+  bouncedAt: string | null;
+  complainedAt: string | null;
+  updatedAt: string;
+}
+
+function toPrefs(row: PrefsRow | null): EmailPrefs | null {
+  return row === null ? null : { ...row, recap: row.recap === 1, preview: row.preview === 1 };
+}
+
+export function prefsFor(db: Database, userId: number): EmailPrefs | null {
+  return toPrefs(
+    db.query(`SELECT ${PREFS_COLS} FROM email_prefs WHERE user_id = ?`).get(userId) as PrefsRow | null,
+  );
+}
+
+export function prefsByToken(db: Database, unsubToken: string): EmailPrefs | null {
+  return toPrefs(
+    db
+      .query(`SELECT ${PREFS_COLS} FROM email_prefs WHERE unsub_token = ?`)
+      .get(unsubToken) as PrefsRow | null,
+  );
+}
+
+export function insertPrefs(db: Database, userId: number, unsubToken: string, at: string): void {
+  db.query(
+    `INSERT OR IGNORE INTO email_prefs (user_id, recap, preview, unsub_token, updated_at)
+     VALUES (?, 0, 0, ?, ?)`,
+  ).run(userId, unsubToken, at);
+}
+
+/** Sets one list on/off. The column name comes from a closed union, never input. */
+export function setPref(db: Database, userId: number, kind: EmailKind, on: boolean, at: string): void {
+  const column = kind === "recap" ? "recap" : "preview";
+  db.query(`UPDATE email_prefs SET ${column} = ?, updated_at = ? WHERE user_id = ?`).run(
+    on ? 1 : 0,
+    at,
+    userId,
+  );
+}
+
+/**
+ * Opted-in, email-verified, non-suppressed users for one list. Pro-ness is NOT
+ * checked here — accounts may not read billing; the app layer filters.
+ */
+export function digestRecipients(db: Database, kind: EmailKind): DigestRecipient[] {
+  const column = kind === "recap" ? "recap" : "preview";
+  return db
+    .query(
+      `SELECT u.user_id AS userId, u.email, p.unsub_token AS unsubToken
+         FROM email_prefs p
+         JOIN users u ON u.user_id = p.user_id
+        WHERE p.${column} = 1
+          AND u.verified_at IS NOT NULL
+          AND p.bounced_at IS NULL
+          AND p.complained_at IS NULL
+        ORDER BY u.user_id`,
+    )
+    .all() as DigestRecipient[];
+}
+
+/** Marks an address undeliverable. False when no account owns it. */
+export function suppressAddress(
+  db: Database,
+  email: string,
+  reason: SuppressionReason,
+  at: string,
+): boolean {
+  const column = reason === "bounced" ? "bounced_at" : "complained_at";
+  const res = db
+    .query(
+      `UPDATE email_prefs SET ${column} = ?, updated_at = ?
+        WHERE user_id = (SELECT user_id FROM users WHERE email = ?)`,
+    )
+    .run(at, at, email);
+  return res.changes === 1;
+}
+
+/** Clears both suppression stamps (owner support path / address fixed). */
+export function unsuppress(db: Database, userId: number, at: string): void {
+  db.query(
+    `UPDATE email_prefs SET bounced_at = NULL, complained_at = NULL, updated_at = ? WHERE user_id = ?`,
+  ).run(at, userId);
+}
+
+/** Records a provider event. False when the event id was already stored. */
+export function insertEvent(
+  db: Database,
+  e: { eventId: string; type: string; email: string; receivedAt: string; detail: string | null },
+): boolean {
+  const res = db
+    .query(
+      `INSERT OR IGNORE INTO email_events (event_id, type, email, received_at, detail)
+       VALUES (?, ?, ?, ?, ?)`,
+    )
+    .run(e.eventId, e.type, e.email, e.receivedAt, e.detail);
+  return res.changes === 1;
+}
+
+/**
+ * Claims one (user, kind, race) send. True on the first claim, and again for a
+ * claim whose send is recorded as FAILED — a delivery that never happened must
+ * stay retryable, or one unconfigured/erroring run would permanently skip that
+ * subscriber for that race. A recorded success is never re-claimable, which is
+ * what keeps a re-run of the same refresh from double-sending.
+ */
+export function claimSend(
+  db: Database,
+  userId: number,
+  kind: EmailKind,
+  refId: number,
+  at: string,
+): boolean {
+  const inserted = db
+    .query(
+      `INSERT OR IGNORE INTO email_sends (user_id, kind, ref_id, sent_at, ok) VALUES (?, ?, ?, ?, 0)`,
+    )
+    .run(userId, kind, refId, at);
+  if (inserted.changes === 1) return true;
+  // `detail IS NOT NULL` means an outcome was actually recorded, i.e. the
+  // previous attempt finished and failed. A claim still in flight (detail
+  // NULL) is left alone, so two overlapping runs can never both send.
+  const retried = db
+    .query(
+      `UPDATE email_sends SET sent_at = ?, detail = NULL
+        WHERE user_id = ? AND kind = ? AND ref_id = ? AND ok = 0 AND detail IS NOT NULL`,
+    )
+    .run(at, userId, kind, refId);
+  return retried.changes === 1;
+}
+
+export function recordSendOutcome(
+  db: Database,
+  userId: number,
+  kind: EmailKind,
+  refId: number,
+  ok: boolean,
+  detail: string,
+): void {
+  db.query(
+    `UPDATE email_sends SET ok = ?, detail = ? WHERE user_id = ? AND kind = ? AND ref_id = ?`,
+  ).run(ok ? 1 : 0, detail, userId, kind, refId);
+}
+
+export function sendCount(db: Database, kind: EmailKind, refId: number): number {
+  const row = db
+    .query(`SELECT COUNT(*) AS n FROM email_sends WHERE kind = ? AND ref_id = ?`)
+    .get(kind, refId) as { n: number };
+  return row.n;
 }

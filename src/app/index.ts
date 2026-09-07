@@ -53,6 +53,45 @@ function fmt(n: number | null, digits = 1): string {
   return n === null ? "-" : n.toFixed(digits);
 }
 
+/**
+ * Send one digest if the deploy has opted in (WS-G). Called at the end of a
+ * successful `refresh` (recap) and `predict` (preview) so the mail always
+ * reflects data that just landed. Silent no-op unless ENABLE_EMAIL_DIGESTS is
+ * set; refuses to send links that would 404 (APP_BASE_URL unset).
+ */
+async function maybeSendDigest(
+  p: ReturnType<typeof providers>,
+  kind: "recap" | "preview",
+  opts: { dryRun?: boolean; onlyTo?: string | null; raceId?: number; force?: boolean } = {},
+): Promise<void> {
+  const { readServerEnv } = await import("./env.ts");
+  const { config } = readServerEnv(process.env);
+  if (!config.enableEmailDigests && !opts.force) return;
+  if (!config.appBaseUrl) {
+    log.warn(`${kind} digest skipped — APP_BASE_URL is unset, so every link in the email would be broken`);
+    return;
+  }
+  const { emailClientFromEnv } = await import("../providers/email.ts");
+  const { client } = emailClientFromEnv(process.env, log.warn);
+  const mail = await import("./mail.ts");
+  const deps = {
+    email: client,
+    baseUrl: config.appBaseUrl,
+    log,
+    dryRun: opts.dryRun === true,
+    onlyTo: opts.onlyTo ?? null,
+  };
+  const outcome =
+    kind === "recap"
+      ? await mail.sendRecapDigest(p, deps, ingestionConfig.SERIES.cup, opts.raceId)
+      : await mail.sendPreviewDigest(p, deps, ingestionConfig.SERIES.cup, opts.raceId);
+  if (!outcome) {
+    log.warn(`no ${kind} digest to send (nothing stored for the target race yet)`);
+    return;
+  }
+  console.log(mail.formatOutcome(outcome));
+}
+
 const command = process.argv[2];
 
 switch (command) {
@@ -232,11 +271,31 @@ switch (command) {
       process.exit(1);
     }
     const { runPredict } = await import("./predict.ts");
-    await runPredict(providers(), {
+    const predictProviders = providers();
+    await runPredict(predictProviders, {
       raceId: process.argv.includes("--race") ? argValue("--race", 0) : undefined,
       stage: stageArg,
       seriesId: argValue("--series", ingestionConfig.SERIES.cup),
       log,
+    });
+    // The Thursday preview goes out on the back of the run that produced it.
+    await maybeSendDigest(predictProviders, "preview");
+    break;
+  }
+  case "email": {
+    // WS-G: send (or rehearse) one digest by hand. --dry-run builds everything
+    // and sends nothing; --to limits the batch to one address (the owner's
+    // test-list acceptance run).
+    const kind = argString("--kind");
+    if (kind !== "recap" && kind !== "preview") {
+      console.error(`Usage: email --kind recap|preview [--race ID] [--to a@b.c] [--dry-run]`);
+      process.exit(1);
+    }
+    await maybeSendDigest(providers(), kind, {
+      dryRun: process.argv.includes("--dry-run"),
+      onlyTo: argString("--to"),
+      raceId: process.argv.includes("--race") ? argValue("--race", 0) : undefined,
+      force: true, // an explicit command is its own opt-in
     });
     break;
   }
@@ -316,13 +375,16 @@ switch (command) {
       );
     }
 
+    // Labeled so the two "skip the deploy" paths still reach the digest step
+    // below — the recap email describes the data, which is already updated.
+    deploy: {
     if (process.argv.includes("--no-deploy")) {
       console.log("--no-deploy set — skipping Pages and Worker deploys (artifacts are ready).");
-      break;
+      break deploy;
     }
     if (!process.env.CLOUDFLARE_API_TOKEN) {
       console.log("CLOUDFLARE_API_TOKEN not set — skipping Pages and Worker deploys (artifacts are ready).");
-      break;
+      break deploy;
     }
     const project = process.env.NASCAR_PAGES_PROJECT ?? "looplab";
     log.info(`▶ deploying dist/ to Cloudflare Pages project "${project}"`);
@@ -339,6 +401,8 @@ switch (command) {
 
     await runStep(["bunx", "wrangler", "deploy"], "deploying live Worker", "worker");
     console.log("✓ live Worker deployed");
+    }
+    await maybeSendDigest(p, "recap");
     break;
   }
   default:
@@ -355,6 +419,7 @@ Usage:
   bun run src/app/index.ts capture [--series ID] [--interval SEC] [--ticks N] [--out DIR]  # capture live feed
   bun run src/app/index.ts canary [--series ID] [--json PATH]   # upstream-feed health check (exit 1 on failure)
   bun run src/app/index.ts predict [--race ID] [--stage thursday|saturday] [--series ID]   # WS-F model run
+  bun run src/app/index.ts email --kind recap|preview [--race ID] [--to a@b.c] [--dry-run]   # digest send
   bun run src/app/index.ts grant --email a@b.c [--until ISO] [--revoke]   # manual Pro grant (testers)
   bun run src/app/index.ts refresh [--no-deploy]   # data+site+Worker artifacts; deploy both, all series
 
@@ -365,7 +430,10 @@ serve env: APP_ENV=production (strict env + HSTS + request logs), PORT,
      LIVE_API_BASE, PLAUSIBLE_DOMAIN [+ PLAUSIBLE_HOST],
      ENABLE_REFRESH_CRON=1 (in-process Monday 12:00 UTC refresh),
      ENABLE_CANARY_CRON=1 (in-process daily 09:00 UTC canary),
-     ENABLE_PREDICTIONS_CRON=1 (Thu 16:00 + Sat 22:00 UTC model runs), LOG_REQUESTS
-canary env: RESEND_API_KEY + ALERT_EMAIL_TO [+ EMAIL_FROM] (owner outage emails)`);
+     ENABLE_PREDICTIONS_CRON=1 (Thu 16:00 + Sat 22:00 UTC model runs), LOG_REQUESTS,
+     RESEND_WEBHOOK_SECRET (bounce/complaint suppression at /webhooks/resend)
+canary env: RESEND_API_KEY + ALERT_EMAIL_TO [+ EMAIL_FROM] (owner outage emails)
+email env: ENABLE_EMAIL_DIGESTS=1 (auto-send after refresh/predict), APP_BASE_URL (link base),
+     RESEND_API_KEY [+ EMAIL_FROM] (without them, digests are logged, not sent)`);
     if (command !== undefined) process.exit(1);
 }

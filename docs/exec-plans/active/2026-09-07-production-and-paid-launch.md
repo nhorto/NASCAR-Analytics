@@ -317,9 +317,22 @@ Build:
   opt-in), Thursday preview (Pro); unsubscribe links; bounce handling.
 
 Acceptance:
-- [ ] Export of the largest table completes under 2 s and opens in Excel.
+- [x] Export of the largest table completes under 2 s and opens in Excel.
+      *(2026-09-07: measured against the real Cup db, 2019–2026, through the
+      real streaming response — largest table (season stats, 495 rows, 92 KB)
+      **18 ms**; slowest dataset of all 14 **461 ms**; both far inside the 2 s
+      bar. "Opens in Excel" is covered structurally — UTF-8 BOM asserted at the
+      byte level, CRLF endings, RFC-4180 quoting, and formula-injection
+      guarding — with a real double-click open left as an owner spot-check.)*
 - [ ] Recap email sent to a test list after a real refresh; preview email
       after a real prediction run.
+      *(2026-09-07: **owner-gated on A4 (Resend)**. Everything up to the
+      transport is done and exercised on real data: `bun run src/app/index.ts
+      email --kind recap` selected the actual latest race and rendered "Cook
+      Out Southern 500: Christopher Bell wins" for a subscribed test account;
+      `--kind preview` rendered the stored Gateway run. With no API key the
+      null client logs the message and the send is recorded as a retryable
+      failure, so the same command will deliver once the key exists.)*
 
 ### WS-H PWA and push (week 7)
 

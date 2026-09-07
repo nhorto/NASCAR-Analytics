@@ -18,6 +18,12 @@ export interface ServerConfig {
   enableCanaryCron: boolean;
   /** Run the Thursday/Saturday predictions crons in-process (WS-F). */
   enablePredictionsCron: boolean;
+  /** Send the Monday recap / Thursday preview digests after refresh/predict
+   *  runs (WS-G). Off by default so no mail leaves a machine by accident. */
+  enableEmailDigests: boolean;
+  /** Resend webhook signing secret (bounce/complaint suppression, WS-G).
+   *  Null leaves /webhooks/resend answering 503 instead of trusting input. */
+  resendWebhookSecret: string | null;
   /** Emit a JSON log line per request. Defaults to `production`. */
   logRequests: boolean;
   /** Absolute origin for links in auth emails (WS-D). Null → derived from the
@@ -102,6 +108,10 @@ export function readServerEnv(env: Env): ServerEnvResult {
   if (enablePredictionsCron === null)
     problems.push(`ENABLE_PREDICTIONS_CRON must be 1/0/true/false, got "${env.ENABLE_PREDICTIONS_CRON}"`);
 
+  const enableEmailDigests = parseBool(env.ENABLE_EMAIL_DIGESTS, false);
+  if (enableEmailDigests === null)
+    problems.push(`ENABLE_EMAIL_DIGESTS must be 1/0/true/false, got "${env.ENABLE_EMAIL_DIGESTS}"`);
+
   const logRequests = parseBool(env.LOG_REQUESTS, production);
   if (logRequests === null)
     problems.push(`LOG_REQUESTS must be 1/0/true/false, got "${env.LOG_REQUESTS}"`);
@@ -114,6 +124,8 @@ export function readServerEnv(env: Env): ServerEnvResult {
       warnings.push("LITESTREAM_REPLICA_URL not set — the db is NOT being replicated");
     if (!env.RESEND_API_KEY)
       warnings.push("RESEND_API_KEY not set — verify/reset/alert emails will only be logged");
+    if (!env.RESEND_WEBHOOK_SECRET)
+      warnings.push("RESEND_WEBHOOK_SECRET not set — bounce/complaint suppression is disabled");
   }
 
   return {
@@ -127,6 +139,8 @@ export function readServerEnv(env: Env): ServerEnvResult {
       enableRefreshCron: enableRefreshCron ?? false,
       enableCanaryCron: enableCanaryCron ?? false,
       enablePredictionsCron: enablePredictionsCron ?? false,
+      enableEmailDigests: enableEmailDigests ?? false,
+      resendWebhookSecret: env.RESEND_WEBHOOK_SECRET || null,
       logRequests: logRequests ?? production,
       appBaseUrl,
     },

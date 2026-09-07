@@ -49,3 +49,31 @@ export interface RateLimitVerdict {
 export type AuthResult =
   | { ok: true; user: User }
   | { ok: false; reason: string };
+
+// --- email preferences + deliverability (WS-G) ---
+
+/** The two digest lists. Recap is free + opt-in; preview is Pro + opt-in. */
+export type EmailKind = "recap" | "preview";
+
+export interface EmailPrefs {
+  userId: number;
+  recap: boolean;
+  preview: boolean;
+  /** Per-user secret in unsubscribe links. Never reused across users. */
+  unsubToken: string;
+  /** Set by a hard bounce — suppresses every future digest to this address. */
+  bouncedAt: string | null;
+  /** Set by a spam complaint — same suppression, different cause. */
+  complainedAt: string | null;
+  updatedAt: string;
+}
+
+/** A user eligible for one digest list: verified, opted in, not suppressed. */
+export interface DigestRecipient {
+  userId: number;
+  email: string;
+  unsubToken: string;
+}
+
+/** Why an address stopped receiving mail. */
+export type SuppressionReason = "bounced" | "complained";

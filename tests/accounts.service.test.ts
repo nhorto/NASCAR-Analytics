@@ -3,7 +3,7 @@
 // limits. Negative cases are the point — every guard has a test that trips it.
 import { describe, expect, test } from "bun:test";
 import { accountsService, accountsConfig } from "../src/domains/accounts/index.ts";
-import { testDb } from "./seed.ts";
+import { testDb, seedUser } from "./seed.ts";
 
 const svc = accountsService;
 const T0 = new Date("2026-09-07T12:00:00Z");
@@ -192,10 +192,153 @@ describe("rate limiting", () => {
   });
 });
 
+// --- email preferences + deliverability (WS-G) ---
+
+describe("email preferences", () => {
+  test("first read creates the row with both lists off and a stable token", () => {
+    const p = freshP();
+    const userId = seedUser(p.db, { email: "a@example.com" });
+
+    const first = svc.emailPrefs(p, userId, T0);
+    expect(first.recap).toBe(false);
+    expect(first.preview).toBe(false);
+    expect(first.unsubToken.length).toBeGreaterThan(20);
+
+    // Reading again must not mint a new token — live links would break.
+    expect(svc.emailPrefs(p, userId, later(DAY)).unsubToken).toBe(first.unsubToken);
+  });
+
+  test("each account gets its own unsubscribe token", () => {
+    const p = freshP();
+    const a = svc.emailPrefs(p, seedUser(p.db, { email: "a@example.com" }), T0);
+    const b = svc.emailPrefs(p, seedUser(p.db, { email: "b@example.com" }), T0);
+    expect(a.unsubToken).not.toBe(b.unsubToken);
+  });
+
+  test("setting one list leaves the other alone", () => {
+    const p = freshP();
+    const userId = seedUser(p.db, { email: "a@example.com" });
+
+    svc.setEmailPref(p, userId, "recap", true, T0);
+    const prefs = svc.setEmailPref(p, userId, "preview", true, T0);
+    expect(prefs.recap).toBe(true);
+    expect(prefs.preview).toBe(true);
+
+    const off = svc.setEmailPref(p, userId, "preview", false, T0);
+    expect(off.recap).toBe(true);
+    expect(off.preview).toBe(false);
+  });
+
+  test("digest recipients exclude unverified, opted-out, and suppressed addresses", () => {
+    const p = freshP();
+    const inList = seedUser(p.db, { email: "in@example.com" });
+    const unverified = seedUser(p.db, { email: "unverified@example.com", verified: false });
+    const optedOut = seedUser(p.db, { email: "out@example.com" });
+    const bounced = seedUser(p.db, { email: "bounced@example.com" });
+    for (const id of [inList, unverified, bounced]) svc.setEmailPref(p, id, "recap", true, T0);
+    svc.setEmailPref(p, optedOut, "recap", false, T0);
+    svc.suppressAddress(p, "bounced@example.com", "bounced", T0);
+
+    expect(svc.digestRecipients(p, "recap").map((r) => r.email)).toEqual(["in@example.com"]);
+    expect(svc.digestRecipients(p, "preview")).toEqual([]);
+  });
+
+  test("unsubscribe by token turns off exactly the named list", () => {
+    const p = freshP();
+    const userId = seedUser(p.db, { email: "a@example.com" });
+    svc.setEmailPref(p, userId, "recap", true, T0);
+    svc.setEmailPref(p, userId, "preview", true, T0);
+    const token = svc.emailPrefs(p, userId, T0).unsubToken;
+
+    expect(svc.unsubscribe(p, token, "recap", T0)).toBe(userId);
+    const after = svc.emailPrefs(p, userId, T0);
+    expect(after.recap).toBe(false);
+    expect(after.preview).toBe(true);
+  });
+
+  test("undo re-subscribes with the same token", () => {
+    const p = freshP();
+    const userId = seedUser(p.db, { email: "a@example.com" });
+    const token = svc.emailPrefs(p, userId, T0).unsubToken;
+    svc.unsubscribe(p, token, "recap", T0);
+
+    expect(svc.resubscribe(p, token, "recap", T0)).toBe(userId);
+    expect(svc.emailPrefs(p, userId, T0).recap).toBe(true);
+  });
+
+  test("an unknown or forged token changes nothing", () => {
+    const p = freshP();
+    const userId = seedUser(p.db, { email: "a@example.com" });
+    svc.setEmailPref(p, userId, "recap", true, T0);
+
+    expect(svc.unsubscribe(p, "not-a-real-token", "recap", T0)).toBeNull();
+    expect(svc.resubscribe(p, "not-a-real-token", "recap", T0)).toBeNull();
+    expect(svc.emailPrefs(p, userId, T0).recap).toBe(true);
+  });
+
+  test("suppression targets a real account only, and can be cleared", () => {
+    const p = freshP();
+    const userId = seedUser(p.db, { email: "a@example.com" });
+    svc.emailPrefs(p, userId, T0);
+
+    expect(svc.suppressAddress(p, "nobody@example.com", "bounced", T0)).toBe(false);
+    expect(svc.suppressAddress(p, "A@Example.com", "bounced", T0)).toBe(true); // case-insensitive
+    expect(svc.emailPrefs(p, userId, T0).bouncedAt).toBe(T0.toISOString());
+
+    svc.clearSuppression(p, userId, later(HOUR));
+    expect(svc.emailPrefs(p, userId, T0).bouncedAt).toBeNull();
+  });
+
+  test("a provider event is recorded once; retries report as duplicates", () => {
+    const p = freshP();
+    expect(svc.recordEmailEvent(p, { eventId: "evt_1", type: "email.bounced", email: "a@b.c" }, T0)).toBe(true);
+    expect(svc.recordEmailEvent(p, { eventId: "evt_1", type: "email.bounced", email: "a@b.c" }, T0)).toBe(false);
+  });
+
+  test("a digest send is claimable exactly once per user, kind, and race", () => {
+    const p = freshP();
+    const userId = seedUser(p.db, { email: "a@example.com" });
+
+    expect(svc.claimDigestSend(p, userId, "recap", 5555, T0)).toBe(true);
+    // Still in flight (no outcome recorded): an overlapping run must not send.
+    expect(svc.claimDigestSend(p, userId, "recap", 5555, T0)).toBe(false);
+    // A different race, or a different list, is a separate claim.
+    expect(svc.claimDigestSend(p, userId, "recap", 5556, T0)).toBe(true);
+    expect(svc.claimDigestSend(p, userId, "preview", 5555, T0)).toBe(true);
+    expect(svc.digestSendCount(p, "recap", 5555)).toBe(1);
+  });
+
+  test("a failed send stays retryable; a successful one never re-sends", () => {
+    const p = freshP();
+    const userId = seedUser(p.db, { email: "a@example.com" });
+
+    // Attempt 1 fails (no provider key, transport error, provider 500…).
+    expect(svc.claimDigestSend(p, userId, "recap", 7, T0)).toBe(true);
+    svc.recordDigestOutcome(p, userId, "recap", 7, false, "email not configured");
+    // …so the next run may try again — otherwise that race is lost forever.
+    expect(svc.claimDigestSend(p, userId, "recap", 7, later(HOUR))).toBe(true);
+
+    svc.recordDigestOutcome(p, userId, "recap", 7, true, "sent");
+    expect(svc.claimDigestSend(p, userId, "recap", 7, later(2 * HOUR))).toBe(false);
+  });
+
+  test("deleting an account removes its preferences and send history", async () => {
+    const { p, user } = await signedUp();
+    svc.setEmailPref(p, user.userId, "recap", true, T0);
+    svc.claimDigestSend(p, user.userId, "recap", 1, T0);
+
+    const deleted = await svc.deleteAccount(p, user.userId, PW);
+    expect(deleted.ok).toBe(true);
+    expect(svc.digestRecipients(p, "recap")).toEqual([]);
+    expect(svc.digestSendCount(p, "recap", 1)).toBe(0);
+  });
+});
+
 describe("config sanity", () => {
   test("policy constants match the spec", () => {
     expect(accountsConfig.PASSWORD_MIN_LENGTH).toBe(10);
     expect(accountsConfig.SESSION_TTL_MS).toBe(30 * DAY);
     expect(accountsConfig.RESET_TOKEN_TTL_MS).toBe(30 * 60 * 1000);
+    expect(accountsConfig.EMAIL_KINDS).toEqual(["recap", "preview"]);
   });
 });

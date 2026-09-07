@@ -8,15 +8,18 @@ export function requestId(req: Request): string {
   return req.headers.get("x-request-id") ?? req.headers.get("fly-request-id") ?? crypto.randomUUID();
 }
 
-export type CacheClass = "health" | "asset" | "data" | "page" | "error" | "auth";
+export type CacheClass = "health" | "asset" | "data" | "page" | "error" | "auth" | "download";
 
 // Auth-owned routes are never cacheable anywhere (they set cookies, carry
-// per-user state, or consume single-use tokens).
-const AUTH_PATH = /^\/(signup|signin|reset(\/|$)|verify\/|account$|auth\/)/;
+// per-user state, or consume single-use tokens). Unsubscribe links and the
+// provider webhook join them: both mutate state from a bare URL.
+const AUTH_PATH = /^\/(signup|signin|reset(\/|$)|verify\/|account$|auth\/|unsubscribe\/|webhooks\/)/;
 
 export function cacheClassFor(path: string, status: number): CacheClass {
   if (AUTH_PATH.test(path)) return "auth";
   if (status >= 400) return "error";
+  // CSV exports are Pro-gated and viewer-specific — never shared-cacheable.
+  if (path.startsWith("/export/")) return "download";
   if (path === "/health") return "health";
   if (path === "/style.css" || /^\/[a-z-]+\.js$/.test(path)) return "asset";
   if (path.startsWith("/data/") || path.startsWith("/api/")) return "data";
@@ -30,6 +33,7 @@ const CACHE_CONTROL: Record<CacheClass, string> = {
   health: "no-store",
   error: "no-store",
   auth: "private, no-store",
+  download: "private, no-store",
   asset: "public, max-age=86400",
   data: "public, max-age=300",
   page: "public, max-age=300, stale-while-revalidate=600",
@@ -91,6 +95,18 @@ export async function withEncoding(req: Request, res: Response): Promise<Respons
   res.headers.set("Vary", "Accept-Encoding");
   const accept = req.headers.get("Accept-Encoding") ?? "";
   if (!/\bgzip\b/.test(accept)) return res;
+  // Streamed downloads (CSV exports) must not be buffered — `arrayBuffer()`
+  // below would wait for the last row before sending the first byte. Pipe them
+  // through a streaming compressor instead.
+  if (res.headers.has("Content-Disposition") && res.body) {
+    const streamHeaders = new Headers(res.headers);
+    streamHeaders.set("Content-Encoding", "gzip");
+    streamHeaders.delete("Content-Length");
+    return new Response(res.body.pipeThrough(new CompressionStream("gzip")), {
+      status: res.status,
+      headers: streamHeaders,
+    });
+  }
   const buf = new Uint8Array(await res.arrayBuffer());
   if (buf.byteLength < GZIP_MIN_BYTES)
     return new Response(buf, { status: res.status, headers: res.headers });

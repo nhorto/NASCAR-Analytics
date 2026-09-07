@@ -280,8 +280,16 @@ form.inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .pred-free tbody tr:nth-child(n+4) { filter: blur(4px); user-select: none; pointer-events: none; }
 .teaser-lock.teaser-lock-rows { top: auto; height: 62%; bottom: 0; }
 .dfs-toggle { display: inline-flex; margin-bottom: 8px; }
+/* deep tools + email prefs (WS-G) */
+.export-bar { margin: 0 0 8px; text-align: right; }
+.export-bar a { color: var(--accent); text-decoration: none; }
+.cmp-slots { flex-wrap: wrap; gap: 6px; }
+.cmp-slots select { min-width: 45%; }
+.pref-row { display: flex; align-items: flex-start; gap: 9px; margin: 8px 0; font-size: 13px; }
+.pref-row input[type="checkbox"] { margin-top: 3px; width: 17px; height: 17px; accent-color: var(--accent); }
+
 @media print {
-  .appbar, .series-switch, .tabbar, .dfs-toggle, .teaser-lock { display: none !important; }
+  .appbar, .series-switch, .tabbar, .dfs-toggle, .teaser-lock, .export-bar { display: none !important; }
   body, .shell, .card { background: #fff !important; color: #000 !important; border-color: #ccc !important; }
   .card { box-shadow: none !important; }
   .note a { text-decoration: none; color: #000; }

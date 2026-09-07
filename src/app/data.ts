@@ -23,6 +23,10 @@ export function seasonStatsPayload(p: P, seriesId: number) {
     top15: s.top15LapPct,
     lapsLed: s.lapsLed,
     points: s.points,
+    // Loop metrics must be weighted by the races that HAD loop data when the
+    // compare page aggregates a season range (WS-G) — weighting by `races`
+    // would drag a driver's rating toward zero for pre-2019 seasons.
+    loopRaces: s.loopRaces,
   }));
 }
 

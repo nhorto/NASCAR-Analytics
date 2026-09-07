@@ -297,6 +297,42 @@ CREATE TABLE IF NOT EXISTS dfs_projections (
 );
 CREATE INDEX IF NOT EXISTS idx_dfs_projections_race ON dfs_projections(race_id, stage, platform);
 
+-- Email preferences + deliverability (domains/accounts/repo.ts, WS-G). One row
+-- per user; both digests default off (opt-in). unsub_token is a per-user secret
+-- used by the one-tap unsubscribe links. bounced_at/complained_at are set by
+-- the Resend webhook and suppress every future digest to that address.
+CREATE TABLE IF NOT EXISTS email_prefs (
+  user_id INTEGER PRIMARY KEY,
+  recap INTEGER NOT NULL DEFAULT 0,
+  preview INTEGER NOT NULL DEFAULT 0,
+  unsub_token TEXT NOT NULL UNIQUE,
+  bounced_at TEXT,
+  complained_at TEXT,
+  updated_at TEXT NOT NULL
+);
+
+-- Raw provider webhook events, kept for support ("why did my mail stop?").
+CREATE TABLE IF NOT EXISTS email_events (
+  event_id TEXT PRIMARY KEY,
+  type TEXT NOT NULL,
+  email TEXT NOT NULL,
+  received_at TEXT NOT NULL,
+  detail TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_email_events_email ON email_events(email, received_at DESC);
+
+-- Digest send ledger: claimed BEFORE the send attempt, so a re-run of the same
+-- refresh/prediction never double-sends. ref_id is the race the digest is about.
+CREATE TABLE IF NOT EXISTS email_sends (
+  user_id INTEGER NOT NULL,
+  kind TEXT NOT NULL,
+  ref_id INTEGER NOT NULL,
+  sent_at TEXT NOT NULL,
+  ok INTEGER NOT NULL DEFAULT 0,
+  detail TEXT,
+  PRIMARY KEY (user_id, kind, ref_id)
+);
+
 CREATE TABLE IF NOT EXISTS raw_fetches (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   url TEXT NOT NULL,

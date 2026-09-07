@@ -22,6 +22,8 @@ describe("readServerEnv", () => {
       enableRefreshCron: false,
       enableCanaryCron: false,
       enablePredictionsCron: false,
+    enableEmailDigests: false,
+    resendWebhookSecret: null,
       logRequests: false,
       appBaseUrl: null,
     });
@@ -96,6 +98,7 @@ describe("readServerEnv", () => {
       "CLOUDFLARE_API_TOKEN not set — refresh will skip the static-fallback publish",
       "LITESTREAM_REPLICA_URL not set — the db is NOT being replicated",
       "RESEND_API_KEY not set — verify/reset/alert emails will only be logged",
+      "RESEND_WEBHOOK_SECRET not set — bounce/complaint suppression is disabled",
     ]);
     expect(readServerEnv({}).warnings).toEqual([]);
   });

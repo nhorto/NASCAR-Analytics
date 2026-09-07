@@ -113,3 +113,27 @@ export function seedLoop(
     opts.rating ?? 80,
   );
 }
+
+/**
+ * A user row inserted directly, skipping argon2 (WS-G). Tests that exercise
+ * mail/gating need accounts by the dozen and don't test hashing — paying
+ * ~1 s per `signUp` would make them slow enough to time out. Auth behavior
+ * itself is covered in accounts.service.test.ts, which uses the real service.
+ */
+export function seedUser(
+  db: Database,
+  opts: { email: string; verified?: boolean; createdAt?: string },
+): number {
+  const row = db
+    .query(
+      `INSERT INTO users (email, password_hash, created_at, verified_at)
+       VALUES (?, 'seeded-not-a-real-hash', ?, ?)
+       RETURNING user_id AS userId`,
+    )
+    .get(
+      opts.email.toLowerCase(),
+      opts.createdAt ?? "2026-01-01T00:00:00.000Z",
+      opts.verified === false ? null : (opts.createdAt ?? "2026-01-01T00:00:00.000Z"),
+    ) as { userId: number };
+  return row.userId;
+}
