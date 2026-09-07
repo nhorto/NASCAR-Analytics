@@ -114,6 +114,7 @@ export async function exportSite(dbPath = "data/nascar.db", log?: Log): Promise<
   await Bun.write(join(DIST, "live.js"), Bun.file(new URL("./client/live.js", import.meta.url)));
   await Bun.write(join(DIST, "home-live.js"), Bun.file(new URL("./client/home-live.js", import.meta.url)));
   await Bun.write(join(DIST, "install.js"), Bun.file(new URL("./client/install.js", import.meta.url)));
+  await Bun.write(join(DIST, "push.js"), Bun.file(new URL("./client/push.js", import.meta.url)));
 
   // PWA (WS-H): the static fallback host must be installable too, so the
   // manifest, worker, icons and offline page ship with the export.

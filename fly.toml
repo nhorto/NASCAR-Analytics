@@ -23,9 +23,13 @@ primary_region = "iad"
   # predictions runs (WS-G). Leave OFF until the Resend sending domain is
   # verified (A4) — with it on and no key, every digest is a logged failure.
   ENABLE_EMAIL_DIGESTS = "0"
+  # Race push alerts (WS-H): poll the live Worker and notify subscribers.
+  # Requires the VAPID keys below; harmless (a warning) without them.
+  ENABLE_PUSH_DISPATCHER = "0"
   # Secrets (never in this file — `fly secrets set`):
   #   RESEND_API_KEY, ALERT_EMAIL_TO, EMAIL_FROM, RESEND_WEBHOOK_SECRET,
-  #   LITESTREAM_REPLICA_URL, CLOUDFLARE_API_TOKEN
+  #   LITESTREAM_REPLICA_URL, CLOUDFLARE_API_TOKEN,
+  #   VAPID_PUBLIC_KEY, VAPID_PRIVATE_KEY, VAPID_SUBJECT  (bun run src/app/index.ts gen:vapid)
 
 [mounts]
   source = "nascar_data"

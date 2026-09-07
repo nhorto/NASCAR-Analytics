@@ -347,8 +347,18 @@ Build:
 
 Acceptance:
 - [ ] Installs on iOS and Android; Lighthouse PWA checks pass.
+      *(2026-09-07: built and structurally verified — valid manifest,
+      192/512/maskable icons, registered worker, offline page, install
+      prompt + iOS guidance, all test-asserted. The device install and the
+      Lighthouse run need the deployed HTTPS origin, A2/A6.)*
 - [ ] A test user receives the pit/caution/stage/finish alerts for their
       driver during the soak race with no duplicates.
+      *(2026-09-07: the whole path is built and tested — RFC 8291/8292
+      crypto round-tripped, Pro-gated subscription routes, per-driver and
+      per-kind filtering, timezone-aware quiet hours, dead-endpoint pruning,
+      and dedup per (endpoint, race, kind, driver, lap) so a live-feed
+      restart cannot double-notify. Needs VAPID secrets, the deploy, and a
+      live race — owner and calendar gated.)*
 
 ### WS-I Launch hardening (week 8)
 

@@ -387,6 +387,8 @@ describe("web app", () => {
       enablePredictionsCron: false,
     enableEmailDigests: false,
     resendWebhookSecret: null,
+    pushConfigured: false,
+    enablePushDispatcher: false,
       logRequests: false,
       appBaseUrl: null,
     });

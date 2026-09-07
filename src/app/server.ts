@@ -33,6 +33,7 @@ import { featureEnabled } from "./gate.ts";
 import { handleDownloadRequest } from "./downloads.ts";
 import { offlineContent, PWA_ICONS, serviceWorkerSource, webManifest } from "./pwa.ts";
 import { handleWebhookRequest } from "./webhooks.ts";
+import { handlePushRequest, vapidFromEnv } from "./push.ts";
 
 // Headline numbers from the held-out backtest, shown on the methodology page.
 // Source: docs/research/2026-09-07_predictions-backtest.md (re-derive with
@@ -47,6 +48,7 @@ const METHODOLOGY_BACKTEST = {
 
 const STYLE_URL = new URL("./style.css", import.meta.url);
 const INSTALL_JS_URL = new URL("./client/install.js", import.meta.url);
+const PUSH_JS_URL = new URL("./client/push.js", import.meta.url);
 const ICONS_DIR = new URL("./static/icons/", import.meta.url);
 const COMPARE_JS_URL = new URL("./client/compare.js", import.meta.url);
 const TRACKS_JS_URL = new URL("./client/tracks.js", import.meta.url);
@@ -230,6 +232,7 @@ export function createServer(
       if (path === "/live.js") return file(LIVE_JS_URL, "text/javascript; charset=utf-8");
       if (path === "/home-live.js") return file(HOME_LIVE_JS_URL, "text/javascript; charset=utf-8");
       if (path === "/install.js") return file(INSTALL_JS_URL, "text/javascript; charset=utf-8");
+      if (path === "/push.js") return file(PUSH_JS_URL, "text/javascript; charset=utf-8");
 
       // --- PWA (WS-H) ---
       if (path === "/manifest.webmanifest")
@@ -353,9 +356,14 @@ export function createServer(
       }
       if (rest === "/compare") return htmlResponse(render.renderCompare(p, seriesId, viewer.pro));
       if (rest === "/tracks") return htmlResponse(render.renderTracks(p, seriesId, viewer.pro));
-      if (rest === "/live") return htmlResponse(render.renderLive(p, seriesId));
+      if (rest === "/live") return htmlResponse(render.renderLive(p, seriesId, viewer.pro));
 
       return notFound(seriesId, "Page");
+  };
+
+  const pushDeps = {
+    vapid: vapidFromEnv(process.env),
+    log: { info: (m: string) => console.log(m), warn: (m: string) => console.warn(m) },
   };
 
   const webhookDeps = {
@@ -383,6 +391,7 @@ export function createServer(
         const viewer = resolveViewer(p, req, new Date());
         res =
           (await handleWebhookRequest(p, req, url, webhookDeps)) ??
+          (await handlePushRequest(p, req, url, viewer, pushDeps)) ??
           (await handleAuthRequest(p, req, url, viewer, authDeps)) ??
           route(url, viewer);
       } catch (err) {

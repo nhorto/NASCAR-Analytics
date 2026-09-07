@@ -8,6 +8,10 @@
 import type { Database } from "bun:sqlite";
 import { acquireLock, releaseLock } from "../providers/lock.ts";
 import { logLine } from "./http.ts";
+import type { Providers } from "../providers/index.ts";
+import type { LivePayload } from "../domains/live/index.ts";
+import type { CandidateAlert, VapidKeys } from "../domains/notifications/index.ts";
+import { dispatchAlerts } from "./push.ts";
 
 export const REFRESH_LOCK_NAME = "weekly-refresh";
 /** Generous ceiling for a cold backfill; a crashed holder is taken over after this. */
@@ -221,4 +225,118 @@ export function startPredictionsScheduler(opts: {
         ? thursday.nextRunAt()
         : saturday.nextRunAt(),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Race-day push dispatcher (WS-H). The live Worker's payload already carries
+// the alerts its Durable Object derived, so the server consumes those instead
+// of re-deriving them — one source of truth for what counts as an event, and
+// no second copy of the snapshot-diff state machine.
+//
+// Poll cadence is deliberately slower than the live page's 5 s: a push is a
+// notification, not a live board, and every poll is a Worker request.
+// ---------------------------------------------------------------------------
+
+export const PUSH_POLL_LIVE_MS = 20_000;
+export const PUSH_POLL_IDLE_MS = 5 * 60_000;
+
+export interface PushPollDeps {
+  p: Pick<Providers, "db">;
+  liveApiBase: string;
+  seriesId: number;
+  vapid: VapidKeys | null;
+  log: ScheduledRefreshOpts["log"];
+  fetchImpl?: typeof fetch;
+  now?: () => Date;
+  /** Injected in tests; defaults to the real dispatcher. */
+  dispatch?: typeof dispatchAlerts;
+}
+
+export interface PushPollResult {
+  live: boolean;
+  alerts: number;
+  sent: number;
+  /** Next delay in ms — fast while racing, slow when idle. */
+  nextDelayMs: number;
+}
+
+/** One poll of the live Worker, dispatching whatever alerts it reports. */
+export async function pollAndDispatch(
+  deps: PushPollDeps,
+  wasLive: boolean,
+): Promise<PushPollResult> {
+  const fetchImpl = deps.fetchImpl ?? fetch;
+  const idle: PushPollResult = { live: false, alerts: 0, sent: 0, nextDelayMs: PUSH_POLL_IDLE_MS };
+  let payload: LivePayload;
+  try {
+    const res = await fetchImpl(`${deps.liveApiBase}/api/live?series=${deps.seriesId}`, {
+      headers: { accept: "application/json" },
+    });
+    if (!res.ok) {
+      deps.log.warn(logLine("error", "push poll: live feed unavailable", { status: res.status }));
+      return idle;
+    }
+    payload = (await res.json()) as LivePayload;
+  } catch (err) {
+    deps.log.warn(logLine("error", "push poll failed", { error: String(err) }));
+    return idle;
+  }
+  if (!payload?.ok || !payload.snapshot) return idle;
+
+  const raceId = payload.snapshot.raceId;
+  const raceName = payload.snapshot.runName ?? payload.snapshot.trackName ?? "the race";
+  const alerts: CandidateAlert[] = (payload.alerts ?? []).map((a) => ({
+    kind: a.kind as CandidateAlert["kind"],
+    message: a.message,
+    driverId: a.driverId,
+    atLap: a.atLap,
+    raceId,
+  }));
+
+  // The checkered flag isn't a diff event, so synthesize it from the
+  // live→not-live transition; dedup keeps it to one per race.
+  if (wasLive && !payload.live) {
+    alerts.push({
+      kind: "finish",
+      message: `${raceName} is complete`,
+      driverId: null,
+      atLap: payload.snapshot.lap,
+      raceId,
+    });
+  }
+
+  const dispatch = deps.dispatch ?? dispatchAlerts;
+  const outcome = await dispatch(deps.p, alerts, raceName, {
+    vapid: deps.vapid,
+    now: deps.now,
+    log: deps.log,
+    fetchImpl: deps.fetchImpl,
+  });
+  if (outcome.sent > 0)
+    deps.log.info(logLine("info", "push alerts dispatched", { raceId, sent: outcome.sent }));
+  return {
+    live: payload.live === true,
+    alerts: alerts.length,
+    sent: outcome.sent,
+    nextDelayMs: payload.live ? PUSH_POLL_LIVE_MS : PUSH_POLL_IDLE_MS,
+  };
+}
+
+/** Poll forever, adapting the interval to whether a session is on track. */
+export function startPushDispatcher(deps: PushPollDeps): RefreshScheduler {
+  const now = deps.now ?? (() => new Date());
+  let wasLive = false;
+  let timer: ReturnType<typeof setTimeout>;
+  let next = new Date(now().getTime() + PUSH_POLL_IDLE_MS);
+  const arm = (delayMs: number) => {
+    next = new Date(now().getTime() + delayMs);
+    timer = setTimeout(async () => {
+      const result = await pollAndDispatch(deps, wasLive);
+      wasLive = result.live;
+      arm(result.nextDelayMs);
+    }, delayMs);
+  };
+  arm(0);
+  deps.log.info(logLine("info", "push dispatcher armed", { seriesId: deps.seriesId }));
+  return { stop: () => clearTimeout(timer), nextRunAt: () => next };
 }

@@ -139,6 +139,49 @@ self.addEventListener("fetch", function (event) {
   event.respondWith(cacheFirst(request));
 });
 
+// --- push (WS-H) ---
+// The payload is encrypted per RFC 8291 and decrypted by the browser before it
+// reaches us, so `event.data` is already plaintext JSON.
+
+self.addEventListener("push", function (event) {
+  var payload = { title: "Looplab", body: "Race update", url: "/live", tag: "looplab" };
+  try {
+    if (event.data) payload = event.data.json();
+  } catch (e) {
+    // A malformed payload must still produce a notification: browsers revoke
+    // push permission from workers that receive a push and show nothing.
+  }
+  event.waitUntil(
+    self.registration.showNotification(payload.title || "Looplab", {
+      body: payload.body || "",
+      tag: payload.tag || "looplab",
+      // Same tag replaces rather than stacks, but still alerts the user.
+      renotify: true,
+      icon: "/icons/icon-192.png",
+      badge: "/icons/icon-192.png",
+      data: { url: payload.url || "/live" },
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", function (event) {
+  event.notification.close();
+  var target = (event.notification.data && event.notification.data.url) || "/live";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then(function (list) {
+      // Focus an existing tab rather than piling up new ones.
+      for (var i = 0; i < list.length; i++) {
+        var client = list[i];
+        if (client.url.indexOf(self.location.origin) === 0 && "focus" in client) {
+          if ("navigate" in client) client.navigate(target);
+          return client.focus();
+        }
+      }
+      return self.clients.openWindow(target);
+    }),
+  );
+});
+
 // Exposed so tests can exercise the real shipped decisions rather than a
 // re-implementation of them. Harmless in production (no behavior attached).
 self.__swTestHooks = {

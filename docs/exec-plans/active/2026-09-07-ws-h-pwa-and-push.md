@@ -63,36 +63,37 @@ useful even if the second slips:
 ## Build checklist
 
 ### Part 1 — PWA shell
-- [ ] `src/utils/png.ts` + tests (CRC32, chunk framing, round-trip size).
-- [ ] `scripts/gen-icons.ts` → `src/app/static/icons/` (192, 512, maskable, apple-touch).
-- [ ] `src/app/pwa.ts`: manifest builder + offline page content.
-- [ ] `src/app/client/sw.js`: install/activate/fetch, cache policy above.
-- [ ] `src/app/client/install.js`: `beforeinstallprompt` capture, custom
+- [x] `src/utils/png.ts` + tests (CRC32, chunk framing, round-trip size).
+- [x] `scripts/gen-icons.ts` → `src/app/static/icons/` (192, 512, maskable, apple-touch).
+- [x] `src/app/pwa.ts`: manifest builder + offline page content.
+- [x] `src/app/client/sw.js`: install/activate/fetch, cache policy above.
+- [x] `src/app/client/install.js`: `beforeinstallprompt` capture, custom
       button, iOS instructions when standalone-capable but no prompt event.
-- [ ] Server routes + `layout.ts` head tags + SW registration.
-- [ ] `export.ts`: manifest, sw.js, icons, offline page into `dist/`.
-- [ ] Tests: manifest shape/served, SW cache-policy decisions (pure helper),
+- [x] Server routes + `layout.ts` head tags + SW registration.
+- [x] `export.ts`: manifest, sw.js, icons, offline page into `dist/`.
+- [x] Tests: manifest shape/served, SW cache-policy decisions (pure helper),
       offline page, icons served with correct type, cache headers.
 
 ### Part 2 — Web Push
-- [ ] `providers/db.ts`: `push_subscriptions`, `push_sends`.
-- [ ] `src/domains/notifications/`: types, config, repo, service
+- [x] `providers/db.ts`: `push_subscriptions`, `push_sends`.
+- [x] `src/domains/notifications/`: types, config, repo, service
       (VAPID JWT ES256, RFC 8291 encrypt, dedup, quiet hours).
-- [ ] `src/providers/webpush.ts`: POST to the endpoint, 404/410 → prune.
-- [ ] `src/app/push.ts`: `/api/push/subscribe|unsubscribe|test` (Pro, CSRF),
+- [x] `src/providers/webpush.ts`: POST to the endpoint, 404/410 → prune.
+- [x] `src/app/push.ts`: `/api/push/subscribe|unsubscribe|test` (Pro, CSRF),
       VAPID public key exposure, dispatcher over the live Worker.
-- [ ] `client/live.js`: subscribe UI on My Driver (Pro), permission flow.
-- [ ] `src/app/client/sw.js`: `push` + `notificationclick` handlers.
-- [ ] `env.ts` + fly.toml: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`.
-- [ ] Tests: RFC 8291 vector, VAPID JWT shape, dedup, quiet hours, endpoint
+- [x] `client/live.js`: subscribe UI on My Driver (Pro), permission flow.
+- [x] `src/app/client/sw.js`: `push` + `notificationclick` handlers.
+- [x] `env.ts` + fly.toml: `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, `VAPID_SUBJECT`.
+- [x] Tests: RFC 8291 vector, VAPID JWT shape, dedup, quiet hours, endpoint
       pruning on 410, Pro gating, subscription round trip.
 
 ## Acceptance (launch plan §5 WS-H)
 
 - [ ] Installs on iOS and Android; Lighthouse PWA checks pass.
-      *(Buildable and structurally verifiable locally — manifest validity,
-      icon sizes/purposes, SW registration, offline reachability. The literal
-      install on two devices needs the deployed HTTPS origin (A2/A6).)*
+      **Structurally done, owner-gated to confirm.** Manifest validity, icon
+      sizes/purposes (incl. maskable), worker registration, cache policy and
+      offline reachability are all asserted by tests; the literal install on
+      two devices and a Lighthouse run need the deployed HTTPS origin (A2/A6).
 - [ ] A test user receives the pit/caution/stage/finish alerts for their
       driver during the soak race with no duplicates.
       **Owner/calendar-gated** — needs the Fly deploy *and* a live race.
@@ -103,3 +104,38 @@ useful even if the second slips:
   the dispatcher is server-side instead).
 - Native app wrappers. Web push on iOS requires an installed PWA — that is
   the documented path, and the install guidance says so.
+
+## Findings
+
+- **`Bun.deflateSync` emits RAW deflate, but PNG's IDAT must be a zlib stream.**
+  `file(1)` and macOS `sips` both reported the broken output as a valid PNG —
+  only a strict decoder rejected it. Now uses `node:zlib`, and a test inflates
+  the IDAT rather than trusting a header sniff.
+- **A missing icon returned 500, not 404**, because `Bun.file` throws at read
+  time inside the response. Icons are now served from a fixed allowlist, which
+  also keeps request paths away from the filesystem entirely.
+- **`URL.pathname` percent-encodes**, so the icon generator silently wrote
+  into a phantom `NASCAR%20Analytics` directory (this repo's path has a
+  space). `fileURLToPath` is the correct conversion; the stray tree was removed.
+- **The service worker is the PWA's biggest privacy risk.** Its cache is shared
+  by every user of the device, so caching a signed-in page would leak Pro
+  content to the next person. The policy refuses anything marked
+  `private`/`no-store`/`Set-Cookie`/`Authorization`, and a test asserts the
+  server actually labels Pro pages that way — the two halves have to agree.
+- **Argon2 tests were timing out under parallel load**, which is what produced
+  the intermittent failures noted in WS-F and WS-G. Argon2 is *designed* to be
+  slow, so Bun's 5 s default is simply too tight; `bunfig.toml` now sets 30 s.
+  Three consecutive full-suite runs are clean.
+- **The Worker already derives alerts**, so the dispatcher consumes
+  `payload.alerts` instead of re-implementing the snapshot diff — one source
+  of truth for what counts as an event, and no second copy of that state
+  machine to drift.
+
+## Remaining (owner/calendar-gated)
+
+- VAPID keys (`bun run src/app/index.ts gen:vapid`) set as Fly secrets, then
+  `ENABLE_PUSH_DISPATCHER=1`. Both ship off.
+- The install check on a real iPhone and Android device + a Lighthouse run
+  (needs A2/A6: the deployed origin over HTTPS).
+- The full-race soak with a test subscriber — needs the deploy **and** a live
+  race weekend. This is the last WS-H acceptance box.
