@@ -284,6 +284,60 @@ Given "side income beside FabIS", the recommendation is: do steps 1 and 2 this
 off-season, then charge. Do not pursue Sportradar; it only makes sense above
 roughly $5k/month of revenue, and the product is not there.
 
+### 5.1b Backup plan: how reliant we are, and how to make it survivable
+
+**Reliance by feature.** One unlicensed source feeds everything, but the
+failure mode differs:
+
+| Feature | Needs | If the CDN closed tomorrow |
+|---|---|---|
+| Profiles, compare, track explorer, careers | Results + loop data, weekly | Keeps working on archived data; stops adding races |
+| Proprietary metrics | Loop data | Frozen, not broken |
+| Recap, playoff picture | Results + loop data, weekly | Frozen |
+| Strategy calibration | Lap times + pit reports, historical | Already computed; degrades slowly |
+| **Live companion** | Live feed, every 5 s | **Dead immediately; no free fallback** |
+
+The static site never 404s; what is lost is freshness. A two-week gap is
+survivable for a weekly fan product and fatal for a paid live product.
+
+**Already in place:** the raw archive (seven seasons are ours regardless),
+pure normalizers (a new source is a new adapter, not a rewrite), fixtures and
+schema tests (a silent schema change fails a test first).
+
+**Fallback by data type, cheapest first:**
+1. *Results and schedules* — `nascaR.data` (free, weekly, from DriverAverages
+   with permission, 1949+). Drop-in.
+2. *Loop data* — no free API. Derive it ourselves from lap timing (below);
+   SportsDataIO Discovery Lab (~$99–149/mo, next-day); or ask DriverAverages,
+   who already license to `nascaR.data`. Racing-Reference is bot-blocked.
+3. *Lap-by-lap timing* — Sportradar (official, lap-by-lap for all three
+   series, enterprise pricing). Only once revenue exists.
+4. *Live* — Sportradar only.
+
+**The mitigation that matters most.** Loop data is NASCAR's summary of
+per-lap position and timing. Green-flag passes, quality passes, average
+running position, closing laps and fastest laps can all be recomputed from
+per-lap positions plus flag state, which we already ingest and which the live
+domain already does in miniature. Build a "loop metrics from timing" path
+once and any lap-timing source keeps the metrics alive. That collapses four
+feed dependencies into one, and the one has a licensed vendor. The moat is
+then the computed layer and the audience, not feed access.
+
+**Cheap actions, in order:**
+1. Fix the weekly cold backfill (section 1, item 3). ~1,000 race fetches every
+   Monday is the most likely way to *cause* a lockout.
+2. Add a daily canary: each endpoint returns 200 with the expected shape, or
+   an email goes out. Hear about a lockout from our monitor, not a subscriber.
+3. Test fallbacks before they are needed: SportsDataIO free trial +
+   `nascaR.data`, adapter stubs written against their schemas. Half a day.
+4. Good citizen: keep rate limits and caching; never republish the raw feed,
+   only computed views; no NASCAR marks in the brand.
+5. Send the NASCAR Digital Media email (section 5.1).
+6. Hedge the money: a data-availability clause in the terms of service, a
+   season-pass price that survives a pro-rata refund, fixed costs near zero.
+7. Set a Sportradar trigger: at a chosen monthly revenue, open the
+   conversation and move live to licensed data.
+
 ### 5.2 The market, given the chosen customer
 
 Owner's answer: DFS/bettors **and** data-loving fans who want a better
