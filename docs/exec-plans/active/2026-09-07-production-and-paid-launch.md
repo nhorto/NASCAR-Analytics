@@ -116,17 +116,13 @@ Owner steps:
 - A6 Decide the name (D2) and buy the domain (deadline end of week 2).
 
 Build:
-- Merge PR #9 (rebase onto `main`, re-run tests, keep its regression tests).
+- ~~Merge PR #9~~ ✅ 2026-09-07 — merged into the launch branch; 190 → 208 tests green; both typechecks fixed (root program had been broken by the Worker import).
 - Redeploy the live Worker once with current baselines/strategy.
-- Fix the CI cache miss now (stable `nascar-db-v1` key with restore + save
-  steps and a Thursday keep-warm dispatch) so Mondays stop cold-backfilling
-  until D18 removes CI from the data path.
-- Plausible snippet in `layout.ts`; email-capture box on the recap page
+- ~~Fix the CI cache miss now~~ ✅ 2026-09-07 — `cache-keepwarm.yml` (Thursday restore + re-save under the refresh's concurrency group). Verify on the next two Monday runs (acceptance below).
+- ~~Plausible snippet in `layout.ts`~~ ✅ 2026-09-07 — emitted only when `PLAUSIBLE_DOMAIN` is set (owner step A4 + A6 supply it). Email-capture box on the recap page
   (stores to a table on the server once WS-B ships; until then, a Resend
   audience form).
-- Canary v0: `bun run canary` checks each endpoint pattern for the latest
-  race + the live feed against the existing normalizers; GitHub Actions daily
-  schedule emails on failure. Moves onto the server in WS-B.
+- ~~Canary v0~~ ✅ 2026-09-07 — `data-health` domain + `bun run canary` + `canary.yml` (daily 09:00 UTC). Moves onto the server in WS-C.
 
 Acceptance:
 - [ ] Monday CI run deploys and the public site shows the latest race.

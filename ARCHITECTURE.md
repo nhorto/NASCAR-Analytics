@@ -14,6 +14,7 @@ src/
 │   ├── server.ts            Bun.serve(): prefix-aware router mirroring the static URL scheme
 │   ├── export.ts            Static-site generator → dist/ (Cloudflare Pages)
 │   ├── capture.ts           Live-feed capture ops tool (`bun run capture`) — raw snapshots for fixtures/validation
+│   ├── canary.ts            Upstream-feed canary (`bun run canary`) — composes ingestion + live normalizers with the data-health runner; exit 1 on any failure
 │   ├── data.ts              Compact JSON payloads for the client pages (+ per-series live baselines)
 │   ├── layout.ts            Page shell (app bar, series switch, tab bar), 404
 │   ├── html.ts              esc/fmt/badge/sparkline/card helpers + path-based withSeries
@@ -41,6 +42,11 @@ src/
 │   │   ├── service.ts       Metric math (pure) + computeAll orchestration + leagueBaselines
 │   │   ├── runtime.ts       JSON API handlers (/api/standings, /api/tracks…)
 │   │   └── index.ts         Barrel
+│   ├── data-health/         Upstream-feed canary engine  [BUILT 2026-09-07]
+│   │   ├── types.ts         HealthCheck / CheckResult / CanaryReport + the ShapeValidator type
+│   │   ├── config.ts        Timeouts, alert threshold, race-finality buffer
+│   │   ├── service.ts       PURE runner (`runChecks` takes an injected fetcher) + composable validators (`expectArray`, `expectKeys`, `expectNormalizes`, …) + `formatReport`
+│   │   └── index.ts         Barrel (no repo yet — WS-C adds `feed_status`)
 │   └── live/                Live race companion — pure metrics/alerts  [PHASE 2 BUILT]
 │       ├── types.ts         Raw live-feed shapes + normalized snapshot/row/alert/baseline + LivePayload
 │       ├── config.ts        Flag enum, poll cadence, alert thresholds, bucket width, BROWSER_UA
@@ -55,6 +61,7 @@ src/
 └── utils/                   Generic reusable helpers
 worker/                      Edge deploy target — the `looplab-live` Cloudflare Worker (OUTSIDE src; exempt from the src layer test)
 ├── index.ts                 LiveCoordinator Durable Object (single poll loop; fetches live-feed + live-pit-data) + fetch router (/api/live, /) + self-contained live page; imports only the pure `live` domain
+├── canonicalize.ts          PURE `canonicalizeFeed` (schedule-canonical race identity) — Cloudflare-type-free so the root test program can import it
 ├── baselines.ts             GENERATED — baked per-series league baselines (from dist/data/baselines-*.json)
 ├── track-strategy.ts        GENERATED — baked per-track strategy keyed by series (typical green run + tire-severity tier; from `bun run calibrate`), with a track_id→type fallback map
 ├── wrangler.toml            Worker config: DO binding + sqlite migration + workers_dev
@@ -65,6 +72,7 @@ scripts/
 └── backtest-strategy.ts     `bun run backtest` — held-out (temporal-split) evaluation of the pit-cadence prediction vs baselines → docs/research/2026-07-06_strategy-backtest.md
 tests/
 ├── architecture.test.ts     Enforces the layer rules below (part of `bun test`; scans src/ only)
+├── data-health.service.test.ts  Validators, runner classification (HTTP / shape / transport), report text, and the real check list against the captured fixtures
 ├── seed.ts                  In-memory db + row factories for domain tests
 └── fixtures/                Trimmed real CDN responses
 data/                        (gitignored) SQLite db + raw JSON archive
@@ -182,6 +190,9 @@ export interface Providers {
 - **Static export + deployment (2026-07-05)**: `bun run export` pre-renders the whole site to `dist/` (~2,400 pages) using the same `render.ts` as the dev server, plus client JSON for the two interactive pages. Deployed to **Cloudflare Pages** via Direct Upload (`bunx wrangler pages deploy dist`) — the ~284MB DB stays local, only static output ships. Compare + track explorer render client-side from `dist/data/*.json`. See [docs/DEPLOY.md](docs/DEPLOY.md).
 - **Live in — deployed on two hosts (2026-07-05)**: the static site is live and public on **Cloudflare Pages** (`looplab-arh.pages.dev`, project `looplab`, wrangler account `nhorton@fabricationis.com`) and on **Vercel** (`looplab-murex.vercel.app`, project `looplab`). Same `dist/` build serves either; Cloudflare additionally honors `dist/_headers` cache rules.
 - **Live race companion — Phases 1–3 LIVE; Phase 4 hardening (2026-08-07)**: the pure, Workers-safe `live` domain computes a normalized snapshot, live proprietary-metric estimates (live pass efficiency + adjusted residual vs. per-bucket baselines, a closing-laps Closer estimate), race alerts (`deriveAlerts`), a pit-cycle model, and — from a rolling per-lap **history** — segbar trends, movers, battles, field-leader and tire-falloff derivations. The **`looplab-live` Cloudflare Worker** (`worker/`, at **[looplab-live.nhorton.workers.dev](https://looplab-live.nhorton.workers.dev)**) runs a `LiveCoordinator` **Durable Object** as the single upstream poller (per series via `?series=`; 5s live / 60s idle / stops after 15 min unwatched), enriches the payload against generated baselines/strategy, keeps the history, and canonicalizes known race identity against the schedule so partially rolled CDN metadata cannot select the wrong track strategy or render a hybrid event. Impossible stage boundaries are discarded. The Worker serves `GET /api/live`, `/api/live/status`, and a self-contained `GET /` page. The **main site** has a `/live` page (`client/live.js`, per series) with the layered board (tap-to-drill), a Loop Rating ★ sort, Race Overview, Strategy, and My Driver sub-tabs, plus a permanent Live nav tab (🔴 dot when live) and a home LIVE banner — **live on Cloudflare Pages ([looplab-arh.pages.dev/live](https://looplab-arh.pages.dev/live))**. A complete green-flag race soak is the remaining Phase 4 gate. See [the plan](docs/exec-plans/active/2026-07-05-live-race-companion.md).
+- **Upstream-feed canary (2026-09-07)**: `bun run canary` fetches the current schedule, picks the latest completed Cup race, and checks every endpoint pattern we depend on (schedule, weekend-feed, loopstats, lap-times, live-feed, live-flag-data) for HTTP 200 **and** a payload our own normalizers accept; prints a one-line-per-check report, optional `--json`, exits 1 on any failure. `.github/workflows/canary.yml` runs it daily at 09:00 UTC — a red run is the alert (GitHub emails the owner). Engine is the pure `data-health` domain; the concrete check list is app-layer composition.
+- **CI data cache keep-warm (2026-09-07)**: `.github/workflows/cache-keepwarm.yml` restores and re-saves the refresh's data cache every Thursday so it survives GitHub's 7-day eviction to the next Monday — until then every weekly run was a full cold backfill (observed 2026-08-24 and 08-31). Interim until the refresh moves onto the production server (launch plan D18).
+- **Both TypeScript programs typecheck (2026-09-07)**: `bun run typecheck` (root: `src/` + `tests/`) and `bun run typecheck:worker` (Cloudflare types). The Worker's Cloudflare-only fetch options go through `upstreamInit()` and the pure `canonicalizeFeed` lives in `worker/canonicalize.ts`, so the root program never loads Durable Object types.
 - Known data holes are documented in [the re-verification doc](docs/research/2026-07-05_data-sources-reverification.md) (2025 YellaWood 500 results; exhibition heat races).
 
 ## What Does NOT Exist Here
@@ -190,6 +201,7 @@ export interface Providers {
 
 - No cross-series *statistical* comparison (e.g. normalizing a Cup season against an Xfinity season side by side) — the career page unifies a driver's Cup+Xfinity+Truck record, but the analytics/compare/tracks views still each stay within one series
 - The weekly refresh is automated (`.github/workflows/weekly-refresh.yml` → `bun run refresh`, Mondays 12:00 UTC); what's NOT automated is the deploy leg *until* the two Cloudflare secrets are added — before then the CI builds + artifacts `dist/` but skips the upload
+- The canary is v0: it runs on GitHub Actions and alerts by failing the workflow; there is no `feed_status` table, no consecutive-failure logic, and no "data delayed" notice on pages yet (launch plan WS-C)
 - The main-site Live page (`/live`, `client/live.js`) reads the live Worker **cross-origin** — it depends on `looplab-live.nhorton.workers.dev` being up; if the Worker is down the page shows its connecting/idle state rather than site data
 - The **Vercel mirror** (`looplab-murex.vercel.app`) may lag the Cloudflare deploy — the `/live` page shipped to **Cloudflare Pages** (`looplab-arh.pages.dev`); a Vercel redeploy was pending (transient upload error) at last update
 - Live proprietary metrics are **estimates from live loop counters**, not the authoritative post-race `loopstats/prod` values; the DO does not yet swap to the official numbers after the checkered flag. Live baselines are **baked into the Worker** and must be regenerated + redeployed after a weekly refresh (see tech-debt tracker)

@@ -13,7 +13,9 @@
     "calibrate": "bun run scripts/calibrate-strategy.ts",
     "backtest": "bun run scripts/backtest-strategy.ts",
     "capture": "bun run src/app/index.ts capture",
+    "canary": "bun run src/app/index.ts canary",
     "refresh": "bun run src/app/index.ts refresh",
+    "typecheck": "bunx tsc -p tsconfig.json",
     "typecheck:worker": "bunx tsc -p worker/tsconfig.json",
     "test": "bun test"
   },

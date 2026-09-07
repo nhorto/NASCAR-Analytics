@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { canonicalizeFeed } from "../worker/index.ts";
+import { canonicalizeFeed } from "../worker/canonicalize.ts";
 import type { LiveFeed } from "../src/domains/live/types.ts";
 
 const feed: LiveFeed = {

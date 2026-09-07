@@ -4,6 +4,18 @@ import { esc, withSeries, ASSET_VERSION } from "./html.ts";
  *  /api/live cross-origin (CORS is open on the Worker). */
 export const LIVE_API_BASE = "https://looplab-live.nhorton.workers.dev";
 
+/**
+ * Privacy-respecting aggregate analytics (Plausible: no cookies, no cross-site
+ * tracking). Emitted only when PLAUSIBLE_DOMAIN is set at render/export time,
+ * so local dev and tests stay silent. WS-A of the launch plan.
+ */
+export function analyticsTag(): string {
+  const domain = process.env.PLAUSIBLE_DOMAIN;
+  if (!domain) return "";
+  const host = process.env.PLAUSIBLE_HOST ?? "https://plausible.io";
+  return `\n<script defer data-domain="${esc(domain)}" src="${esc(host)}/js/script.js"></script>`;
+}
+
 export type Tab = "home" | "recap" | "metrics" | "drivers" | "live" | "races" | "compare" | "tracks";
 
 const TABS: Array<{ id: Tab; href: string; icon: string; label: string }> = [
@@ -57,7 +69,7 @@ export function page(opts: {
 <meta name="color-scheme" content="dark">
 <title>${esc(opts.title)} · Looplab</title>
 <link rel="stylesheet" href="/style.css?v=${ASSET_VERSION}">
-<script>window.__LIVE_API__=${JSON.stringify(LIVE_API_BASE)};window.__SERIES__=${opts.seriesId};</script>
+<script>window.__LIVE_API__=${JSON.stringify(LIVE_API_BASE)};window.__SERIES__=${opts.seriesId};</script>${analyticsTag()}
 </head>
 <body>
 <div class="shell">

@@ -162,6 +162,20 @@ switch (command) {
     await captureLive({ series, intervalMs, ticks, outDir, log });
     break;
   }
+  case "canary": {
+    // Upstream-feed health: every CDN endpoint pattern we depend on, checked
+    // against our own normalizers for the latest completed race + live feeds.
+    // Non-zero exit on any failure so a scheduler can alert (see canary.ts).
+    const series = argValue("--series", ingestionConfig.SERIES.cup);
+    const jsonOut = argString("--json");
+    const { runCanary } = await import("./canary.ts");
+    const { dataHealthService } = await import("../domains/data-health/index.ts");
+    const report = await runCanary({ seriesId: series });
+    console.log(dataHealthService.formatReport(report));
+    if (jsonOut) await Bun.write(jsonOut, JSON.stringify(report, null, 2));
+    if (!report.healthy) process.exit(1);
+    break;
+  }
   case "refresh": {
     // The portable weekend loop: backfill -> compute (all series) -> export ->
     // deploy. This is the single command any scheduler runs (GitHub Actions now,
@@ -249,6 +263,7 @@ Usage:
   bun run src/app/index.ts serve [--port 3000]
   bun run src/app/index.ts export
   bun run src/app/index.ts capture [--series ID] [--interval SEC] [--ticks N] [--out DIR]  # capture live feed
+  bun run src/app/index.ts canary [--series ID] [--json PATH]   # upstream-feed health check (exit 1 on failure)
   bun run src/app/index.ts refresh [--no-deploy]   # data+site+Worker artifacts; deploy both, all series
 
 Env: NASCAR_DATA_DIR (default data), NASCAR_PAGES_PROJECT (default looplab),

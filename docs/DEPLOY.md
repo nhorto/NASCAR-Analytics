@@ -63,6 +63,15 @@ calibration (via `actions/cache`) so the weekly run is incremental; a cold cache
 self-heals by rebuilding full history from the CDN. Every run uploads `dist/` as
 a downloadable artifact.
 
+A companion workflow, `.github/workflows/cache-keepwarm.yml`, restores and
+re-saves that cache every Thursday. GitHub evicts caches untouched for 7 days
+and the Monday run's start time drifts, so without the keep-warm the previous
+week's cache is usually just past the boundary and every refresh cold-backfills.
+
+`.github/workflows/canary.yml` runs `bun run canary` daily: every CDN endpoint
+pattern we depend on is checked for a 200 and a payload our normalizers accept.
+A red run is the alert.
+
 **The deploy step self-gates on secrets.** Until you add them, the workflow still
 runs green and builds the site (artifact only) — it just skips the upload. To
 turn on automated deploys after the one-time project connect above:

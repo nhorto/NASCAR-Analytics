@@ -19,7 +19,7 @@ export interface CdnClientOptions {
   retryBaseDelayMs: number;
   userAgent: string;
   /** Injectable transport for deterministic tests. */
-  fetchImpl?: typeof fetch;
+  fetchImpl?: (url: string, init?: RequestInit) => Promise<Response>;
 }
 
 /**

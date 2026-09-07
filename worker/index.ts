@@ -17,6 +17,7 @@ import type {
   NextRace,
   NormalizedPitStop,
 } from "../src/domains/live/index.ts";
+import { canonicalizeFeed } from "./canonicalize.ts";
 import { BASELINES } from "./baselines.ts";
 import { strategyFor } from "./track-strategy.ts";
 
@@ -28,12 +29,17 @@ interface Env {
   LIVE_PIT_URL?: string;
 }
 
-interface ScheduleRecord extends Record<string, unknown> {
-  race_id?: number;
-  run_type?: number;
-  race_name?: string;
-  track_id?: number;
-  track_name?: string;
+/**
+ * Cloudflare-only fetch options. The Worker typechecks against workers-types
+ * (where `cf` is a known RequestInit field) but the root program also loads
+ * this file via tests/worker.test.ts, where it is not — so the option is
+ * attached through a spread, which excess-property checking ignores.
+ */
+function upstreamInit(cf: Record<string, unknown>): RequestInit {
+  return {
+    headers: { "User-Agent": liveConfig.BROWSER_UA, Accept: "application/json" },
+    ...{ cf },
+  };
 }
 
 const DEFAULT_FEED_URL = "https://cf.nascar.com/live/feeds/live-feed.json";
@@ -145,7 +151,7 @@ export class LiveCoordinator {
       if (!cached || cached.seriesId !== seriesId || now - cached.at > CACHE_MS) {
         const year = new Date().getUTCFullYear();
         const url = `https://cf.nascar.com/cacher/${year}/${seriesId}/schedule-feed.json`;
-        const res = await fetch(url, { headers: { "User-Agent": liveConfig.BROWSER_UA }, cf: { cacheTtl: 60 } });
+        const res = await fetch(url, upstreamInit({ cacheTtl: 60 }));
         if (res.ok) {
           const parsed = await res.json();
           if (Array.isArray(parsed)) {
@@ -167,26 +173,6 @@ export class LiveCoordinator {
 function parseUtc(raw: string): number {
   const s = /[zZ]|[+-]\d\d:?\d\d$/.test(raw) ? raw : raw.replace(" ", "T") + "Z";
   return Date.parse(s);
-}
-
-/**
- * The base feed can partially roll toward the next event while cold (for
- * example, the prior race_id/name paired with the next track). The schedule's
- * race entry is the canonical identity for a known race_id. Live counters stay
- * untouched, and a missing schedule match degrades to the original feed.
- */
-export function canonicalizeFeed(feed: LiveFeed, races: unknown[]): LiveFeed {
-  const matches = races
-    .filter((r): r is ScheduleRecord => Boolean(r && typeof r === "object"))
-    .filter((r) => Number(r.race_id) === feed.race_id);
-  const race = matches.find((r) => Number(r.run_type) === 3) ?? matches[0];
-  if (!race) return feed;
-  return {
-    ...feed,
-    run_name: typeof race.race_name === "string" ? race.race_name : feed.run_name,
-    track_id: Number.isFinite(Number(race.track_id)) ? Number(race.track_id) : feed.track_id,
-    track_name: typeof race.track_name === "string" ? race.track_name : feed.track_name,
-  };
 }
 
 /** The soonest race in the schedule feed that starts after now. */
@@ -242,10 +228,7 @@ async function fetchPitStops(env: Env, feed: LiveFeed): Promise<NormalizedPitSto
     env.LIVE_PIT_URL ||
     `https://cf.nascar.com/cacher/live/series_${series}/${raceId}/live-pit-data.json`;
   try {
-    const res = await fetch(url, {
-      headers: { "User-Agent": liveConfig.BROWSER_UA, Accept: "application/json" },
-      cf: { cacheTtl: 0, cacheEverything: false },
-    });
+    const res = await fetch(url, upstreamInit({ cacheTtl: 0, cacheEverything: false }));
     if (!res.ok) return [];
     const json = (await res.json()) as unknown;
     if (!Array.isArray(json)) return [];
@@ -257,12 +240,9 @@ async function fetchPitStops(env: Env, feed: LiveFeed): Promise<NormalizedPitSto
 
 async function fetchLiveFeed(env: Env, series: number): Promise<LiveFeed | null> {
   const url = env.LIVE_FEED_URL || liveFeedUrl(series);
-  const res = await fetch(url, {
-    headers: { "User-Agent": liveConfig.BROWSER_UA, Accept: "application/json" },
-    // The feed sends no Cache-Control; bypass Cloudflare's default subrequest cache
-    // so every tick reads fresh.
-    cf: { cacheTtl: 0, cacheEverything: false },
-  });
+  // The feed sends no Cache-Control; bypass Cloudflare's default subrequest cache
+  // so every tick reads fresh.
+  const res = await fetch(url, upstreamInit({ cacheTtl: 0, cacheEverything: false }));
   if (!res.ok) return null;
   let feed: unknown;
   try {

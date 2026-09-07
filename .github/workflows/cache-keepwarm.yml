@@ -1,0 +1,64 @@
+name: Data Cache Keep-Warm
+
+# GitHub evicts Actions caches that go 7 days without being accessed. The
+# weekly refresh runs every 7 days and its start time drifts later under queue
+# load, so the previous Monday's cache is usually just past the boundary and
+# the refresh cold-backfills ~1,000 races against NASCAR's CDN for nothing
+# (observed 2026-08-24 and 2026-08-31: "0 already covered" for every season).
+#
+# This job touches the cache mid-week so it survives to the next Monday. It
+# restores the newest entry and re-saves it under a fresh key. It is an interim
+# fix: decision D18 of the launch plan moves the refresh onto the production
+# server, which retires this file.
+
+on:
+  schedule:
+    # Thursdays 12:00 UTC — halfway between Monday refreshes.
+    - cron: "0 12 * * 4"
+  workflow_dispatch: {}
+
+# Share the refresh's concurrency group so a keep-warm never races a refresh.
+concurrency:
+  group: weekly-refresh
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  keepwarm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Restore newest data cache
+        id: restore
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            data/nascar.db
+            data/nascar.db-wal
+            data/nascar.db-shm
+            data/raw/**/weekend-feed.json
+          key: nascar-data-v2-keepwarm-${{ github.run_id }}
+          restore-keys: |
+            nascar-data-v2-
+
+      - name: Report
+        run: |
+          if [ -z "${{ steps.restore.outputs.cache-matched-key }}" ]; then
+            echo "::warning::No data cache to keep warm — the next refresh will cold-backfill."
+            exit 0
+          fi
+          echo "Restored ${{ steps.restore.outputs.cache-matched-key }}"
+          du -sh data/nascar.db || true
+
+      - name: Re-save under a fresh key
+        if: steps.restore.outputs.cache-matched-key != ''
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            data/nascar.db
+            data/nascar.db-wal
+            data/nascar.db-shm
+            data/raw/**/weekend-feed.json
+          key: nascar-data-v2-keepwarm-${{ github.run_id }}
