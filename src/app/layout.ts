@@ -1,8 +1,11 @@
 import { esc, withSeries, ASSET_VERSION } from "./html.ts";
 
-/** Origin of the live-companion Worker (Phase 2/3). The static site fetches its
- *  /api/live cross-origin (CORS is open on the Worker). */
-export const LIVE_API_BASE = "https://looplab-live.nhorton.workers.dev";
+/** Origin of the live-companion Worker (Phase 2/3). The site fetches its
+ *  /api/live cross-origin (CORS is open on the Worker). Env-overridable so the
+ *  Worker can move accounts/domains (launch plan D12/D17) without a code edit;
+ *  the server's CSP connect-src derives from this same value. */
+export const LIVE_API_BASE =
+  process.env.LIVE_API_BASE?.replace(/\/$/, "") || "https://looplab-live.nhorton.workers.dev";
 
 /**
  * Privacy-respecting aggregate analytics (Plausible: no cookies, no cross-site

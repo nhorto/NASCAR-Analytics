@@ -137,10 +137,21 @@ switch (command) {
     break;
   }
   case "serve": {
+    // Production entrypoint (and still the dev server). Env is validated up
+    // front — a malformed value refuses to boot in production; the in-process
+    // weekly-refresh cron (launch plan D18) arms when ENABLE_REFRESH_CRON is set.
+    const { requireServerEnv } = await import("./env.ts");
+    const { config, problems, warnings } = requireServerEnv(process.env);
+    for (const w of warnings) log.warn(w);
+    for (const prob of problems) log.warn(`env: ${prob} (using default)`);
     const p = providers();
-    const port = argValue("--port", 3000);
+    const port = argValue("--port", config.port);
     const { createServer } = await import("./server.ts");
-    const server = createServer(p, port);
+    const server = createServer(p, port, config);
+    if (config.enableRefreshCron) {
+      const { startRefreshScheduler } = await import("./scheduler.ts");
+      startRefreshScheduler({ db: p.db, log });
+    }
     console.log(`Looplab running at ${server.url}`);
     break;
   }
@@ -267,6 +278,9 @@ Usage:
   bun run src/app/index.ts refresh [--no-deploy]   # data+site+Worker artifacts; deploy both, all series
 
 Env: NASCAR_DATA_DIR (default data), NASCAR_PAGES_PROJECT (default looplab),
-     CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID (enable Pages + Worker deploys)`);
+     CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID (enable Pages + Worker deploys)
+serve env: APP_ENV=production (strict env + HSTS + request logs), PORT,
+     LIVE_API_BASE, PLAUSIBLE_DOMAIN [+ PLAUSIBLE_HOST],
+     ENABLE_REFRESH_CRON=1 (in-process Monday 12:00 UTC refresh), LOG_REQUESTS`);
     if (command !== undefined) process.exit(1);
 }

@@ -298,11 +298,96 @@ describe("web app", () => {
     expect(body).toContain("/xfinity/drivers");
   });
 
+  test("production config enables HSTS; an unreadable db turns /health 503", async () => {
+    const db = testDb();
+    const providers: Providers = {
+      db,
+      cdn: createNascarCdnClient({ delayMs: 0, retries: 0, retryBaseDelayMs: 0, userAgent: "test" }),
+      archive: createNullArchive(),
+    };
+    const prod = createServer(providers, 0, {
+      production: true,
+      port: 0,
+      dataDir: "data",
+      liveApiBase: "https://live.example.com",
+      plausibleDomain: null,
+      plausibleHost: "https://plausible.io",
+      enableRefreshCron: false,
+      logRequests: false,
+    });
+    try {
+      const prodBase = prod.url.toString().replace(/\/$/, "");
+      const healthy = await fetch(`${prodBase}/health`);
+      expect(healthy.status).toBe(200);
+      expect(healthy.headers.get("Strict-Transport-Security")).toBe(
+        "max-age=15552000; includeSubDomains",
+      );
+      db.close();
+      const sick = await fetch(`${prodBase}/health`);
+      expect(sick.status).toBe(503);
+      expect(((await sick.json()) as any).ok).toBe(false);
+    } finally {
+      prod.stop(true);
+    }
+  });
+
   test("JSON API is series-aware", async () => {
     const xf = (await fetch(`${base}/api/drivers?series=2`).then((r) => r.json())) as any;
     expect(xf.seriesId).toBe(2);
     expect(xf.drivers.some((d: any) => d.fullName === "Xfinity Only")).toBe(true);
     expect(xf.drivers.some((d: any) => d.fullName === "Alpha Driver")).toBe(false);
+  });
+
+  test("/health reports ok with dataset freshness", async () => {
+    const res = await fetch(`${base}/health`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    const body = (await res.json()) as any;
+    expect(body.ok).toBe(true);
+    expect(body.latestSeason).toBe(2024);
+    expect(body.racesWithResults).toBe(2);
+    expect(body.uptimeSeconds).toBeGreaterThanOrEqual(0);
+  });
+
+  test("every response carries a request id, security headers, and cache control", async () => {
+    const res = await fetch(`${base}/`);
+    expect(res.headers.get("X-Request-Id")).toMatch(/^[0-9a-f-]{36}$/);
+    expect(res.headers.get("Cache-Control")).toBe(
+      "public, max-age=300, stale-while-revalidate=600",
+    );
+    const csp = res.headers.get("Content-Security-Policy")!;
+    expect(csp).toContain("default-src 'self'");
+    expect(csp).toContain("frame-ancestors 'none'");
+    // The live Worker origin must be fetchable from the page.
+    expect(csp).toContain("connect-src 'self' https://");
+    expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
+    // Dev config: no HSTS.
+    expect(res.headers.get("Strict-Transport-Security")).toBeNull();
+  });
+
+  test("an upstream request id is echoed back", async () => {
+    const res = await fetch(`${base}/`, { headers: { "x-request-id": "test-id-42" } });
+    expect(res.headers.get("X-Request-Id")).toBe("test-id-42");
+  });
+
+  test("error responses are never cacheable", async () => {
+    const res = await fetch(`${base}/nope`);
+    expect(res.status).toBe(404);
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+  });
+
+  test("assets get the long cache class, data JSON the short one", async () => {
+    expect((await fetch(`${base}/style.css`)).headers.get("Cache-Control")).toBe(
+      "public, max-age=86400",
+    );
+    expect((await fetch(`${base}/api/drivers`)).headers.get("Cache-Control")).toBe(
+      "public, max-age=300",
+    );
+  });
+
+  test("compressible responses vary on Accept-Encoding", async () => {
+    const res = await fetch(`${base}/`);
+    expect(res.headers.get("Vary")).toBe("Accept-Encoding");
   });
 
   test("JSON API: drivers, driver, stats, standings, tracks", async () => {

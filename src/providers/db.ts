@@ -197,6 +197,14 @@ CREATE TABLE IF NOT EXISTS race_metric_standouts (
 );
 CREATE INDEX IF NOT EXISTS idx_race_standouts_race ON race_metric_standouts(race_id);
 
+-- Cross-process advisory locks (providers/lock.ts): the in-process refresh
+-- cron and any manual CLI run coordinate through this table.
+CREATE TABLE IF NOT EXISTS app_locks (
+  name TEXT PRIMARY KEY,
+  holder TEXT NOT NULL,
+  expires_at INTEGER NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS raw_fetches (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   url TEXT NOT NULL,
@@ -213,6 +221,9 @@ export function createDb(path: string): Database {
   const db = new Database(path, { create: true });
   db.exec("PRAGMA journal_mode = WAL;");
   db.exec("PRAGMA foreign_keys = ON;");
+  // The server and the refresh child process share this file (WAL: one writer,
+  // many readers); wait out a transient write lock instead of failing.
+  db.exec("PRAGMA busy_timeout = 5000;");
   db.exec(SCHEMA);
   return db;
 }

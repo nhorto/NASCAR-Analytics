@@ -1,0 +1,7 @@
+# Keep the image to source + runtime deps. The db lives on the Fly volume
+# (restored by Litestream), never in the image. docs/ stays in — WS-E renders
+# the legal pages from docs/legal/*.md at runtime.
+.git
+node_modules
+data
+dist

@@ -132,21 +132,29 @@ Acceptance:
 
 ### WS-B Production server (weeks 2–3)
 
+Build detail + status: [WS-B implementation plan](2026-09-07-ws-b-production-server.md).
+
 Build:
-- `server.ts` hardened for production: env validation, structured logs,
-  request ids, `Cache-Control` per route (public for anonymous Cup pages,
-  private for gated), security headers (CSP, HSTS, frame-ancestors), gzip.
-- Dockerfile (Bun official image), `fly.toml`, volume for `data/`, Litestream
-  sidecar to Backblaze B2 or Cloudflare R2, health endpoint, `bun run
-  restore-drill` proving a restore from backup boots and serves.
-- Weekly refresh runs in-process on the server (cron + advisory lock), with
-  the existing CLI as the implementation; GitHub Actions becomes
-  `--no-deploy` build-only (D18).
-- Static export retained as **read-only fallback**: after each refresh the
-  server publishes `dist/` to Cloudflare Pages; Cloudflare serves it when the
-  origin is unhealthy.
-- Live page reads the Worker origin from config, not a hard-coded string.
-- Uptime monitor (external, free tier) on `/health` and the home page.
+- ~~`server.ts` hardened for production~~ ✅ 2026-09-07 — env validation
+  (fail-fast in production), structured JSON logs, request ids,
+  `Cache-Control` per route class ("private for gated" lands with WS-D's
+  gating), security headers (CSP, HSTS, frame-ancestors), gzip, `/health`.
+- ~~Dockerfile, `fly.toml`, volume, Litestream, health endpoint, `bun run
+  restore-drill`~~ ✅ 2026-09-07 built — running the drill against a real
+  replica awaits the Fly account + bucket (owner steps).
+- ~~Weekly refresh in-process (cron + advisory lock, CLI as the
+  implementation)~~ ✅ 2026-09-07 built (`ENABLE_REFRESH_CRON=1`); the GitHub
+  Actions `--no-deploy` flip (D18) is **deliberately deferred** until the
+  server refresh is verified — flipping earlier would re-freeze the public
+  site (see the implementation plan's "Sequencing").
+- Static export retained as **read-only fallback**: the refresh already
+  publishes `dist/` to Cloudflare Pages on every run; the
+  origin-unhealthy fallback wiring is documented in
+  `docs/runbooks/deploy.md` and needs the product domain (A1/A6).
+- ~~Live page reads the Worker origin from config~~ ✅ 2026-09-07 —
+  `LIVE_API_BASE` env override; the server's CSP derives from the same value.
+- Uptime monitor (external, free tier) on `/health` and the home page —
+  owner signup; targets in `docs/runbooks/deploy.md`.
 
 Acceptance:
 - [ ] Product domain serves the dynamic site over HTTPS from Fly; p95 render

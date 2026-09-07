@@ -1,14 +1,18 @@
-// Dev server: a prefix-aware router that mirrors the static site's URL scheme
-// (series in the path: /, /xfinity, /trucks). Pages come from render.ts and the
-// client-page JSON from data.ts — the same code the static export uses — so
-// `bun run serve` and the deployed Cloudflare site behave identically.
+// The site server: a prefix-aware router that mirrors the static site's URL
+// scheme (series in the path: /, /xfinity, /trucks). Pages come from render.ts
+// and the client-page JSON from data.ts — the same code the static export uses
+// — so `bun run serve` and the static fallback behave identically. Every
+// response passes through the production pipeline (request id → route → gzip →
+// security/cache headers → structured log); see src/app/http.ts.
 import type { Providers } from "../providers/index.ts";
-import { ingestionConfig } from "../domains/data-ingestion/index.ts";
+import { ingestionConfig, ingestionService } from "../domains/data-ingestion/index.ts";
 import { analyticsRuntime } from "../domains/analytics/index.ts";
 import { driversRuntime } from "../domains/drivers/index.ts";
-import { htmlResponse } from "./layout.ts";
+import { htmlResponse, LIVE_API_BASE } from "./layout.ts";
 import * as render from "./render.ts";
 import { seasonStatsPayload, trackTypePayload, baselinesPayload } from "./data.ts";
+import { readServerEnv, type ServerConfig } from "./env.ts";
+import { requestId, cacheControlFor, securityHeaders, withEncoding, logLine } from "./http.ts";
 
 const STYLE_URL = new URL("./style.css", import.meta.url);
 const COMPARE_JS_URL = new URL("./client/compare.js", import.meta.url);
@@ -32,21 +36,46 @@ function file(url: URL, type: string): Response {
   return new Response(Bun.file(url), { headers: { "Content-Type": type } });
 }
 
-function json(value: unknown): Response {
+function json(value: unknown, status = 200): Response {
   return new Response(JSON.stringify(value), {
+    status,
     headers: { "Content-Type": "application/json; charset=utf-8" },
   });
 }
 
-export function createServer(p: Providers, port: number) {
+export function createServer(p: Providers, port: number, config?: ServerConfig) {
+  const cfg = config ?? readServerEnv(process.env).config;
+  const bootedAt = Date.now();
+  const secHeaders = securityHeaders({
+    production: cfg.production,
+    liveOrigin: new URL(LIVE_API_BASE).origin,
+    plausibleHost: cfg.plausibleDomain ? cfg.plausibleHost : null,
+  });
+
   const notFound = (seriesId: number, what: string) =>
     htmlResponse(render.render404(seriesId, render.currentSeason(p, seriesId), what), 404);
 
-  return Bun.serve({
-    port,
-    fetch(req) {
-      const url = new URL(req.url);
+  // Cheap liveness + freshness snapshot for Fly health checks and the uptime
+  // monitor: proves the db is readable and says how current the dataset is.
+  const health = (): Response => {
+    try {
+      const coverage = ingestionService.coverage(p, SERIES.cup);
+      const latest = coverage.at(-1) ?? null;
+      return json({
+        ok: true,
+        uptimeSeconds: Math.round((Date.now() - bootedAt) / 1000),
+        latestSeason: latest?.season ?? null,
+        racesWithResults: latest?.racesWithResults ?? null,
+      });
+    } catch (err) {
+      return json({ ok: false, error: String(err) }, 503);
+    }
+  };
+
+  const route = (url: URL): Response => {
       const path = url.pathname;
+
+      if (path === "/health") return health();
 
       // --- static assets (no series prefix) ---
       if (path === "/style.css") return file(STYLE_URL, "text/css; charset=utf-8");
@@ -136,6 +165,41 @@ export function createServer(p: Providers, port: number) {
       if (rest === "/live") return htmlResponse(render.renderLive(p, seriesId));
 
       return notFound(seriesId, "Page");
+  };
+
+  return Bun.serve({
+    port,
+    async fetch(req) {
+      const url = new URL(req.url);
+      const id = requestId(req);
+      const start = performance.now();
+      let res: Response;
+      try {
+        res = route(url);
+      } catch (err) {
+        console.error(
+          logLine("error", "unhandled route error", { id, path: url.pathname, error: String(err) }),
+        );
+        res = new Response("Internal server error", {
+          status: 500,
+          headers: { "Content-Type": "text/plain; charset=utf-8" },
+        });
+      }
+      res = await withEncoding(req, res);
+      res.headers.set("X-Request-Id", id);
+      res.headers.set("Cache-Control", cacheControlFor(url.pathname, res.status));
+      for (const [k, v] of Object.entries(secHeaders)) res.headers.set(k, v);
+      if (cfg.logRequests)
+        console.log(
+          logLine("info", "request", {
+            id,
+            method: req.method,
+            path: url.pathname,
+            status: res.status,
+            ms: Math.round((performance.now() - start) * 10) / 10,
+          }),
+        );
+      return res;
     },
   });
 }

@@ -1,0 +1,116 @@
+// Typed server configuration from the process environment. `readServerEnv`
+// never throws — malformed values come back as `problems` so the CLI can
+// decide: production boots fail fast on any problem (`requireServerEnv`),
+// dev falls back to defaults and keeps going.
+
+export interface ServerConfig {
+  /** APP_ENV=production or NODE_ENV=production. Gates HSTS, fail-fast, request logs. */
+  production: boolean;
+  port: number;
+  dataDir: string;
+  /** Origin of the live-companion Worker; overridable so the page + CSP move together. */
+  liveApiBase: string;
+  plausibleDomain: string | null;
+  plausibleHost: string;
+  /** Run the weekly refresh cron in-process (launch plan D18). */
+  enableRefreshCron: boolean;
+  /** Emit a JSON log line per request. Defaults to `production`. */
+  logRequests: boolean;
+}
+
+export const DEFAULT_LIVE_API_BASE = "https://looplab-live.nhorton.workers.dev";
+export const DEFAULT_PLAUSIBLE_HOST = "https://plausible.io";
+
+export interface ServerEnvResult {
+  config: ServerConfig;
+  /** Malformed values (wrong type/shape). Fatal in production. */
+  problems: string[];
+  /** Missing-but-optional capabilities worth a boot log line. */
+  warnings: string[];
+}
+
+type Env = Record<string, string | undefined>;
+
+function parseBool(raw: string | undefined, fallback: boolean): boolean | null {
+  if (raw === undefined || raw === "") return fallback;
+  if (raw === "1" || raw === "true") return true;
+  if (raw === "0" || raw === "false") return false;
+  return null;
+}
+
+function validUrl(raw: string): boolean {
+  try {
+    const u = new URL(raw);
+    return u.protocol === "http:" || u.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+export function readServerEnv(env: Env): ServerEnvResult {
+  const problems: string[] = [];
+  const warnings: string[] = [];
+  const production = env.APP_ENV === "production" || env.NODE_ENV === "production";
+
+  let port = 3000;
+  if (env.PORT !== undefined && env.PORT !== "") {
+    const parsed = Number.parseInt(env.PORT, 10);
+    if (Number.isNaN(parsed) || parsed < 0 || parsed > 65535 || String(parsed) !== env.PORT.trim()) {
+      problems.push(`PORT must be an integer 0–65535, got "${env.PORT}"`);
+    } else {
+      port = parsed;
+    }
+  }
+
+  let liveApiBase = DEFAULT_LIVE_API_BASE;
+  if (env.LIVE_API_BASE) {
+    if (validUrl(env.LIVE_API_BASE)) liveApiBase = env.LIVE_API_BASE.replace(/\/$/, "");
+    else problems.push(`LIVE_API_BASE must be an http(s) URL, got "${env.LIVE_API_BASE}"`);
+  }
+
+  let plausibleHost = DEFAULT_PLAUSIBLE_HOST;
+  if (env.PLAUSIBLE_HOST) {
+    if (validUrl(env.PLAUSIBLE_HOST)) plausibleHost = env.PLAUSIBLE_HOST.replace(/\/$/, "");
+    else problems.push(`PLAUSIBLE_HOST must be an http(s) URL, got "${env.PLAUSIBLE_HOST}"`);
+  }
+
+  const enableRefreshCron = parseBool(env.ENABLE_REFRESH_CRON, false);
+  if (enableRefreshCron === null)
+    problems.push(`ENABLE_REFRESH_CRON must be 1/0/true/false, got "${env.ENABLE_REFRESH_CRON}"`);
+
+  const logRequests = parseBool(env.LOG_REQUESTS, production);
+  if (logRequests === null)
+    problems.push(`LOG_REQUESTS must be 1/0/true/false, got "${env.LOG_REQUESTS}"`);
+
+  if (production) {
+    if (!env.PLAUSIBLE_DOMAIN) warnings.push("PLAUSIBLE_DOMAIN not set — analytics tag disabled");
+    if (!env.CLOUDFLARE_API_TOKEN)
+      warnings.push("CLOUDFLARE_API_TOKEN not set — refresh will skip the static-fallback publish");
+    if (!env.LITESTREAM_REPLICA_URL)
+      warnings.push("LITESTREAM_REPLICA_URL not set — the db is NOT being replicated");
+  }
+
+  return {
+    config: {
+      production,
+      port,
+      dataDir: env.NASCAR_DATA_DIR ?? "data",
+      liveApiBase,
+      plausibleDomain: env.PLAUSIBLE_DOMAIN || null,
+      plausibleHost,
+      enableRefreshCron: enableRefreshCron ?? false,
+      logRequests: logRequests ?? production,
+    },
+    problems,
+    warnings,
+  };
+}
+
+/** Boot-time entry: fail fast in production on malformed env; warn otherwise. */
+export function requireServerEnv(env: Env): ServerEnvResult {
+  const result = readServerEnv(env);
+  if (result.config.production && result.problems.length > 0) {
+    throw new Error(`Invalid server environment:\n  - ${result.problems.join("\n  - ")}`);
+  }
+  return result;
+}
