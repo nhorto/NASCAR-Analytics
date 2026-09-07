@@ -8,7 +8,8 @@ export function requestId(req: Request): string {
   return req.headers.get("x-request-id") ?? req.headers.get("fly-request-id") ?? crypto.randomUUID();
 }
 
-export type CacheClass = "health" | "asset" | "data" | "page" | "error" | "auth" | "download";
+export type CacheClass =
+  | "health" | "asset" | "data" | "page" | "error" | "auth" | "download" | "worker";
 
 // Auth-owned routes are never cacheable anywhere (they set cookies, carry
 // per-user state, or consume single-use tokens). Unsubscribe links and the
@@ -20,6 +21,9 @@ export function cacheClassFor(path: string, status: number): CacheClass {
   if (status >= 400) return "error";
   // CSV exports are Pro-gated and viewer-specific — never shared-cacheable.
   if (path.startsWith("/export/")) return "download";
+  // The service worker must revalidate every load: a cached sw.js is a site
+  // that can never be updated, because the new worker is never fetched.
+  if (path === "/sw.js" || path === "/manifest.webmanifest") return "worker";
   if (path === "/health") return "health";
   if (path === "/style.css" || /^\/[a-z-]+\.js$/.test(path)) return "asset";
   if (path.startsWith("/data/") || path.startsWith("/api/")) return "data";
@@ -34,6 +38,7 @@ const CACHE_CONTROL: Record<CacheClass, string> = {
   error: "no-store",
   auth: "private, no-store",
   download: "private, no-store",
+  worker: "public, max-age=0, must-revalidate",
   asset: "public, max-age=86400",
   data: "public, max-age=300",
   page: "public, max-age=300, stale-while-revalidate=600",

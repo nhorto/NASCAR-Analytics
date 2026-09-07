@@ -20,7 +20,8 @@
     "typecheck": "bunx tsc -p tsconfig.json",
     "typecheck:worker": "bunx tsc -p worker/tsconfig.json",
     "test": "bun test",
-    "backtest:predictions": "bun scripts/backtest-predictions.ts"
+    "backtest:predictions": "bun scripts/backtest-predictions.ts",
+    "gen:icons": "bun run scripts/gen-icons.ts"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260705.1",

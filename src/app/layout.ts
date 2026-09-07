@@ -1,4 +1,5 @@
 import { esc, withSeries, ASSET_VERSION } from "./html.ts";
+import { installBanner } from "./pwa.ts";
 
 /** Origin of the live-companion Worker (Phase 2/3). The site fetches its
  *  /api/live cross-origin (CORS is open on the Worker). Env-overridable so the
@@ -72,6 +73,12 @@ export function page(opts: {
 <meta name="color-scheme" content="dark">
 <title>${esc(opts.title)} · Looplab</title>
 <link rel="stylesheet" href="/style.css?v=${ASSET_VERSION}">
+<link rel="manifest" href="/manifest.webmanifest">
+<meta name="theme-color" content="#0a0c10">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Looplab">
 <script>window.__LIVE_API__=${JSON.stringify(LIVE_API_BASE)};window.__SERIES__=${opts.seriesId};</script>${analyticsTag()}
 </head>
 <body>
@@ -83,11 +90,14 @@ export function page(opts: {
   </header>
   <nav class="series-switch seg">${seriesSwitch}</nav>
   <main class="screen">
+${installBanner()}
 ${opts.content}
   </main>
   <nav class="tabbar">${tabs}</nav>
 </div>
+<script src="/install.js?v=${ASSET_VERSION}" defer></script>
 <script>
+(function(){try{if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js");}}catch(e){}})();
 (function(){try{var a=window.__LIVE_API__,s=window.__SERIES__||1;if(!a)return;
 fetch(a+"/api/live/status?series="+s,{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
 if(d&&d.live){var el=document.querySelector(".tabbar .tab-live .livedot");if(el)el.hidden=false;}}).catch(function(){});}catch(e){}})();

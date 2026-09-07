@@ -280,6 +280,11 @@ form.inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .pred-free tbody tr:nth-child(n+4) { filter: blur(4px); user-select: none; pointer-events: none; }
 .teaser-lock.teaser-lock-rows { top: auto; height: 62%; bottom: 0; }
 .dfs-toggle { display: inline-flex; margin-bottom: 8px; }
+/* PWA install affordance (WS-H) */
+.install-card { border-color: rgba(255,210,63,.35); }
+.install-btn { background: var(--accent); color: #14150e; border: none; border-radius: 999px; padding: 8px 16px; font-weight: 700; font-size: 13px; cursor: pointer; }
+.install-dismiss { background: none; border: none; color: var(--muted); font-size: 13px; padding: 8px 10px; cursor: pointer; }
+
 /* deep tools + email prefs (WS-G) */
 .export-bar { margin: 0 0 8px; text-align: right; }
 .export-bar a { color: var(--accent); text-decoration: none; }

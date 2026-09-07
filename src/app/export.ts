@@ -9,6 +9,9 @@ import { ingestionService, ingestionConfig } from "../domains/data-ingestion/ind
 import { driversService } from "../domains/drivers/index.ts";
 import * as render from "./render.ts";
 import { seasonStatsPayload, trackTypePayload, baselinesPayload } from "./data.ts";
+import { offlineContent, PWA_ICONS, serviceWorkerSource, webManifest } from "./pwa.ts";
+import { page } from "./layout.ts";
+import { LIVE_API_BASE } from "./layout.ts";
 
 const DIST = "dist";
 const SERIES_PREFIX: Record<number, string> = { 1: "", 2: "/xfinity", 3: "/trucks" };
@@ -110,13 +113,38 @@ export async function exportSite(dbPath = "data/nascar.db", log?: Log): Promise<
   await Bun.write(join(DIST, "tracks.js"), Bun.file(new URL("./client/tracks.js", import.meta.url)));
   await Bun.write(join(DIST, "live.js"), Bun.file(new URL("./client/live.js", import.meta.url)));
   await Bun.write(join(DIST, "home-live.js"), Bun.file(new URL("./client/home-live.js", import.meta.url)));
+  await Bun.write(join(DIST, "install.js"), Bun.file(new URL("./client/install.js", import.meta.url)));
+
+  // PWA (WS-H): the static fallback host must be installable too, so the
+  // manifest, worker, icons and offline page ship with the export.
+  await Bun.write(join(DIST, "manifest.webmanifest"), JSON.stringify(webManifest()));
+  await Bun.write(join(DIST, "sw.js"), serviceWorkerSource(new URL(LIVE_API_BASE).origin));
+  for (const icon of PWA_ICONS) {
+    await Bun.write(join(DIST, "icons", icon), Bun.file(new URL(`./static/icons/${icon}`, import.meta.url)));
+  }
+  await write(
+    "/offline",
+    page({
+      title: "Offline",
+      active: "home",
+      seriesId: ingestionConfig.SERIES.cup,
+      season: render.currentSeason(p, ingestionConfig.SERIES.cup),
+      content: offlineContent(),
+    }),
+  );
   await Bun.write(join(DIST, "404.html"), render.render404(1, render.currentSeason(p, 1), "Page"));
 
   // Cloudflare Pages reads _headers from the output root. Data + assets change
   // only on a weekly rebuild, so a modest cache is safe.
   await Bun.write(
     join(DIST, "_headers"),
-    `/data/*\n  Cache-Control: public, max-age=3600\n/*.css\n  Cache-Control: public, max-age=3600\n/*.js\n  Cache-Control: public, max-age=3600\n`,
+    `/data/*\n  Cache-Control: public, max-age=3600\n/*.css\n  Cache-Control: public, max-age=3600\n/*.js\n  Cache-Control: public, max-age=3600\n` +
+      // The worker and manifest must revalidate, or an installed PWA pins
+      // itself to a stale worker and never picks up a deploy. These MUST stay
+      // after the `/*.js` rule above: Cloudflare applies every matching rule
+      // and the last one to set a header wins.
+      `/sw.js\n  Cache-Control: public, max-age=0, must-revalidate\n` +
+      `/manifest.webmanifest\n  Cache-Control: public, max-age=0, must-revalidate\n`,
   );
 
   db.close();
