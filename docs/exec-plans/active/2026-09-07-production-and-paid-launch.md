@@ -252,15 +252,27 @@ Build:
   season pass one-time), Customer Portal link, webhook handler with
   idempotency (`stripe_events`), entitlement writes per §7 of the spec,
   grace handling, manual grants CLI for testers.
+  ✅ 2026-09-08 (webhook slice, ahead of the Stripe account): the webhook
+  state machine (`billingService.applyStripeEvent`) with `stripe_events`
+  idempotency, `billing_profiles` customer↔user mapping + out-of-order
+  guard, entitlement writes per §7, `/webhooks/stripe` with mandatory
+  signature verification, and account deletion cancelling the live
+  subscription at Stripe before deleting (spec §6). Checkout session
+  creation, Portal links, and the pricing CTAs still wait on E1–E3.
 - `/pricing`, upgrade CTAs, post-checkout landing, past-due banner.
 - Legal pages rendered from `docs/legal/*.md`; linked at checkout.
 
 Acceptance:
-- [ ] Webhook state machine unit-tested for: trial start, trial→paid,
+- [x] Webhook state machine unit-tested for: trial start, trial→paid,
       payment failed→grace→off, cancel at period end, season pass purchase,
       refund, duplicate event delivery, out-of-order events.
+      ✅ 2026-09-08 — tests/billing.webhooks.test.ts (synthetic Stripe
+      payloads), tests/providers.stripe.test.ts (signature negative cases),
+      endpoint + deletion e2e in tests/app.webhooks.test.ts and
+      tests/app.auth.test.ts.
 - [ ] Stripe test-mode end-to-end: trial signup, card update, cancel, pass
       purchase, each reflected on `/account` within one webhook.
+      (Gated on the owner's Stripe account — E1–E3 above.)
 - [ ] Lawyer review of terms/privacy done; changes applied.
 
 ### WS-F Predictions and DFS (weeks 5–6)

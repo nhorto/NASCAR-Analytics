@@ -1,14 +1,15 @@
-// Inbound provider webhooks (WS-G). Today that means Resend delivery events:
-// a hard bounce or a spam complaint suppresses that address so we stop mailing
-// it — sending into a dead address or an angry inbox is how a young sending
-// domain loses its reputation.
+// Inbound provider webhooks: Resend delivery events (WS-G — a hard bounce or
+// spam complaint suppresses that address so we stop mailing it) and Stripe
+// billing events (WS-E — the only source of truth for entitlement).
 //
-// The signature check is mandatory: this endpoint mutates deliverability state
-// from an unauthenticated origin, so an unsigned or stale request is refused
-// before the body is parsed as anything meaningful.
+// The signature checks are mandatory: these endpoints mutate deliverability
+// and billing state from an unauthenticated origin, so an unsigned or stale
+// request is refused before the body is parsed as anything meaningful.
 import type { Providers } from "../providers/index.ts";
 import { accountsService } from "../domains/accounts/index.ts";
+import { billingService } from "../domains/billing/index.ts";
 import { verifyWebhookSignature } from "../providers/email.ts";
+import { verifyStripeSignature } from "../providers/stripe.ts";
 import { logLine } from "./http.ts";
 
 type P = Pick<Providers, "db">;
@@ -104,4 +105,66 @@ export async function handleWebhookRequest(
   if (suppressed)
     deps.log?.info(logLine("info", "address suppressed", { type, reason }));
   return json({ ok: true, recorded: fresh, suppressed }, 200);
+}
+
+export const STRIPE_WEBHOOK_PATH = "/webhooks/stripe";
+
+export interface StripeWebhookDeps {
+  /** STRIPE_WEBHOOK_SECRET; null disables the endpoint (503 rather than 200). */
+  secret: string | null;
+  now?: () => Date;
+  log?: { info: (m: string) => void; warn: (m: string) => void };
+}
+
+/**
+ * Handles Stripe webhook deliveries; returns null for every other path so the
+ * server falls through to its router. Verified events feed the billing state
+ * machine; anything it cannot apply (unknown type, unknown customer, stale or
+ * duplicate delivery) is still acknowledged with a 200 — a non-2xx would make
+ * Stripe retry a delivery that will never succeed.
+ */
+export async function handleStripeWebhookRequest(
+  p: P,
+  req: Request,
+  url: URL,
+  deps: StripeWebhookDeps,
+): Promise<Response | null> {
+  if (url.pathname !== STRIPE_WEBHOOK_PATH) return null;
+  if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+  const now = deps.now?.() ?? new Date();
+
+  if (!deps.secret) {
+    deps.log?.warn(logLine("error", "stripe webhook received but STRIPE_WEBHOOK_SECRET is unset", {}));
+    return json({ error: "webhook_not_configured" }, 503);
+  }
+
+  const body = await req.text();
+  const verdict = verifyStripeSignature({
+    secret: deps.secret,
+    header: req.headers.get("stripe-signature"),
+    body,
+    nowSeconds: Math.floor(now.getTime() / 1000),
+  });
+  if (!verdict.ok) {
+    deps.log?.warn(logLine("error", "stripe webhook signature rejected", { reason: verdict.reason }));
+    return json({ error: "invalid_signature" }, 400);
+  }
+
+  let payload: unknown;
+  try {
+    payload = JSON.parse(body);
+  } catch {
+    return json({ error: "invalid_json" }, 400);
+  }
+
+  const outcome = billingService.applyStripeEvent(p, payload, now);
+  if (outcome.action === "malformed_event") return json({ error: "malformed_event" }, 400);
+  deps.log?.info(
+    logLine("info", "stripe webhook", {
+      type: (payload as { type?: string }).type ?? "unknown",
+      applied: outcome.applied,
+      action: outcome.action,
+    }),
+  );
+  return json({ ok: true, applied: outcome.applied, action: outcome.action }, 200);
 }

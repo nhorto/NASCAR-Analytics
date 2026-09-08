@@ -1,7 +1,7 @@
 // End-to-end ingestion against an in-memory DB with a fake CDN serving the
 // real-data fixtures. Verifies orchestration, idempotent skip, and coverage.
 import { describe, expect, test } from "bun:test";
-import { createDb, createNullArchive, type Providers, type CdnFetchResult, createNullHibp } from "../src/providers/index.ts";
+import { createDb, createNullArchive, type Providers, type CdnFetchResult, createNullHibp, createNullStripe } from "../src/providers/index.ts";
 import { backfill, coverage } from "../src/domains/data-ingestion/service.ts";
 import {
   scheduleUrl,
@@ -33,6 +33,7 @@ function fakeProviders(
     db: createDb(":memory:"),
     archive: createNullArchive(),
     hibp: createNullHibp(),
+    stripe: createNullStripe(),
     cdn: {
       async fetchJson(url: string): Promise<CdnFetchResult> {
         requests.set(url, (requests.get(url) ?? 0) + 1);

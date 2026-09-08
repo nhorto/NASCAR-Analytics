@@ -18,7 +18,7 @@ import { unsubscribeContent } from "./pages/unsubscribe.ts";
 import * as emails from "./emails.ts";
 import type { EmailKind } from "../domains/accounts/index.ts";
 
-type P = Pick<Providers, "db" | "hibp">;
+type P = Pick<Providers, "db" | "hibp" | "stripe">;
 
 export interface AuthDeps {
   email: EmailClient;
@@ -325,13 +325,32 @@ async function handleRecoveryPost(path: string, ctx: PostCtx): Promise<Response 
 
   if (path === "/auth/delete") {
     if (!viewer.user) return redirect("/signin");
-    const result = await accountsService.deleteAccount(p, viewer.user.userId, str(form.get("password")));
-    if (!result.ok)
-      return shell(p, "Account", accountContent({
-        viewer, csrf: csrfToken, error: result.reason, notice: null,
-        prefs: accountsService.emailPrefs(p, viewer.user.userId, now),
-      }), 400);
-    // WS-E TODO: cancel any live Stripe subscription here before revoking.
+    const deleteError = (reason: string, status: number) =>
+      shell(p, "Account", accountContent({
+        viewer, csrf: csrfToken, error: reason, notice: null,
+        prefs: accountsService.emailPrefs(p, viewer.user!.userId, now),
+      }), status);
+    const password = str(form.get("password"));
+    if (!(await accountsService.verifyPassword(p, viewer.user.userId, password)))
+      return deleteError("Password is incorrect.", 400);
+    // Spec §6: deletion cancels any live subscription. Cancel at Stripe
+    // *before* deleting — refusing here beats orphaning a paying subscription
+    // on an account that no longer exists.
+    const subscriptionId = billingService.cancelableSubscriptionId(p, viewer.user.userId);
+    if (subscriptionId) {
+      const cancel = await p.stripe.cancelSubscription(subscriptionId);
+      if (!cancel.ok) {
+        console.error(logLine("error", "subscription cancel failed during account deletion", {
+          userId: viewer.user.userId, detail: cancel.detail,
+        }));
+        return deleteError(
+          "We could not cancel your subscription just now. Try again in a minute, or cancel it from the billing portal first.",
+          502,
+        );
+      }
+    }
+    const result = await accountsService.deleteAccount(p, viewer.user.userId, password);
+    if (!result.ok) return deleteError(result.reason, 400);
     billingService.revoke(p, viewer.user.userId);
     return shell(p, "Account deleted", authPages.messageContent(
       "Account deleted",

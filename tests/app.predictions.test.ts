@@ -10,6 +10,7 @@ import { billingService } from "../src/domains/billing/index.ts";
 import { predictionsService, type ScoringRules } from "../src/domains/predictions/index.ts";
 import { createNullArchive } from "../src/providers/raw-archive.ts";
 import { createNullHibp } from "../src/providers/hibp.ts";
+import { createNullStripe } from "../src/providers/stripe.ts";
 import { createNascarCdnClient } from "../src/providers/nascar-cdn.ts";
 import type { Providers } from "../src/providers/index.ts";
 import { testDb, seedDriver, seedRace, seedResult, seedLoop } from "./seed.ts";
@@ -44,6 +45,7 @@ beforeAll(async () => {
     cdn: createNascarCdnClient({ delayMs: 0, retries: 0, retryBaseDelayMs: 0, userAgent: "test" }),
     archive: createNullArchive(),
     hibp: createNullHibp(),
+    stripe: createNullStripe(),
   };
   analyticsService.computeAll(providers);
   predictionsService.generatePredictions(providers, {

@@ -4,7 +4,8 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { signWebhook, verifyWebhookSignature } from "../src/providers/email.ts";
-import { handleWebhookRequest, recipientOf, suppressionFor } from "../src/app/webhooks.ts";
+import { signStripePayload } from "../src/providers/stripe.ts";
+import { handleWebhookRequest, handleStripeWebhookRequest, recipientOf, suppressionFor } from "../src/app/webhooks.ts";
 import { accountsService } from "../src/domains/accounts/index.ts";
 import { testDb, seedUser } from "./seed.ts";
 
@@ -199,6 +200,77 @@ describe("webhook route", () => {
     expect(get.status).toBe(405);
     expect(
       await handleWebhookRequest(p, signedRequest("{}"), new URL("http://x/health"), deps),
+    ).toBeNull();
+  });
+});
+
+// --- Stripe endpoint (WS-E) ---
+
+describe("stripe webhook endpoint", () => {
+  const STRIPE_SECRET = "whsec_stripe_test";
+  const stripeUrl = new URL("http://x/webhooks/stripe");
+  const stripeDeps = { secret: STRIPE_SECRET, now: () => NOW };
+
+  function stripeBody(id: string): string {
+    return JSON.stringify({
+      id,
+      type: "checkout.session.completed",
+      created: NOW_S,
+      data: { object: { mode: "payment", customer: "cus_wh", client_reference_id: "42" } },
+    });
+  }
+
+  function stripeRequest(body: string, opts: { signature?: string; method?: string } = {}): Request {
+    const sig = opts.signature ?? `t=${NOW_S},v1=${signStripePayload(STRIPE_SECRET, String(NOW_S), body)}`;
+    return new Request("http://x/webhooks/stripe", {
+      method: opts.method ?? "POST",
+      headers: { "stripe-signature": sig },
+      body: opts.method === "GET" ? undefined : body,
+    });
+  }
+
+  test("a signed event reaches the state machine; the replay is a no-op", async () => {
+    const body = stripeBody("evt_wh_1");
+    const res = (await handleStripeWebhookRequest(p, stripeRequest(body), stripeUrl, stripeDeps))!;
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, applied: true, action: "season_pass_granted" });
+
+    const replay = (await handleStripeWebhookRequest(p, stripeRequest(body), stripeUrl, stripeDeps))!;
+    expect(await replay.json()).toEqual({ ok: true, applied: false, action: "duplicate" });
+  });
+
+  test("a bad signature never reaches the state machine", async () => {
+    const body = stripeBody("evt_wh_2");
+    const res = (await handleStripeWebhookRequest(
+      p, stripeRequest(body, { signature: `t=${NOW_S},v1=${"0".repeat(64)}` }), stripeUrl, stripeDeps,
+    ))!;
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: "invalid_signature" });
+    // The event was not recorded: the same id still applies afterwards.
+    const good = (await handleStripeWebhookRequest(p, stripeRequest(body), stripeUrl, stripeDeps))!;
+    expect(await good.json()).toMatchObject({ applied: true });
+  });
+
+  test("unconfigured secret answers 503; signed garbage answers 400", async () => {
+    const off = (await handleStripeWebhookRequest(
+      p, stripeRequest(stripeBody("evt_wh_3")), stripeUrl, { secret: null, now: () => NOW },
+    ))!;
+    expect(off.status).toBe(503);
+
+    const badJson = (await handleStripeWebhookRequest(p, stripeRequest("not json"), stripeUrl, stripeDeps))!;
+    expect(badJson.status).toBe(400);
+    expect(await badJson.json()).toEqual({ error: "invalid_json" });
+
+    const badShape = (await handleStripeWebhookRequest(p, stripeRequest("{}"), stripeUrl, stripeDeps))!;
+    expect(badShape.status).toBe(400);
+    expect(await badShape.json()).toEqual({ error: "malformed_event" });
+  });
+
+  test("GET is refused and other paths fall through to the site router", async () => {
+    const get = (await handleStripeWebhookRequest(p, stripeRequest("", { method: "GET" }), stripeUrl, stripeDeps))!;
+    expect(get.status).toBe(405);
+    expect(
+      await handleStripeWebhookRequest(p, stripeRequest("{}"), new URL("http://x/health"), stripeDeps),
     ).toBeNull();
   });
 });

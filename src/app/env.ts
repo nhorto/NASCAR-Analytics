@@ -24,6 +24,9 @@ export interface ServerConfig {
   /** Resend webhook signing secret (bounce/complaint suppression, WS-G).
    *  Null leaves /webhooks/resend answering 503 instead of trusting input. */
   resendWebhookSecret: string | null;
+  /** Stripe webhook signing secret (entitlement source of truth, WS-E).
+   *  Null leaves /webhooks/stripe answering 503 instead of trusting input. */
+  stripeWebhookSecret: string | null;
   /** True when both VAPID keys are present — push is offered only then (WS-H). */
   pushConfigured: boolean;
   /** Poll the live Worker and push race alerts to subscribers (WS-H). */
@@ -134,6 +137,10 @@ export function readServerEnv(env: Env): ServerEnvResult {
       warnings.push("RESEND_API_KEY not set — verify/reset/alert emails will only be logged");
     if (!env.RESEND_WEBHOOK_SECRET)
       warnings.push("RESEND_WEBHOOK_SECRET not set — bounce/complaint suppression is disabled");
+    if (!env.STRIPE_WEBHOOK_SECRET)
+      warnings.push("STRIPE_WEBHOOK_SECRET not set — Stripe billing webhooks are disabled");
+    if (!env.STRIPE_SECRET_KEY)
+      warnings.push("STRIPE_SECRET_KEY not set — account deletion cannot cancel subscriptions at Stripe");
     if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY)
       warnings.push("VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY not set — race push alerts are disabled");
   }
@@ -151,6 +158,7 @@ export function readServerEnv(env: Env): ServerEnvResult {
       enablePredictionsCron: enablePredictionsCron ?? false,
       enableEmailDigests: enableEmailDigests ?? false,
       resendWebhookSecret: env.RESEND_WEBHOOK_SECRET || null,
+      stripeWebhookSecret: env.STRIPE_WEBHOOK_SECRET || null,
       pushConfigured: Boolean(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY),
       enablePushDispatcher: enablePushDispatcher ?? false,
       logRequests: logRequests ?? production,
