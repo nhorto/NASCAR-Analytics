@@ -2,7 +2,7 @@
 
 **Status:** Design research — for owner review before building the live page.
 **Companion mockup:** [`2026-07-05-live-ui-mockup.html`](2026-07-05-live-ui-mockup.html) (open it; frame 2 is interactive).
-**Plan:** [Live Race Day Companion](../exec-plans/active/2026-07-05-live-race-companion.md) — this is the UI for **Phase 3**.
+**Plan:** [Live Race Day Companion](../exec-plans/completed/2026-07-05-live-race-companion.md) — this is the UI for **Phase 3**.
 **Depends on:** Phase 1 (`live` domain: `normalizeFeed`, `computeLiveMetrics`, `deriveAlerts`, `pitCycleModel`, `baselines.json`) and Phase 2 (`GET /api/live` snapshot). Built, pending push.
 
 ---

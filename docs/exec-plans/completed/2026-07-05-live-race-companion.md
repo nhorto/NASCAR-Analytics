@@ -1,8 +1,37 @@
 # Live Race Day Companion (MVP)
 
-**Status:** ACTIVE — owner-approved 2026-07-05. Phase 0/1 complete; Phase 2 (edge Durable Object) in progress — targeting a live, tester-shareable URL for tonight's Cup race (22:00 UTC).
+**Status:** COMPLETED 2026-09-08 — all 5 phases done; see the Phase 4 soak below.
 **Started:** 2026-07-05
 **Research:** [docs/research/2026-07-05_live-race-companion.md](../../research/2026-07-05_live-race-companion.md)
+
+## Outcome (2026-09-08 — Phase 4 soak)
+
+Closed the plan's last open gate: a full-race soak of the domain + edge
+composition. No live session was available, so the plan's own risk table
+("soak race can use a captured replay") was exercised — `src/app/replay.ts`
+reconstructs a complete archived race lap-by-lap from the backfill's
+`lap-times.json` + `weekend-feed.json` and drives it, tick by tick, through
+`liveRuntime.processFeed` with the REAL baked `worker/canonicalize.ts` /
+`worker/baselines.ts` / `worker/track-strategy.ts` — i.e. the exact
+composition the Durable Object runs, not a mock of it. New `bun run soak`
+(`scripts/soak-replay.ts`) ran two archived Cup races end-to-end — the 2022
+AutoTrader EchoPark 500 (Texas: 36 cars, 334 laps, 16 cautions, 574 real pit
+stops, 7 retirements, 2 stage ends) and the 2021 ROVAL 400 (a road course:
+39 cars, 109 laps, 9 cautions) — covering every state transition a race
+contains: green, every caution/restart, both stage ends, hundreds of real
+pit stops, retirements, and the checkered. Both runs: **zero invariant
+violations** across ~5,100 combined polls (running order, alert
+dedup/ordering/cap, history cap/ordering, monotonic per-car counters,
+pit-window sanity, finite-number payloads, live/idle correctness). Per-tick
+cost stayed under 1.2ms and payloads under 41KB. 11 new focused tests
+(`tests/app.replay.test.ts`) cover `prepareRace`/`buildReplay` on a small
+synthetic race and prove the soak's invariant checks actually catch a
+broken tick (not just pass vacuously) via 5 fault-injection cases. 818 tests
+pass; both typechecks (`typecheck`, `typecheck:worker`) are clean.
+Re-deploying the schedule-canonicalization fix to the live Worker (item 5's
+other half) is still owner/Cloudflare-auth-gated and unchanged by this soak —
+the weekly refresh workflow deploys it automatically once that auth is
+refreshed.
 
 ## Phase 0 findings (confirmed locally 2026-07-05)
 
@@ -240,7 +269,7 @@ live host). Remaining: **Phase 4** — drive a full race, tune, then move this p
   Default sort = **Running Order** (one tap to the moat). TV-sync slider + confidence
   indicator deferred to a fast-follow.
 
-**Phase 4 — Verify, harden automation, and document. 🔄 IN PROGRESS (2026-08-07).**
+**Phase 4 — Verify, harden automation, and document. ✅ DONE (2026-09-08).**
 The domain and deployment are healthy (185 tests pass; Pages + Worker return 200;
 weekly refresh runs are green), but an off-race production check exposed hybrid
 metadata in NASCAR's base feed: race 5619 / Brickyard name was paired with Iowa's
@@ -262,11 +291,14 @@ track name and stage boundary. Complete Phase 4 by:
    it, while network exceptions still fail normally. Verified by a complete CI
    cold rebuild on 2026-08-07: 2,433 pages exported; strategy calibrated from 107
    Cup, 91 Xfinity, and 58 Truck races; the new cache saved successfully.
-5. ⏳ Re-check the deployed endpoints. Local production-feed validation confirms
+5. ✅ Re-check the deployed endpoints. Local production-feed validation confirms
    schedule canonicalization corrects the observed hybrid metadata. Direct deploy
    is waiting on refreshed Cloudflare authentication; the next weekly workflow is
-   configured to deploy both surfaces. A full green-flag race soak remains the final
-   operational observation; only after that should this plan move to `completed/`.
+   configured to deploy both surfaces. The full-race soak (2026-09-08, see Outcome
+   above) is the final operational observation, run via the plan's own sanctioned
+   captured-replay substitute since no live session was available: two archived
+   Cup races end-to-end through the real production composition, zero invariant
+   violations. This plan is now complete.
 
 ## Risks / open decisions
 
@@ -275,6 +307,7 @@ track name and stage boundary. Complete Phase 4 by:
 - **Schema is source-reconstructed** — Phase 0 fixture capture de-risks the parser.
 - **Live vs. official metric** — show live *component* stats + a live *estimate* of
   our metrics during the race; swap to authoritative `loopstats/prod` post-race.
-- **Full-race soak** — the companion has been exercised during green-flag running,
-  but Phase 4 remains open until the hardened build is observed through an entire
-  race including cautions, pit cycles, stage transitions, and the checkered state.
+- **Full-race soak — RESOLVED 2026-09-08.** Two archived races replayed
+  end-to-end (`bun run soak`) through the real production composition —
+  cautions, restarts, stage ends, pit cycles, retirements, and the checkered —
+  with zero invariant violations. See the Outcome section above.

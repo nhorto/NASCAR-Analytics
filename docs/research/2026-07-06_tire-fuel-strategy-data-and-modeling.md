@@ -1,6 +1,6 @@
 # Tire, Fuel & Strategy — Data Sources and Modeling Methods (2026-07-06)
 
-> Research backing the strategy layer of the [Live Race Day Companion](../exec-plans/active/2026-07-05-live-race-companion.md).
+> Research backing the strategy layer of the [Live Race Day Companion](../exec-plans/completed/2026-07-05-live-race-companion.md).
 > Question: for tire wear, fuel, and pit strategy — including how they vary by track —
 > **is there a data feed that carries this, or must we compute it? And how?**
 > Method: fan-out web search → 21 sources fetched → 47 claims extracted → 25 adversarially
