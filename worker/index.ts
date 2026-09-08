@@ -4,7 +4,7 @@
 // Object alarm loop, computing our live metrics + alerts via the pure `live`
 // domain, and (2) serves both the JSON API (GET /api/live) and a self-contained
 // live page (GET /). One workers.dev URL is the whole product — no Pages
-// redeploy, no cross-origin. See docs/exec-plans/active/2026-07-05-live-race-companion.md.
+// redeploy, no cross-origin. See docs/exec-plans/completed/2026-07-05-live-race-companion.md.
 
 import { liveConfig, liveRuntime, liveService } from "../src/domains/live/index.ts";
 import type {

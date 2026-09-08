@@ -9,7 +9,7 @@
 //
 // This whole domain must run in BOTH Bun and the Cloudflare Workers runtime, so
 // types carry zero runtime imports and nothing external (enforced by architecture
-// tests). See docs/exec-plans/active/2026-07-05-live-race-companion.md.
+// tests). See docs/exec-plans/completed/2026-07-05-live-race-companion.md.
 
 // ---- Raw CDN feed ----
 
