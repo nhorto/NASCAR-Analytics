@@ -117,6 +117,7 @@ worker/                      Edge deploy target — the `looplab-live` Cloudflar
 ├── wrangler.toml            Worker config: DO binding + sqlite migration + workers_dev
 └── tsconfig.json            Cloudflare-types typecheck (separate from root)
 scripts/
+├── build-brand-v3.ts       Builds the standalone V3 logo gallery from preserved generated PNGs; design artifact only
 ├── gen-worker-baselines.ts  Regenerates worker/baselines.ts from the exported dist data
 ├── calibrate-strategy.ts    `bun run calibrate --series N` — typical-run median + pit-discontinuity tire severity from the backfill → track-strategy.ts (LOCAL: needs the backfill DB + archives)
 ├── backtest-strategy.ts     `bun run backtest` — held-out (temporal-split) evaluation of the pit-cadence prediction vs baselines → docs/research/2026-07-06_strategy-backtest.md
@@ -311,6 +312,9 @@ docs/
 ├── SECURITY.md              Security requirements
 ├── design-docs/
 │   ├── index.md             Design docs index
+│   ├── 2026-09-08-brand-exploration.html  Standalone naming/logo concept studio (offline SVG previews and exports; not a production route)
+│   ├── 2026-09-08-brand-exploration-v3.html  Generated tire/track gallery with editable sidewall lettering; rebuilt by scripts/build-brand-v3.ts
+│   ├── brand-v3-assets/     Original generated PNG masters and exact prompt provenance
 │   └── core-beliefs.md      Core product beliefs
 ├── exec-plans/
 │   ├── active/              Work in progress
