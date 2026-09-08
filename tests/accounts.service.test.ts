@@ -4,6 +4,7 @@
 import { describe, expect, test } from "bun:test";
 import { accountsService, accountsConfig } from "../src/domains/accounts/index.ts";
 import { testDb, seedUser } from "./seed.ts";
+import { createNullHibp } from "../src/providers/hibp.ts";
 
 const svc = accountsService;
 const T0 = new Date("2026-09-07T12:00:00Z");
@@ -13,7 +14,9 @@ const DAY = 24 * HOUR;
 const PW = "orange-gearbox-77";
 
 function freshP() {
-  return { db: testDb() };
+  // Null HIBP client: these tests cover the offline policy and the fail-open
+  // path. Breach rejection has its own tests with a stub client.
+  return { db: testDb(), hibp: createNullHibp() };
 }
 
 async function signedUp(p = freshP()) {
@@ -34,6 +37,79 @@ describe("password policy", () => {
       "Password can't be your email address.",
     );
     expect(svc.validatePassword(PW, "a@b.c")).toBeNull();
+  });
+});
+
+describe("breached-password check (HIBP)", () => {
+  /** A client that reports `count` for every password. */
+  const hibp = (count: number | null) => ({ breachCount: async () => count });
+  const BREACHED = accountsConfig.BREACHED_PASSWORD_REASON;
+
+  test("a password seen even once in the corpus is refused at sign-up", async () => {
+    const p = { db: testDb(), hibp: hibp(1) };
+    expect(await svc.signUp(p, "nick@example.com", PW, T0)).toEqual({
+      ok: false,
+      reason: BREACHED,
+    });
+    // Nothing was written — the account must not exist.
+    expect(svc.findUserByEmail(p, "nick@example.com")).toBeNull();
+  });
+
+  test("the reason is identical to the offline list's, so probing can't tell them apart", () => {
+    expect(svc.validatePassword("password12345", "a@b.c")).toBe(BREACHED);
+  });
+
+  test("a corpus miss (count 0) is accepted", async () => {
+    const p = { db: testDb(), hibp: hibp(0) };
+    expect((await svc.signUp(p, "nick@example.com", PW, T0)).ok).toBe(true);
+  });
+
+  test("an unavailable check FAILS OPEN — an HIBP outage must not block sign-up", async () => {
+    const p = { db: testDb(), hibp: hibp(null) };
+    expect((await svc.signUp(p, "nick@example.com", PW, T0)).ok).toBe(true);
+  });
+
+  test("the offline list still runs when HIBP says a common password is clean", async () => {
+    const p = { db: testDb(), hibp: hibp(0) };
+    expect(await svc.signUp(p, "nick@example.com", "password12345", T0)).toEqual({
+      ok: false,
+      reason: BREACHED,
+    });
+  });
+
+  test("a duplicate email never reaches the network", async () => {
+    let calls = 0;
+    const p = {
+      db: testDb(),
+      hibp: {
+        breachCount: async () => {
+          calls++;
+          return 0;
+        },
+      },
+    };
+    expect((await svc.signUp(p, "nick@example.com", PW, T0)).ok).toBe(true);
+    expect(calls).toBe(1);
+    expect((await svc.signUp(p, "nick@example.com", "another-fine-pw-9", T0)).ok).toBe(false);
+    expect(calls).toBe(1);
+  });
+
+  test("reset refuses a breached password and leaves the link unused", async () => {
+    const { p, user } = await signedUp();
+    const reset = svc.requestReset(p, user.email, T0)!;
+    const breachedP = { db: p.db, hibp: hibp(4) };
+    expect(await svc.resetPassword(breachedP, reset.token, "new-sturdy-pw-42", later(60_000))).toEqual({
+      ok: false,
+      reason: BREACHED,
+    });
+    // The token survived: a rejected password must not burn the single-use link.
+    const ok = await svc.resetPassword(
+      { db: p.db, hibp: hibp(0) },
+      reset.token,
+      "new-sturdy-pw-42",
+      later(120_000),
+    );
+    expect(ok.ok).toBe(true);
   });
 });
 

@@ -9,11 +9,10 @@
 
 import { ASSET_VERSION } from "../html.ts";
 
-export function tracksShell(seriesId: number, pro = false): string {
+export function tracksShell(): string {
   return `<div id="tracks-app">
     <div class="card"><div class="card-h"><h3>Track Types</h3></div>
     <p class="note">Loading loop-data track-type leaders…</p></div>
   </div>
-  <script>window.__SERIES__=${seriesId};window.__PRO__=${pro ? "true" : "false"};</script>
   <script src="/tracks.js?v=${ASSET_VERSION}"></script>`;
 }

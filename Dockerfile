@@ -7,9 +7,12 @@ FROM litestream/litestream:0.3 AS litestream
 FROM oven/bun:1
 WORKDIR /app
 
-# Full install (not --production): the in-process refresh spawns the CLI,
-# whose deploy leg uses `bunx wrangler` (fetched on demand, cached in the
-# machine's writable layer between weekly runs).
+# Full install (not --production): the in-process refresh spawns the CLI, whose
+# deploy leg runs `bunx wrangler` — pinned as an exact devDependency (WS-I), so
+# it is baked into this layer instead of being fetched from the registry
+# mid-refresh on a machine that may not reach npm. That costs ~150 MB, almost
+# all of it the platform `@cloudflare/workerd-*` binary that only `wrangler
+# dev` uses; `bun install --omit=optional` is the lever if image size matters.
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile
 

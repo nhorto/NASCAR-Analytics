@@ -16,6 +16,8 @@ import type {
   UserRecord,
 } from "./types.ts";
 import {
+  BREACHED_PASSWORD_MIN_COUNT,
+  BREACHED_PASSWORD_REASON,
   COMMON_PASSWORDS,
   PASSWORD_MAX_LENGTH,
   PASSWORD_MIN_LENGTH,
@@ -27,6 +29,9 @@ import {
 import * as repo from "./repo.ts";
 
 type P = Pick<Providers, "db">;
+/** Only the two functions that WRITE a password need the breach lookup; the
+ *  session/token/prefs half of this service stays db-only. */
+type PasswordP = P & Pick<Providers, "hibp">;
 
 const INVALID_CREDENTIALS = "Invalid email or password.";
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -39,16 +44,35 @@ export function validEmail(email: string): boolean {
   return EMAIL_RE.test(email) && email.length <= 254;
 }
 
-/** Password policy (spec §6). Returns a user-safe reason, or null when fine. */
+/**
+ * The synchronous half of the password policy (spec §6) — length, the offline
+ * breach list, password-is-the-email. Returns a user-safe reason, or null.
+ * Callers that write a password must also run `breachedPassword` (below); this
+ * half stays sync so the sign-up form can reject the obvious cases without
+ * touching the network, and so a duplicate-email sign-up never triggers a
+ * lookup at all.
+ */
 export function validatePassword(password: string, email: string): string | null {
   if (password.length < PASSWORD_MIN_LENGTH)
     return `Password must be at least ${PASSWORD_MIN_LENGTH} characters.`;
   if (password.length > PASSWORD_MAX_LENGTH)
     return `Password must be at most ${PASSWORD_MAX_LENGTH} characters.`;
-  if (COMMON_PASSWORDS.has(password.toLowerCase()))
-    return "That password appears in breach lists — pick something less common.";
+  if (COMMON_PASSWORDS.has(password.toLowerCase())) return BREACHED_PASSWORD_REASON;
   if (password.toLowerCase() === normalizeEmail(email))
     return "Password can't be your email address.";
+  return null;
+}
+
+/**
+ * The asynchronous half: a live HIBP k-anonymity lookup (WS-I). Returns the
+ * same user-safe reason as the offline list, or null.
+ *
+ * `null` from the provider means the check could not run — an outage, not a
+ * verdict — and is deliberately NOT a rejection. See providers/hibp.ts.
+ */
+export async function breachedPassword(p: Pick<Providers, "hibp">, password: string): Promise<string | null> {
+  const count = await p.hibp.breachCount(password);
+  if (count !== null && count >= BREACHED_PASSWORD_MIN_COUNT) return BREACHED_PASSWORD_REASON;
   return null;
 }
 
@@ -81,7 +105,7 @@ function toUser(u: UserRecord): User {
 // --- sign-up / sign-in ---
 
 export async function signUp(
-  p: P,
+  p: PasswordP,
   rawEmail: string,
   password: string,
   now: Date,
@@ -92,6 +116,8 @@ export async function signUp(
   if (problem) return { ok: false, reason: problem };
   if (repo.userByEmail(p.db, email))
     return { ok: false, reason: "An account with that email already exists — sign in instead." };
+  const breached = await breachedPassword(p, password);
+  if (breached) return { ok: false, reason: breached };
   const hash = await hashPassword(password);
   const user = repo.insertUser(p.db, email, hash, now.toISOString());
   return { ok: true, user };
@@ -192,7 +218,7 @@ export function requestReset(p: P, rawEmail: string, now: Date): { token: string
 
 /** Consumes the single-use token, sets the password, revokes every session. */
 export async function resetPassword(
-  p: P,
+  p: PasswordP,
   rawToken: string,
   password: string,
   now: Date,
@@ -204,6 +230,8 @@ export async function resetPassword(
   if (!user) return stale;
   const problem = validatePassword(password, user.email);
   if (problem) return { ok: false, reason: problem };
+  const breached = await breachedPassword(p, password);
+  if (breached) return { ok: false, reason: breached };
   const hash = await hashPassword(password);
   if (!repo.consumeToken(p.db, token.tokenHash, now.getTime())) return stale;
   repo.updatePassword(p.db, user.userId, hash);

@@ -10,6 +10,7 @@ import { analyticsService } from "../src/domains/analytics/index.ts";
 import { accountsService } from "../src/domains/accounts/index.ts";
 import { billingService } from "../src/domains/billing/index.ts";
 import { createNullArchive } from "../src/providers/raw-archive.ts";
+import { createNullHibp } from "../src/providers/hibp.ts";
 import { createNascarCdnClient } from "../src/providers/nascar-cdn.ts";
 import type { Providers } from "../src/providers/index.ts";
 import { testDb, seedDriver, seedRace, seedResult } from "./seed.ts";
@@ -33,6 +34,7 @@ beforeAll(() => {
     db,
     cdn: createNascarCdnClient({ delayMs: 0, retries: 0, retryBaseDelayMs: 0, userAgent: "test" }),
     archive: createNullArchive(),
+    hibp: createNullHibp(),
   };
   analyticsService.computeAll(providers);
   analyticsService.computeAll(providers, 2);

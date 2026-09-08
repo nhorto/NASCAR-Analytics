@@ -22,7 +22,9 @@ The site is generated from `data/nascar.db` — a ~160MB SQLite file that is **g
    bun run compute --series 2  # Xfinity
    bun run compute --series 3  # Trucks
    ```
-2. Install Wrangler is not required globally — `bunx wrangler` works on demand.
+2. Wrangler is not required globally — it is pinned as an exact devDependency
+   (WS-I), so `bunx wrangler` resolves the local `4.129.1` after `bun install`
+   rather than fetching whatever is latest. Bump it deliberately, not by range.
 3. Create the Pages project once (interactive; asks you to log in to Cloudflare):
    ```sh
    bun run export

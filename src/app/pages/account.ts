@@ -5,9 +5,11 @@ import { esc, card, fmtDate } from "../html.ts";
 import type { Viewer } from "../viewer.ts";
 import type { EmailPrefs } from "../../domains/accounts/index.ts";
 
+// `data-confirm` (not an inline onsubmit) so the page needs no inline script —
+// boot.js runs the confirm from a delegated submit handler. See WS-I.
 function post(action: string, csrf: string, label: string, extra = "", confirm?: string): string {
-  const onsubmit = confirm ? ` onsubmit="return window.confirm('${esc(confirm)}')"` : "";
-  return `<form class="auth-form inline" method="post" action="${esc(action)}"${onsubmit}>
+  const guard = confirm ? ` data-confirm="${esc(confirm)}"` : "";
+  return `<form class="auth-form inline" method="post" action="${esc(action)}"${guard}>
 <input type="hidden" name="csrf" value="${esc(csrf)}">${extra}
 <button type="submit">${esc(label)}</button></form>`;
 }
@@ -61,7 +63,7 @@ ${post("/auth/signout-all", csrf, "Sign out everywhere")}`;
   const del = `<p class="note">Deletes your account immediately and cancels any subscription.
 Site data (stats, races) is unaffected — only your account is removed.</p>
 <form class="auth-form" method="post" action="/auth/delete"
- onsubmit="return window.confirm('Delete your account permanently?')">
+ data-confirm="Delete your account permanently?">
 <input type="hidden" name="csrf" value="${esc(csrf)}">
 <label>Confirm password<input type="password" name="password" required autocomplete="current-password"></label>
 <button type="submit" class="danger">Delete account</button></form>`;

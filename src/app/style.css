@@ -292,9 +292,12 @@ form.inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .cmp-slots select { min-width: 45%; }
 .pref-row { display: flex; align-items: flex-start; gap: 9px; margin: 8px 0; font-size: 13px; }
 .pref-row input[type="checkbox"] { margin-top: 3px; width: 17px; height: 17px; accent-color: var(--accent); }
+/* A real <button> styled as a link: the print control stays keyboard- and
+   screen-reader-operable, and needs no inline onclick (WS-I / CSP). */
+.linkish { background: none; border: none; padding: 0; font: inherit; color: var(--accent); cursor: pointer; text-decoration: underline; }
 
 @media print {
-  .appbar, .series-switch, .tabbar, .dfs-toggle, .teaser-lock, .export-bar { display: none !important; }
+  .appbar, .series-switch, .tabbar, .dfs-toggle, .teaser-lock, .export-bar, .linkish { display: none !important; }
   body, .shell, .card { background: #fff !important; color: #000 !important; border-color: #ccc !important; }
   .card { box-shadow: none !important; }
   .note a { text-decoration: none; color: #000; }

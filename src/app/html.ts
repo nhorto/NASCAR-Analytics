@@ -12,7 +12,7 @@ import { readFileSync } from "node:fs";
 function computeAssetVersion(): string {
   try {
     let combined = "";
-    for (const rel of ["./style.css", "./client/live.js", "./client/home-live.js"]) {
+    for (const rel of ["./style.css", "./client/boot.js", "./client/live.js", "./client/home-live.js"]) {
       combined += readFileSync(new URL(rel, import.meta.url), "utf8");
     }
     let h = 5381;

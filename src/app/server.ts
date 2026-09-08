@@ -47,6 +47,7 @@ const METHODOLOGY_BACKTEST = {
 };
 
 const STYLE_URL = new URL("./style.css", import.meta.url);
+const BOOT_JS_URL = new URL("./client/boot.js", import.meta.url);
 const INSTALL_JS_URL = new URL("./client/install.js", import.meta.url);
 const PUSH_JS_URL = new URL("./client/push.js", import.meta.url);
 const ICONS_DIR = new URL("./static/icons/", import.meta.url);
@@ -227,6 +228,7 @@ export function createServer(
 
       // --- static assets (no series prefix) ---
       if (path === "/style.css") return file(STYLE_URL, "text/css; charset=utf-8");
+      if (path === "/boot.js") return file(BOOT_JS_URL, "text/javascript; charset=utf-8");
       if (path === "/compare.js") return file(COMPARE_JS_URL, "text/javascript; charset=utf-8");
       if (path === "/tracks.js") return file(TRACKS_JS_URL, "text/javascript; charset=utf-8");
       if (path === "/live.js") return file(LIVE_JS_URL, "text/javascript; charset=utf-8");

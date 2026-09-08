@@ -362,13 +362,37 @@ Acceptance:
 
 ### WS-I Launch hardening (week 8)
 
+Sub-plan: [WS-I hardening](2026-09-07-ws-i-hardening.md) — the owner-free
+items, pulled forward from week 8 and delivered 2026-09-07.
+
 Build:
+- Close `script-src 'unsafe-inline'`; live breached-password check; pin the
+  deploy tool. **(Done — see the sub-plan.)**
 - Security review (`/security-review` on the branch), dependency audit,
   secrets audit, rate-limit tuning, backup restore re-drill, load test at 5×
   expected race-day traffic, error alerting to owner email.
 - Docs: ARCHITECTURE.md current guarantees + what does not exist, QUALITY
   scores, runbooks, tech-debt entries, this plan's acceptance boxes.
 - Launch checklist (§9) walked live with the owner.
+
+Acceptance:
+- [x] The site runs under `script-src 'self'` — no `'unsafe-inline'`, no
+      hashes. Verified across all 628 exported pages: every `<script>` has a
+      `src` and no `on*=` attribute survives. The static export ships the same
+      header set as the server, from the same `securityHeaders()`.
+      *(`style-src 'unsafe-inline'` deliberately stays — per-row computed bar
+      widths and badge colors; recorded in the tech-debt tracker.)*
+- [x] Sign-up and password reset run a live HIBP k-anonymity check that fails
+      open. Verified against the real API: `nascar2020`, `dalejr8888` and
+      `jeffgordon24` were accepted before and are refused now.
+- [x] The weekly deploy leg runs a pinned local wrangler (`4.129.1`), not a
+      registry fetch of whatever is latest; the daily canary no longer
+      downloads it at all.
+- [ ] Security review, dependency + secrets audit against the real
+      deployment, rate-limit tuning under real traffic, restore re-drill on
+      the Fly volume, 5× race-day load test, error alerting to owner email.
+      *(All need the deployed origin and real secrets — A1–A6.)*
+- [ ] Launch checklist (§9) walked live with the owner.
 
 ## 6. Schedule (eight weeks, Mon 2026-09-07 → Sun 2026-11-01)
 

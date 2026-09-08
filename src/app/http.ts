@@ -69,9 +69,15 @@ export interface SecurityHeaderOpts {
 
 export function securityHeaders(opts: SecurityHeaderOpts): Record<string, string> {
   const connect = ["'self'", opts.liveOrigin, opts.plausibleHost].filter(Boolean).join(" ");
-  // 'unsafe-inline' covers the small bootstrap scripts in layout.ts; replacing
-  // them with hashes is logged in the tech-debt tracker for WS-I.
-  const script = ["'self'", "'unsafe-inline'", opts.plausibleHost].filter(Boolean).join(" ");
+  // No 'unsafe-inline' (WS-I): every script is an external file and every
+  // former on*= handler is a delegated listener in client/boot.js. Page config
+  // travels as `<html data-*>` attributes, so nothing needs a per-page hash.
+  // A rendered-HTML test fails if an inline script or handler comes back.
+  //
+  // style-src keeps 'unsafe-inline' on purpose: metric bars and car badges
+  // compute width/background per row, which is not expressible as a class.
+  // Values there are numbers and our own palette entries, never user input.
+  const script = ["'self'", opts.plausibleHost].filter(Boolean).join(" ");
   const headers: Record<string, string> = {
     "Content-Security-Policy":
       `default-src 'self'; script-src ${script}; style-src 'self' 'unsafe-inline'; ` +

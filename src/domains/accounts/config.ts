@@ -29,9 +29,26 @@ export const RATE_LIMITS: Record<
 };
 
 /**
- * v1 breached-password stand-in: the passwords that dominate every breach
- * corpus (lowercased; candidate passwords are lowercased before comparison).
- * A live HIBP k-anonymity check is tracked as tech debt.
+ * Shown for both breach signals — the offline list below and the live HIBP
+ * lookup — so the two are indistinguishable to an attacker probing which
+ * check fired.
+ */
+export const BREACHED_PASSWORD_REASON =
+  "That password appears in breach lists — pick something less common.";
+
+/**
+ * Reject at the first sighting. A password that has appeared even once in a
+ * breach corpus is already in every credential-stuffing list, so a higher
+ * threshold would buy nothing but a worse password.
+ */
+export const BREACHED_PASSWORD_MIN_COUNT = 1;
+
+/**
+ * Offline fast path: the passwords that dominate every breach corpus
+ * (lowercased; candidate passwords are lowercased before comparison). It is no
+ * longer the whole check — providers/hibp.ts does a live k-anonymity range
+ * lookup — but it still runs first, costs nothing, and is the floor that holds
+ * when HIBP is unreachable and the live check fails open.
  */
 export const COMMON_PASSWORDS: ReadonlySet<string> = new Set([
   "1234567890", "12345678910", "0123456789", "1234567891", "9876543210",

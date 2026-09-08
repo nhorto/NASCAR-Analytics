@@ -24,7 +24,7 @@ export function dfsContent(view: DfsView): string {
   const stamp = `<p class="note">${esc(view.raceName)} · ${
     view.stage === "saturday" ? "post-qualifying" : "form-based"
   } run · generated ${esc(new Date(view.generatedAt).toUTCString())} ·
-<a href="#" onclick="window.print();return false">Print cheat sheet</a></p>`;
+<button type="button" class="linkish" data-print>Print cheat sheet</button></p>`;
   const rows = view.rows
     .map(
       (r, i) =>
