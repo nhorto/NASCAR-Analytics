@@ -53,7 +53,7 @@ The app has two independent axes, and the layout keeps them visually separate so
 - **Section** (Home / Drivers / Races / Compare / Tracks) — bottom tab bar.
 Switching series lands on the same section's index for the new series; switching section preserves the current series.
 
-Series lives in the URL **path** (`/`, `/xfinity`, `/trucks`), not a query param, so the site exports to static files (one per series) for Cloudflare Pages. The two interactive views — Compare and Track Explorer — render client-side from shipped JSON but reuse these exact component classes, so they look identical to the server-rendered pages.
+Series lives in the URL **path** (`/home`, `/xfinity/home`, `/trucks/home` — the bare root `/` is the marketing landing page for anonymous visitors as of 2026-09-08), not a query param, so the site exports to static files (one per series) for Cloudflare Pages. The two interactive views — Compare and Track Explorer — render client-side from shipped JSON but reuse these exact component classes, so they look identical to the server-rendered pages.
 
 ## Layout Rules
 

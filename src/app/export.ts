@@ -11,6 +11,7 @@ import * as render from "./render.ts";
 import { seasonStatsPayload, trackTypePayload, baselinesPayload } from "./data.ts";
 import { offlineContent, PWA_ICONS, serviceWorkerSource, webManifest } from "./pwa.ts";
 import { page } from "./layout.ts";
+import { LANDING_SHOTS } from "./pages/welcome.ts";
 import { securityHeaders } from "./http.ts";
 import { LIVE_API_BASE } from "./layout.ts";
 
@@ -52,6 +53,8 @@ export function headersFile(env: Record<string, string | undefined> = process.en
   return (
     rule("/*", security) +
     rule("/data/*", cache("public, max-age=3600")) +
+    rule("/brand/*", cache("public, max-age=86400")) +
+    rule("/shots/*", cache("public, max-age=86400")) +
     rule("/*.css", cache("public, max-age=3600")) +
     rule("/*.js", cache("public, max-age=3600")) +
     rule("/sw.js", cache("public, max-age=0, must-revalidate")) +
@@ -86,7 +89,10 @@ export async function exportSite(dbPath = "data/nascar.db", log?: Log): Promise<
   const careerIds = new Set<number>();
   for (const s of ALL_SERIES) {
     const prefix = SERIES_PREFIX[s]!;
-    await write(prefix || "/", render.renderHome(p, s));
+    // Home lives at /home (the site root is the marketing page). The bare
+    // /xfinity and /trucks roots keep a home copy so pre-flip URLs still land.
+    await write(`${prefix}/home`, render.renderHome(p, s));
+    if (prefix) await write(prefix, render.renderHome(p, s));
     await write(`${prefix}/drivers`, render.renderDriversIndex(p, s, null));
 
     for (const d of driversService.driverIndex(p, s)) {
@@ -144,6 +150,18 @@ export async function exportSite(dbPath = "data/nascar.db", log?: Log): Promise<
     if (html) await write(`/race/${id}`, html);
   }
   log?.info(`race pages: ${raceIds.length}`);
+
+  // Marketing landing page at the site root (static = anonymous), plus its
+  // /welcome alias and image assets (brand tire + real-product screenshots).
+  await write("/", render.renderWelcome());
+  await write("/welcome", render.renderWelcome());
+  await Bun.write(
+    join(DIST, "brand", "tire-master.jpg"),
+    Bun.file(new URL("./static/brand/tire-master.jpg", import.meta.url)),
+  );
+  for (const shot of LANDING_SHOTS) {
+    await Bun.write(join(DIST, "shots", shot), Bun.file(new URL(`./static/shots/${shot}`, import.meta.url)));
+  }
 
   // Static assets + 404.
   await Bun.write(join(DIST, "style.css"), Bun.file(new URL("./style.css", import.meta.url)));

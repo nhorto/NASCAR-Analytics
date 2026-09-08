@@ -175,14 +175,14 @@ describe("export affordance on pages", () => {
   });
 
   test("free pages show the upsell instead of the link", async () => {
-    const html = await (await get("/", { headers: { cookie: freeCookie } })).text();
+    const html = await (await get("/home", { headers: { cookie: freeCookie } })).text();
     expect(html).not.toContain("/export/standings.csv");
     expect(html).toContain("⭳ Export CSV — Pro");
     expect(html).toContain('href="/pricing"');
   });
 
   test("anonymous visitors on the server see the upsell (they can reach /pricing)", async () => {
-    const html = await (await get("/")).text();
+    const html = await (await get("/home")).text();
     expect(html).toContain("⭳ Export CSV — Pro");
     expect(html).not.toContain("/export/standings.csv");
   });

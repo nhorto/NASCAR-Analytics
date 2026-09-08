@@ -19,6 +19,7 @@ import { resolveViewer, hasSessionCookie, type Viewer } from "./viewer.ts";
 import { seriesGated, raceGated, jsonRequestBlocked, PRO_REQUIRED_BODY } from "./gate.ts";
 import { handleAuthRequest } from "./auth.ts";
 import { teaserContent } from "./pages/teaser.ts";
+import { LANDING_SHOTS } from "./pages/welcome.ts";
 import { page, seriesLabel } from "./layout.ts";
 import { exportBar } from "./html.ts";
 import { predictionsService } from "../domains/predictions/index.ts";
@@ -43,6 +44,8 @@ const BOOT_JS_URL = new URL("./client/boot.js", import.meta.url);
 const INSTALL_JS_URL = new URL("./client/install.js", import.meta.url);
 const PUSH_JS_URL = new URL("./client/push.js", import.meta.url);
 const ICONS_DIR = new URL("./static/icons/", import.meta.url);
+const BRAND_TIRE_URL = new URL("./static/brand/tire-master.jpg", import.meta.url);
+const SHOTS_DIR = new URL("./static/shots/", import.meta.url);
 const COMPARE_JS_URL = new URL("./client/compare.js", import.meta.url);
 const TRACKS_JS_URL = new URL("./client/tracks.js", import.meta.url);
 const LIVE_JS_URL = new URL("./client/live.js", import.meta.url);
@@ -227,6 +230,20 @@ export function createServer(
       if (path === "/home-live.js") return file(HOME_LIVE_JS_URL, "text/javascript; charset=utf-8");
       if (path === "/install.js") return file(INSTALL_JS_URL, "text/javascript; charset=utf-8");
       if (path === "/push.js") return file(PUSH_JS_URL, "text/javascript; charset=utf-8");
+      if (path === "/brand/tire-master.jpg") return file(BRAND_TIRE_URL, "image/jpeg");
+      const shot = path.match(/^\/shots\/([a-z-]+\.png)$/);
+      if (shot) {
+        const name = (LANDING_SHOTS as readonly string[]).includes(shot[1]!) ? shot[1]! : null;
+        if (!name) return notFound(SERIES.cup, "Image");
+        return file(new URL(name, SHOTS_DIR), "image/png");
+      }
+
+      // --- site root: the marketing landing page for anonymous visitors, the
+      // app for signed-in ones (owner decision 2026-09-08). The app home also
+      // lives at /home (any series prefix) so signed-out viewers can still
+      // browse the free Cup home. /welcome stays as an alias.
+      if ((path === "/" && !viewer.user) || path === "/welcome")
+        return htmlResponse(render.renderWelcome());
 
       // --- PWA (WS-H) ---
       if (path === "/manifest.webmanifest")
@@ -325,7 +342,8 @@ export function createServer(
       if (seriesGated(seriesId, viewer)) return teaser(seriesId);
       const predRes = predictionPages(rest, seriesId, url, viewer);
       if (predRes) return predRes;
-      if (rest === "/") return htmlResponse(render.renderHome(p, seriesId, viewer.pro));
+      if (rest === "/" || rest === "/home")
+        return htmlResponse(render.renderHome(p, seriesId, viewer.pro));
       if (rest === "/drivers")
         return htmlResponse(
           render.renderDriversIndex(p, seriesId, url.searchParams.get("q"), viewer.pro),

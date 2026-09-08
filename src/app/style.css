@@ -296,6 +296,109 @@ form.inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
    screen-reader-operable, and needs no inline onclick (WS-I / CSP). */
 .linkish { background: none; border: none; padding: 0; font: inherit; color: var(--accent); cursor: pointer; text-decoration: underline; }
 
+/* Marketing landing page (/welcome) — its own responsive document, scoped
+   under body.landing so the app shell is untouched. Same tokens, wider frame. */
+.landing { background: var(--bg); }
+.landing main, .landing .landing-top, .landing .landing-footer { max-width: 1020px; margin: 0 auto; padding: 0 20px; }
+.landing h1 { font-family: var(--display); text-transform: uppercase; letter-spacing: .02em; font-size: clamp(44px, 7vw, 76px); line-height: .95; }
+.landing h2 { font-family: var(--display); text-transform: uppercase; letter-spacing: .04em; font-size: clamp(26px, 4vw, 38px); margin-bottom: 12px; }
+.landing p { line-height: 1.55; max-width: 62ch; }
+.landing-eyebrow { font-family: var(--display); text-transform: uppercase; letter-spacing: .18em; font-size: 13px; color: var(--accent); margin-bottom: 10px; }
+.landing-eyebrow::before { content: ""; display: inline-block; width: 4px; height: 11px; background: var(--accent); border-radius: 2px; margin-right: 8px; }
+
+.landing-top { display: flex; align-items: center; justify-content: space-between; padding-top: 18px; padding-bottom: 18px; }
+.landing-top-nav { display: flex; align-items: center; gap: 18px; font-size: 14px; }
+.landing-top-nav > a:not(.landing-btn) { color: var(--muted); }
+.landing-top-nav > a:not(.landing-btn):hover { color: var(--text); }
+
+.landing-btn { display: inline-block; border-radius: 999px; padding: 11px 22px; font-weight: 700; font-size: 14.5px; letter-spacing: .02em; }
+.landing-btn-solid { background: var(--accent); color: #14150e; }
+.landing-btn-solid:hover { filter: brightness(1.07); }
+.landing-btn-ghost { border: 1px solid var(--border); color: var(--text); }
+.landing-btn-ghost:hover { border-color: var(--accent); color: var(--accent); }
+
+.landing-hero { display: grid; grid-template-columns: 1.2fr 1fr; gap: 28px; align-items: center; padding: 40px 0 24px; }
+.landing-hero-copy .landing-lede { margin: 18px 0 24px; font-size: 17px; color: var(--muted); }
+.landing-cta-row { display: flex; gap: 12px; flex-wrap: wrap; }
+.landing-cta-note { margin-top: 14px; font-size: 13.5px; }
+.landing-cta-note a { color: var(--accent); }
+.landing-hero-art { display: flex; justify-content: center; }
+/* The circle clip hides the JPEG's square edge so the tire melts into --bg. */
+.landing-tire { width: min(100%, 440px); height: auto; clip-path: circle(47%); }
+.landing-tire-name textPath, .landing-tire-tag textPath { fill: var(--accent); font-family: var(--display); font-weight: 700; }
+.landing-tire-name { font-size: 86px; letter-spacing: .1em; }
+.landing-tire-tag { font-size: 38px; letter-spacing: .3em; }
+.landing-tire text { text-anchor: middle; }
+
+.landing-facts { display: flex; flex-wrap: wrap; gap: 10px 26px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); padding: 14px 0; margin: 14px 0 8px; color: var(--muted); font-size: 13.5px; text-transform: uppercase; letter-spacing: .07em; font-family: var(--display); }
+.landing-facts b { color: var(--text); }
+
+.landing-section { padding: 44px 0 8px; }
+.landing-split { display: grid; grid-template-columns: 1.25fr 1fr; gap: 28px; align-items: center; }
+.landing-split-rev { grid-template-columns: 1fr 1.25fr; }
+.landing-list { list-style: none; margin: 16px 0 0; display: flex; flex-direction: column; gap: 10px; }
+.landing-list li { padding-left: 18px; position: relative; font-size: 14.5px; line-height: 1.5; color: var(--muted); }
+.landing-list li::before { content: ""; position: absolute; left: 0; top: 7px; width: 7px; height: 7px; border-radius: 2px; background: var(--accent); }
+.landing-list b { color: var(--text); }
+
+.landing-board { align-self: start; }
+.landing-board-h { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; font-size: 12.5px; }
+.landing-live-pill { display: inline-flex; align-items: center; gap: 6px; font-family: var(--display); font-weight: 700; letter-spacing: .12em; color: var(--neg); font-size: 12px; }
+.landing-live-pill i { width: 8px; height: 8px; border-radius: 50%; background: var(--neg); }
+.landing-board-t { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.landing-board-t th { text-align: left; font-size: 10.5px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); padding: 4px 7px; }
+.landing-board-t td { padding: 7px; border-top: 1px solid var(--border); }
+.landing-board-t th:nth-child(n+3), .landing-board-t td:nth-child(n+3) { text-align: right; }
+.landing-carno { display: inline-block; min-width: 24px; text-align: center; background: var(--surface-2); border: 1px solid var(--border); border-radius: 6px; font-weight: 700; font-size: 12px; padding: 2px 4px; margin-right: 8px; }
+.landing-stars { color: var(--accent); font-size: 11px; letter-spacing: .1em; text-align: right; white-space: nowrap; }
+.landing-strategy { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); font-family: var(--display); font-size: 11px; letter-spacing: .08em; color: var(--muted); }
+.landing-strategy b { color: var(--text); }
+.landing-strategy b.neg { color: var(--neg); }
+.landing-toast { margin-top: 12px; background: var(--surface-2); border: 1px solid rgba(255,210,63,.4); border-radius: 10px; padding: 9px 12px; font-size: 12.5px; }
+.landing-toast-tag { font-family: var(--display); font-weight: 700; font-size: 10.5px; letter-spacing: .1em; color: var(--accent); margin-right: 8px; }
+
+/* Framed real-product screenshots */
+.landing-phone { margin: 0; max-width: 360px; justify-self: center; }
+.landing-phone img { display: block; width: 100%; height: auto; border: 1px solid var(--border); border-radius: 18px; background: var(--bg); box-shadow: 0 18px 48px rgba(0,0,0,.5); }
+.landing-phone figcaption { font-size: 12.5px; margin-top: 10px; text-align: center; }
+.landing-shot-row { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin: 26px 0 20px; align-items: start; }
+.landing-split-rev > .landing-phone { order: 0; }
+
+.landing-metric-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 20px 0 14px; }
+.landing-metric h3 { font-family: var(--display); text-transform: uppercase; letter-spacing: .09em; font-size: 15px; color: var(--accent); margin-bottom: 8px; }
+.landing-metric p { font-size: 14px; color: var(--muted); }
+.landing-feature-row { color: var(--muted); font-size: 13.5px; letter-spacing: .04em; }
+
+.landing-fine { font-size: 12.5px; margin-top: 14px; max-width: 72ch; }
+
+.landing-plans { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 20px; align-items: start; }
+.landing-plan { padding: 20px; display: flex; flex-direction: column; gap: 12px; }
+.landing-plan h3 { font-family: var(--display); text-transform: uppercase; letter-spacing: .1em; font-size: 17px; }
+.landing-plan .landing-btn { text-align: center; margin-top: 4px; }
+.landing-plan-pro { border-color: rgba(255, 210, 63, .5); position: relative; }
+.landing-plan-flag { position: absolute; top: -11px; right: 16px; background: var(--accent); color: #14150e; font-family: var(--display); font-weight: 700; text-transform: uppercase; letter-spacing: .08em; font-size: 11.5px; border-radius: 999px; padding: 4px 12px; }
+.landing-price { font-family: var(--display); font-weight: 700; font-size: 34px; }
+.landing-price span { font-size: 15px; color: var(--muted); font-weight: 400; }
+.landing-price em { font-style: normal; font-size: 15px; color: var(--muted); }
+
+.landing-stores { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
+.landing-store { border: 1px dashed var(--border); border-radius: 12px; padding: 12px 18px; font-size: 14px; color: var(--muted); }
+.landing-store b { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: .1em; color: var(--accent); margin-top: 2px; }
+
+.landing-footer { border-top: 1px solid var(--border); margin-top: 48px; padding-top: 24px; padding-bottom: 40px; display: flex; flex-direction: column; gap: 12px; }
+.landing-footer-nav { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13.5px; }
+.landing-footer-nav a { color: var(--muted); }
+.landing-footer-nav a:hover { color: var(--text); }
+
+@media (max-width: 760px) {
+  .landing-hero { grid-template-columns: 1fr; padding-top: 20px; }
+  .landing-hero-art { order: -1; }
+  .landing-tire { width: min(72vw, 340px); }
+  .landing-split { grid-template-columns: 1fr; }
+  .landing-split-rev > .landing-phone { order: 1; }
+  .landing-metric-grid, .landing-plans, .landing-shot-row { grid-template-columns: 1fr; }
+}
+
 @media print {
   .appbar, .series-switch, .tabbar, .dfs-toggle, .teaser-lock, .export-bar, .linkish { display: none !important; }
   body, .shell, .card { background: #fff !important; color: #000 !important; border-color: #ccc !important; }

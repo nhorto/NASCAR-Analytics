@@ -85,15 +85,26 @@ async function get(path: string, cookie?: string): Promise<{ status: number; bod
 
 describe("web app", () => {
   test("home page renders latest race, standings, and form", async () => {
-    const { status, body } = await get("/");
+    const { status, body } = await get("/home");
     expect(status).toBe(200);
     expect(body).toContain("Road Grand Prix"); // latest completed race
     expect(body).toContain("Beta Racer"); // its winner
     expect(body).toContain("Championship");
   });
 
+  test("the root is the landing page for anonymous visitors, the app for signed-in ones", async () => {
+    const anon = await get("/");
+    expect(anon.status).toBe(200);
+    expect(anon.body).toContain("Race day,"); // marketing hero
+    expect(anon.body).not.toContain("Championship");
+    const signedIn = await get("/", proCookie);
+    expect(signedIn.body).toContain("Championship"); // the app home
+    // /welcome stays as an alias of the landing page.
+    expect((await get("/welcome")).body).toContain("Race day,");
+  });
+
   test("Cup home carries the predictions entry card; other series do not", async () => {
-    const cup = await get("/");
+    const cup = await get("/home");
     expect(cup.body).toContain('href="/predictions"');
     expect(cup.body).toContain('href="/dfs"');
     // Predictions are Cup-only at launch (D16): no dead entry point elsewhere.
@@ -143,7 +154,7 @@ describe("web app", () => {
   });
 
   test("home surfaces the moat card", async () => {
-    const { body } = await get("/");
+    const { body } = await get("/home");
     expect(body).toContain("Beyond the Box Score");
     expect(body).toContain("Full leaderboards →");
   });
@@ -224,7 +235,7 @@ describe("web app", () => {
   });
 
   test("home links into the weekend recap and the recap nav tab is present", async () => {
-    const { body } = await get("/");
+    const { body } = await get("/home");
     expect(body).toContain("Weekend recap →");
     expect(body).toContain("/recap/101"); // latest race permalink
     expect(body).toContain('href="/recap"'); // nav tab
@@ -289,7 +300,7 @@ describe("web app", () => {
   });
 
   test("series switcher renders all three series", async () => {
-    const { body } = await get("/");
+    const { body } = await get("/home");
     expect(body).toContain("series-switch");
     expect(body).toContain("Xfinity");
     expect(body).toContain("Trucks");
@@ -347,7 +358,7 @@ describe("web app", () => {
     const outageServer = createServer(providers, 0);
     try {
       const outageBase = outageServer.url.toString().replace(/\/$/, "");
-      const page = await (await fetch(`${outageBase}/`)).text();
+      const page = await (await fetch(`${outageBase}/home`)).text();
       expect(page).toContain('data-notice="data-delayed"');
       expect(page).toContain("since 2026-09-06");
       expect(page).toContain("loopstats");

@@ -17,6 +17,7 @@ import { liveShell } from "./pages/live.ts";
 import { metricsContent } from "./pages/metrics.ts";
 import { careerContent } from "./pages/career.ts";
 import { recapContent } from "./pages/recap.ts";
+import { welcomePage } from "./pages/welcome.ts";
 
 type P = Pick<Providers, "db">;
 
@@ -278,6 +279,11 @@ export function renderLive(p: P, seriesId: number, pro: ViewerPro = null): strin
     pro: pro === true,
     content: liveShell(pro === true),
   });
+}
+
+/** The marketing landing page — static copy, no data reads, same for everyone. */
+export function renderWelcome(): string {
+  return welcomePage();
 }
 
 export function render404(seriesId: number, season: number | null, what: string): string {

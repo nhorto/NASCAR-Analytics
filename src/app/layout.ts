@@ -22,8 +22,11 @@ export function analyticsTag(): string {
 
 export type Tab = "home" | "recap" | "metrics" | "drivers" | "live" | "races" | "compare" | "tracks";
 
+// Home lives at /home (not /): the bare site root is the marketing landing
+// page for anonymous visitors, so in-app navigation must name home explicitly
+// or a signed-out viewer's Home tap would bounce to marketing.
 const TABS: Array<{ id: Tab; href: string; icon: string; label: string }> = [
-  { id: "home", href: "/", icon: "⌂", label: "Home" },
+  { id: "home", href: "/home", icon: "⌂", label: "Home" },
   { id: "recap", href: "/recap", icon: "❑", label: "Recap" },
   { id: "metrics", href: "/metrics", icon: "◈", label: "Metrics" },
   { id: "drivers", href: "/drivers", icon: "◔", label: "Drivers" },
@@ -46,7 +49,7 @@ export function seriesLabel(seriesId: number): string {
 
 /** Where a series switch lands: the current section's index for the new series. */
 function sectionIndex(tab: Tab): string {
-  return tab === "home" ? "/" : `/${tab}`;
+  return `/${tab}`;
 }
 
 export function page(opts: {
@@ -89,7 +92,7 @@ export function page(opts: {
 <body>
 <div class="shell">
   <header class="appbar">
-    <a class="wordmark" href="${withSeries("/", opts.seriesId)}">Loop<em>lab</em></a>
+    <a class="wordmark" href="${withSeries("/home", opts.seriesId)}">Loop<em>lab</em></a>
     <span class="season-pill num">${opts.season ?? "—"} Season</span>
     <a class="account-link" href="/account" aria-label="Account">⦿</a>
   </header>
@@ -118,6 +121,6 @@ export function notFoundPage(seriesId: number, season: number | null, what: stri
     active: "home",
     seriesId,
     season,
-    content: `<div class="card"><div class="card-h"><h3>404</h3></div><p class="note">${esc(what)} not found.</p><p class="note" style="margin-top:8px"><a href="${withSeries("/", seriesId)}">← Back home</a></p></div>`,
+    content: `<div class="card"><div class="card-h"><h3>404</h3></div><p class="note">${esc(what)} not found.</p><p class="note" style="margin-top:8px"><a href="${withSeries("/home", seriesId)}">← Back home</a></p></div>`,
   });
 }
