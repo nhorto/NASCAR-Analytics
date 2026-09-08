@@ -8,10 +8,10 @@ import { useCallback, useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { serverBase } from "../../lib/config.ts";
 import { usePro } from "../../lib/viewer.tsx";
-import { Button, Card, Loading, Screen, Segmented, Stepper } from "../../ui/components.tsx";
+import { Button, Card, ErrorNote, Loading, Screen, Segmented, Stepper } from "../../ui/components.tsx";
 import { colors } from "../../ui/theme.ts";
 import { fetchDrivers, fetchDriverSeasons, type DriverSummary, type SeasonStatsRow } from "../drivers/api.ts";
-import { fetchLatestSeason } from "../stats/api.ts";
+import { useLatestSeason } from "../stats/api.ts";
 import { ProLock } from "../pro/ProLock.tsx";
 import { aggregateSeasons, coerceRange, compareTable, type ComparePick } from "./model.ts";
 
@@ -36,24 +36,27 @@ interface Slot {
 export function CompareScreen() {
   const pro = usePro();
   const slotCount = pro ? 4 : 2;
-  const [latestSeason, setLatestSeason] = useState<number | null>(null);
+  const { season: latestSeason, retry: retryBoot } = useLatestSeason();
   const [range, setRange] = useState<{ from: number; to: number } | null>(null);
   const [slots, setSlots] = useState<Array<Slot | null>>([null, null, null, null]);
   const [picking, setPicking] = useState<number | null>(null);
 
   useEffect(() => {
-    void (async () => {
-      const season = await fetchLatestSeason(await serverBase());
-      setLatestSeason(season);
-      if (season !== null) setRange({ from: season, to: season });
-    })();
-  }, []);
+    if (typeof latestSeason === "number") setRange({ from: latestSeason, to: latestSeason });
+  }, [latestSeason]);
 
   const setSlot = useCallback((index: number, slot: Slot | null) => {
     setSlots((current) => current.map((existing, i) => (i === index ? slot : existing)));
   }, []);
 
-  if (latestSeason === null || range === null) return <Loading />;
+  if (latestSeason === undefined) return <Loading />;
+  if (latestSeason === null)
+    return (
+      <Screen>
+        <ErrorNote message="Could not reach the server." onRetry={retryBoot} />
+      </Screen>
+    );
+  if (range === null) return <Loading />;
 
   if (picking !== null)
     return (

@@ -1,5 +1,7 @@
 // Standings + proprietary-metric leaderboards. The latest season comes from
 // /health (the server exposes it there), so the app never hardcodes a year.
+import { useCallback, useEffect, useState } from "react";
+import { serverBase } from "../../lib/config.ts";
 import { timedFetch } from "../../lib/http.ts";
 
 export interface StandingRow {
@@ -71,6 +73,27 @@ export async function fetchLatestSeason(base: string): Promise<number | null> {
   } catch {
     return null;
   }
+}
+
+/**
+ * Bootstrap hook for screens that need the latest season before they can
+ * render their own controls (Compare, the track explorer). Distinguishes
+ * "still loading" from "the fetch failed" — without this, a network hiccup
+ * on first mount left those screens spinning forever with no way to recover.
+ */
+export function useLatestSeason(): { season: number | null | undefined; retry: () => void } {
+  const [season, setSeason] = useState<number | null | undefined>(undefined);
+
+  const retry = useCallback(() => {
+    setSeason(undefined);
+    void (async () => setSeason(await fetchLatestSeason(await serverBase())))();
+  }, []);
+
+  useEffect(() => {
+    retry();
+  }, [retry]);
+
+  return { season, retry };
 }
 
 export async function fetchStats(base: string): Promise<StatsData | null> {

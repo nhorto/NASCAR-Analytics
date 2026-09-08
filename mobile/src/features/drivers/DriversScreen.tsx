@@ -1,9 +1,10 @@
 // Cup driver index with client-side search (the API also accepts ?q= but a
 // loaded list filters instantly with no round trip).
 import { useCallback, useState } from "react";
-import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import { FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { serverBase } from "../../lib/config.ts";
+import { useReload } from "../../lib/reload.ts";
 import { ErrorNote, Loading, Screen } from "../../ui/components.tsx";
 import { colors } from "../../ui/theme.ts";
 import { fetchDrivers, type DriverSummary } from "./api.ts";
@@ -22,6 +23,7 @@ export function DriversScreen() {
       if (drivers === undefined || drivers === null) void load();
     }, [drivers, load]),
   );
+  const { refreshing, onRefresh } = useReload(load);
 
   if (drivers === undefined) return <Loading label="Loading drivers…" />;
   if (drivers === null)
@@ -41,13 +43,25 @@ export function DriversScreen() {
         value={filter}
         onChangeText={setFilter}
         autoCorrect={false}
+        accessibilityLabel="Search drivers"
       />
       <FlatList
         data={rows}
         keyExtractor={(row) => String(row.driverId)}
         contentContainerStyle={styles.list}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />}
+        ListEmptyComponent={
+          <Text style={styles.empty}>
+            {filter.trim() === "" ? "No drivers found." : `No drivers match "${filter}".`}
+          </Text>
+        }
         renderItem={({ item }) => (
-          <Pressable style={styles.row} onPress={() => router.push(`/driver/${item.driverId}`)}>
+          <Pressable
+            style={styles.row}
+            onPress={() => router.push(`/driver/${item.driverId}`)}
+            accessibilityRole="button"
+            accessibilityLabel={`${item.name}, ${item.line}`}
+          >
             <View style={styles.rowText}>
               <Text style={styles.name}>{item.name}</Text>
               <Text style={styles.line}>{item.line}</Text>
@@ -73,7 +87,8 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     fontSize: 14,
   },
-  list: { paddingHorizontal: 14, paddingBottom: 48 },
+  list: { paddingHorizontal: 14, paddingBottom: 48, flexGrow: 1 },
+  empty: { color: colors.muted, fontSize: 13, textAlign: "center", marginTop: 24 },
   row: {
     flexDirection: "row",
     alignItems: "center",
