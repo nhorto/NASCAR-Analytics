@@ -1,6 +1,7 @@
 # Product Spec — v1 paid product ("LoopLab" working name)
 
-**Status:** APPROVED SHAPE (owner decisions 2026-09-07), build per
+**Status:** APPROVED SHAPE (owner decisions 2026-09-07; platform + billing
+channels revised 2026-09-08 per register D19–D21), build per
 [the launch exec plan](../exec-plans/active/2026-09-07-production-and-paid-launch.md).
 **Supersedes:** the pricing sketch in
 [the productization review](../research/2026-09-07_productization-review.md) §5.3.
@@ -14,13 +15,15 @@ not say how to build it or when; that is the exec plan.
 
 ## 1. One paragraph
 
-A mobile-first, installable web app for NASCAR fans who want more than the
-broadcast gives them: modern loop-data analytics, a free live race-day companion,
-and a paid tier of predictions, DFS projections, and deep historical tools. Free
-covers the Cup Series and the live board. Pro ($9.99/month or $69/season) covers
-all three national series, our race predictions, DFS projections and cheat
-sheets, custom historical analysis and exports, push alerts for your driver, and a
-Thursday preview email.
+A mobile-first product for NASCAR fans who want more than the broadcast gives
+them — an installable web app **and** native iOS/Android apps, launched
+together: modern loop-data analytics, a free live race-day companion, and a
+paid tier of predictions, DFS projections, and deep historical tools. Free
+covers the Cup Series and the live board. Pro ($9.99/month or $69/season,
+bought on the web via Stripe or in the apps via in-app purchase) covers all
+three national series, our race predictions, DFS projections and cheat
+sheets, custom historical analysis and exports, push alerts for your driver,
+and a Thursday preview email.
 
 ## 2. Who it is for
 
@@ -65,7 +68,8 @@ the only paid feature affected, and the terms address that (§11).
   and season-range filters over the whole history on the track explorer and
   compare pages; compare up to four drivers.
 - **Push alerts** for "My Driver": pitted, out, big mover, caution, stage end,
-  lead change, race start. Web push, delivered to the installed app.
+  lead change, race start. Web Push to the installed PWA on the web; native
+  push (APNs/FCM) in the mobile apps. One alert per device, deduplicated.
 - **Thursday preview email**: predictions + cheat sheet link, plus the Monday
   recap.
 - Account page: manage subscription, download invoices, delete account.
@@ -81,19 +85,31 @@ Monthly plans start with a **7-day free trial**, card required, cancel any time
 from the account page. Season passes have no trial (they are a one-time
 purchase; the 14-day refund rule in §11 applies instead).
 
-## 5. Platform: installable web app (PWA), no store apps
+## 5. Platform: web app (PWA) + native mobile apps (revised 2026-09-08)
 
-- One codebase, served at the product domain. Installable on iOS and Android
-  from the browser ("Add to Home Screen"); an install prompt appears on the
-  home page after the second visit and on the Live page during a race.
+Two surfaces, one server, launched together (register D19/D20):
+
+**Web** — served at the product domain, installable as a PWA:
+- Installable on iOS and Android from the browser ("Add to Home Screen"); an
+  install prompt appears on the home page after the second visit and on the
+  Live page during a race.
 - Works offline for the app shell and the last-viewed pages; live and data
   pages are network-first.
 - Push notifications via Web Push (VAPID). On iOS this requires the installed
-  app (iOS 16.4+), and the Live page says so when the user turns alerts on.
-- No App Store / Play Store listing in v1. Payments stay on the web (Stripe
-  Checkout), so no store commission applies.
+  PWA (iOS 16.4+), and the Live page says so when the user turns alerts on.
 - Desktop is a wider version of the same layout (two columns above 900px is
   in scope; parity with mobile is not required).
+
+**Mobile** — native Expo/React Native apps in the App Store and Play Store:
+- The same free/Pro line, screens, and data as the web app, rendered
+  natively; the server remains the single backend and the only entitlement
+  authority.
+- Push notifications are native (APNs/FCM) in the apps.
+- Purchases in the apps are native in-app purchases (via RevenueCat); store
+  commission applies on that channel. Web purchases stay on Stripe Checkout
+  (§7).
+- The apps do not reference or link to the web checkout (store policy);
+  either channel's purchase unlocks Pro everywhere.
 
 ## 6. Accounts
 
@@ -110,13 +126,20 @@ purchase; the 14-day refund rule in §11 applies instead).
 
 ## 7. Billing
 
-- Stripe Checkout for purchase, Stripe Customer Portal for management, Stripe
-  webhooks as the only source of truth for entitlement.
-- Entitlement model: each user has `pro_until` (a date) and
-  `pro_source` (`subscription` | `season_pass` | `grant`). Pro is on when
-  `pro_until` is in the future. Subscriptions write `pro_until` = current
-  period end + 3-day grace on every invoice; season passes write the fixed
-  season end date; manual grants exist for testers and support.
+- Two purchase channels, one entitlement (register D21): **Stripe Checkout**
+  on the web (Stripe Customer Portal for management) and **native in-app
+  purchase** in the mobile apps (via RevenueCat; managed through the store's
+  subscription settings). The server-side entitlements table is the single
+  source of truth; Stripe webhooks and RevenueCat webhooks are its only two
+  writers, and clients — web and app — only ever read it.
+- Entitlement model: each user has `pro_until` (a date) and `pro_source`
+  (`subscription` | `season_pass` | `grant`, plus the IAP-channel
+  equivalents). Pro is on when `pro_until` is in the future. Subscriptions
+  write `pro_until` = current period end + 3-day grace on every invoice;
+  season passes write the fixed season end date; manual grants exist for
+  testers and support. When both channels have granted, the later expiry
+  wins and neither writer overwrites the other's grant (reconciliation rule
+  in the exec plan's WS-J sub-plan).
 - Past-due monthly: Pro stays on for the 3-day grace, then off; Stripe's
   smart retries run for 2 weeks; the user sees a banner and can update the
   card in the portal.
@@ -210,6 +233,8 @@ Behavioural rules:
 
 ## 12. Out of scope for v1
 
-Store apps, social sign-in, sportsbook odds, affiliate links, lineup
-optimizer, ownership projections, an API, Discord, cross-series statistical
+Social sign-in, sportsbook odds, affiliate links, lineup optimizer,
+ownership projections, an API, Discord, cross-series statistical
 normalization, team badges on the live board, NASCAR Fantasy Live scoring.
+(Store apps were out of scope in the 2026-09-07 shape; that was superseded
+2026-09-08 — see §5 and the register's D19.)
