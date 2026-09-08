@@ -25,7 +25,13 @@ export function cacheClassFor(path: string, status: number): CacheClass {
   // that can never be updated, because the new worker is never fetched.
   if (path === "/sw.js" || path === "/manifest.webmanifest") return "worker";
   if (path === "/health") return "health";
-  if (path === "/style.css" || /^\/[a-z-]+\.js$/.test(path)) return "asset";
+  if (
+    path === "/style.css" ||
+    path.startsWith("/brand/") ||
+    path.startsWith("/shots/") ||
+    /^\/[a-z-]+\.js$/.test(path)
+  )
+    return "asset";
   if (path.startsWith("/data/") || path.startsWith("/api/")) return "data";
   return "page";
 }

@@ -123,7 +123,7 @@ describe("PWA routes", () => {
   });
 
   test("pages advertise the manifest, theme color and iOS icon", async () => {
-    const html = await (await fetch(`${base}/`)).text();
+    const html = await (await fetch(`${base}/home`)).text();
     expect(html).toContain('<link rel="manifest" href="/manifest.webmanifest">');
     expect(html).toContain('name="theme-color" content="#0a0c10"');
     expect(html).toContain('<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">');

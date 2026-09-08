@@ -96,6 +96,7 @@ describe("rendered pages", () => {
   // above is what covers them.
   const PATHS = [
     "/",
+    "/home",
     "/metrics",
     "/drivers",
     "/drivers/10",
@@ -110,6 +111,7 @@ describe("rendered pages", () => {
     "/account",
     "/pricing",
     "/offline",
+    "/welcome",
     "/nope-404",
   ];
 
