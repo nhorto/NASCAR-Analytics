@@ -69,14 +69,21 @@ export function CompareScreen() {
       />
     );
 
-  const active = slots.slice(0, slotCount);
+  // Losing Pro mid-session must actually take the Pro view away: drop the
+  // extra slots, drop any non-Cup driver already picked, and collapse the
+  // season range back to one year. Nothing here is a data leak (a free viewer
+  // is entitled to every Cup season it aggregates), but a downgraded account
+  // showing a Pro-shaped comparison until the next tap is a lie about state.
+  const active = slots.slice(0, slotCount).map((slot) => (pro || slot?.seriesId === 1 ? slot : null));
+  const view = pro ? range : { from: range.to, to: range.to };
+
   const picks: ComparePick[] = active.flatMap((slot, index) => {
     if (!slot) return [];
-    const stats = aggregateSeasons(slot.seasons, range.from, range.to);
+    const stats = aggregateSeasons(slot.seasons, view.from, view.to);
     return stats ? [{ key: `${index}`, name: slot.driver.fullName, stats }] : [];
   });
   const table = picks.length > 0 ? compareTable(picks) : [];
-  const rangeLabel = range.from === range.to ? String(range.from) : `${range.from}–${range.to}`;
+  const rangeLabel = view.from === view.to ? String(view.from) : `${view.from}–${view.to}`;
 
   return (
     <Screen>
@@ -126,7 +133,7 @@ export function CompareScreen() {
         ) : (
           <Stepper
             label="Season"
-            value={range.to}
+            value={view.to}
             min={latestSeason - RANGE_YEARS}
             max={latestSeason}
             onChange={(season) => setRange({ from: season, to: season })}
