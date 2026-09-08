@@ -30,6 +30,11 @@ export default function RootLayout() {
         <Tabs.Screen name="pro" options={{ title: "Pro", tabBarIcon: icon("★") }} />
         <Tabs.Screen name="account" options={{ title: "Account", tabBarIcon: icon("○") }} />
         <Tabs.Screen name="stats" options={{ href: null, title: "Standings" }} />
+        <Tabs.Screen name="predictions" options={{ href: null, title: "Predictions" }} />
+        <Tabs.Screen name="methodology" options={{ href: null, title: "How it works" }} />
+        <Tabs.Screen name="dfs" options={{ href: null, title: "DFS" }} />
+        <Tabs.Screen name="compare" options={{ href: null, title: "Compare" }} />
+        <Tabs.Screen name="tracks" options={{ href: null, title: "Track types" }} />
         <Tabs.Screen name="driver/[id]" options={{ href: null, title: "Driver" }} />
         <Tabs.Screen name="signin" options={{ href: null, title: "Sign in" }} />
         <Tabs.Screen name="signup" options={{ href: null, title: "Create account" }} />

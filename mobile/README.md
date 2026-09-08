@@ -9,6 +9,29 @@ entitlement).
 "LoopLab" and `app.looplab.placeholder` follow the repo's D2 placeholder
 convention. Nothing gets registered with Apple/Google under these ids.
 
+## Screens
+
+Free (Cup): home, live board, driver index/profiles, standings + metric boards.
+
+Pro, each rendering **both** entitlement states:
+
+| Screen | Free | Pro |
+| --- | --- | --- |
+| `/predictions` | top three drivers + the withheld count | the whole field, predicted-vs-actual once scored |
+| `/methodology` | full (an accuracy claim only payers can check is not worth making) | same |
+| `/dfs` | locked card | DK/FD projections, scoring rules, lineup scratchpad |
+| `/compare` | two Cup drivers, one season | four drivers, any series, a season range |
+| `/tracks` | Cup, full season range | plus Xfinity and Trucks |
+
+The withholding is the **server's** job, not the client's: `/api/predictions`
+sends a free viewer three rows and a count, `/api/dfs` answers `403
+pro_required`, and the series JSON gate refuses non-Cup reads. The app renders
+what it was given. `ProLock` is the one locked/upsell card, shared by every
+screen; it never links to web checkout (Apple 3.1.1).
+
+CSV export stays web-only here — a download opens outside the app and leaves
+the session cookie behind.
+
 ## Layout
 
 - `src/app/` — expo-router routes (thin wrappers over feature screens).

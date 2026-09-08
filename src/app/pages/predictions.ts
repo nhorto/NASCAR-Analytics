@@ -4,6 +4,19 @@
 import { esc, card, fmt, fmtDate, pct } from "../html.ts";
 import type { PredictionStage, StoredPrediction } from "../../domains/predictions/index.ts";
 
+// Headline numbers from the held-out backtest, shown on the methodology page
+// and served to the native app alongside the predictions themselves (WS-J) so
+// the two surfaces can never quote different numbers.
+// Source: docs/research/2026-09-07_predictions-backtest.md (re-derive with
+// `bun run backtest:predictions`).
+export const METHODOLOGY_BACKTEST = {
+  evalSeason: 2025,
+  winBrier: "0.0255 vs 0.0268 trailing-5 and 0.0256 uniform",
+  top10Brier: "0.173 vs 0.194 for both baselines, about 11% better",
+  calibrationNote:
+    "Calibration is inside ±5 points on six of seven probability bins; the seventh (60–70%, n=39) sits 5.2 off — within one standard error of exact. Win odds firm up after qualifying: the Thursday form-only run is honest about being weaker on outright winners.",
+} as const;
+
 export interface PredictionsView {
   raceName: string;
   season: number;
