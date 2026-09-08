@@ -27,7 +27,13 @@ const SERIES_OPTIONS = [
   { value: "3", label: "Trucks" },
 ] as const;
 
-const MIN_STARTS = [3, 5, 8, 10];
+/** The web explorer's four min-starts options — a picker, not a range. */
+const MIN_STARTS_OPTIONS = [
+  { value: "3", label: "3+" },
+  { value: "5", label: "5+" },
+  { value: "8", label: "8+" },
+  { value: "10", label: "10+" },
+] as const;
 const RANGE_YEARS = 20;
 /** The web explorer's default window: the last eight seasons. */
 const DEFAULT_WINDOW = 7;
@@ -38,7 +44,7 @@ export function TracksScreen() {
   const [range, setRange] = useState<{ from: number; to: number } | null>(null);
   const [seriesId, setSeriesId] = useState("1");
   const [trackType, setTrackType] = useState<TrackType>("road");
-  const [minStarts, setMinStarts] = useState(5);
+  const [minStarts, setMinStarts] = useState("5");
   const [sort, setSort] = useState<TrackSortKey>("avgFinish");
   const [result, setResult] = useState<TrackResult | undefined>(undefined);
 
@@ -58,7 +64,7 @@ export function TracksScreen() {
         trackType,
         from: range.from,
         to: range.to,
-        min: minStarts,
+        min: Number(minStarts),
       }),
     );
   }, [range, seriesId, trackType, minStarts]);
@@ -70,8 +76,6 @@ export function TracksScreen() {
   );
 
   if (latestSeason === null || range === null) return <Loading />;
-
-  const minIndex = MIN_STARTS.indexOf(minStarts);
 
   return (
     <Screen>
@@ -110,22 +114,8 @@ export function TracksScreen() {
           onChange={(to) => setRange((r) => coerceRange({ from: r!.from, to }, "to"))}
         />
         <View style={styles.gap} />
-        <Stepper
-          label="Min starts"
-          value={minIndex < 0 ? 5 : MIN_STARTS[minIndex]!}
-          min={MIN_STARTS[0]!}
-          max={MIN_STARTS[MIN_STARTS.length - 1]!}
-          onChange={(next) => {
-            // The stepper walks by one; snap to the nearest allowed option so
-            // a tap always moves the board.
-            const direction = next > minStarts ? 1 : -1;
-            const index = Math.min(
-              MIN_STARTS.length - 1,
-              Math.max(0, (minIndex < 0 ? 1 : minIndex) + direction),
-            );
-            setMinStarts(MIN_STARTS[index]!);
-          }}
-        />
+        <Text style={styles.fieldLabel}>Min starts</Text>
+        <Segmented options={MIN_STARTS_OPTIONS} value={minStarts} onChange={setMinStarts} />
       </Card>
 
       <Card title="Sort">
@@ -186,6 +176,7 @@ export function TracksScreen() {
 
 const styles = StyleSheet.create({
   gap: { height: 10 },
+  fieldLabel: { color: colors.muted, fontSize: 12, marginBottom: 6 },
   note: { color: colors.muted, fontSize: 12, lineHeight: 17, marginTop: 10 },
   row: {
     flexDirection: "row",
