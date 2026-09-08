@@ -18,7 +18,7 @@ import { unsubscribeContent } from "./pages/unsubscribe.ts";
 import * as emails from "./emails.ts";
 import type { EmailKind } from "../domains/accounts/index.ts";
 
-type P = Pick<Providers, "db">;
+type P = Pick<Providers, "db" | "hibp">;
 
 export interface AuthDeps {
   email: EmailClient;

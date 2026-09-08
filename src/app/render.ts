@@ -46,6 +46,7 @@ export function renderHome(p: P, seriesId: number, pro: ViewerPro = null): strin
     active: "home",
     seriesId,
     season: current,
+    pro: pro === true,
     content: withExports(homeContent({
       seriesId,
       latestRace,
@@ -71,6 +72,7 @@ export function renderDriversIndex(
     active: "drivers",
     seriesId,
     season: currentSeason(p, seriesId),
+    pro: pro === true,
     content: withExports(
       driversIndexContent(driversService.driverIndex(p, seriesId), q, seriesId),
       [{ href: `/export/drivers.csv?series=${seriesId}`, label: "Drivers" }],
@@ -98,6 +100,7 @@ export function renderDriverProfile(
     active: "drivers",
     seriesId,
     season: currentSeason(p, seriesId),
+    pro: pro === true,
     content: withExports(driverProfileContent({
       seriesId,
       driver,
@@ -128,6 +131,7 @@ export function renderRacesIndex(
     active: "races",
     seriesId,
     season: currentSeason(p, seriesId),
+    pro: pro === true,
     content: withExports(
       racesIndexContent(
         ingestionService.seasonRaces(p, selected, seriesId),
@@ -155,6 +159,7 @@ export function renderCareer(p: P, driverId: number, pro: ViewerPro = null): str
     active: "drivers",
     seriesId: primarySeries,
     season: currentSeason(p, primarySeries),
+    pro: pro === true,
     content: withExports(
       careerContent(career),
       [{ href: `/export/career.csv?driver=${driverId}`, label: "Career" }],
@@ -172,6 +177,7 @@ export function renderRacePage(p: P, raceId: number, pro: ViewerPro = null): str
     active: "races",
     seriesId: race.seriesId,
     season: currentSeason(p, race.seriesId),
+    pro: pro === true,
     content: withExports(
       racePageContent(race, ingestionService.raceResults(p, race.raceId), race.seriesId),
       [{ href: `/export/race-results.csv?race=${race.raceId}`, label: "Results" }],
@@ -192,6 +198,7 @@ export function renderRecap(p: P, raceId: number, pro: ViewerPro = null): string
     active: "recap",
     seriesId: race.seriesId,
     season: currentSeason(p, race.seriesId),
+    pro: pro === true,
     content: withExports(recapContent({
       seriesId: race.seriesId,
       race,
@@ -231,6 +238,7 @@ export function renderMetrics(p: P, seriesId: number, pro: ViewerPro = null): st
     active: "metrics",
     seriesId,
     season: current,
+    pro: pro === true,
     content: withExports(
       metricsContent(analyticsService.seasonMetricBoard(p, current, seriesId)),
       [{ href: `/export/metrics.csv?series=${seriesId}&season=${current}`, label: `${current} metric leaders` }],
@@ -245,7 +253,8 @@ export function renderCompare(p: P, seriesId: number, pro: ViewerPro = null): st
     active: "compare",
     seriesId,
     season: currentSeason(p, seriesId),
-    content: compareShell(seriesId, pro === true),
+    pro: pro === true,
+    content: compareShell(pro === true),
   });
 }
 
@@ -255,7 +264,8 @@ export function renderTracks(p: P, seriesId: number, pro: ViewerPro = null): str
     active: "tracks",
     seriesId,
     season: currentSeason(p, seriesId),
-    content: tracksShell(seriesId, pro === true),
+    pro: pro === true,
+    content: tracksShell(),
   });
 }
 
@@ -265,7 +275,8 @@ export function renderLive(p: P, seriesId: number, pro: ViewerPro = null): strin
     active: "live",
     seriesId,
     season: currentSeason(p, seriesId),
-    content: liveShell(seriesId, pro === true),
+    pro: pro === true,
+    content: liveShell(pro === true),
   });
 }
 

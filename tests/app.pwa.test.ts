@@ -10,6 +10,7 @@ import { analyticsService } from "../src/domains/analytics/index.ts";
 import { accountsService } from "../src/domains/accounts/index.ts";
 import { billingService } from "../src/domains/billing/index.ts";
 import { createNullArchive } from "../src/providers/raw-archive.ts";
+import { createNullHibp } from "../src/providers/hibp.ts";
 import { createNascarCdnClient } from "../src/providers/nascar-cdn.ts";
 import type { Providers } from "../src/providers/index.ts";
 import {
@@ -34,6 +35,7 @@ beforeAll(() => {
     db,
     cdn: createNascarCdnClient({ delayMs: 0, retries: 0, retryBaseDelayMs: 0, userAgent: "test" }),
     archive: createNullArchive(),
+    hibp: createNullHibp(),
   };
   analyticsService.computeAll(providers);
   const userId = seedUser(db, { email: "pro@example.com" });
@@ -123,7 +125,11 @@ describe("PWA routes", () => {
     expect(html).toContain('<link rel="manifest" href="/manifest.webmanifest">');
     expect(html).toContain('name="theme-color" content="#0a0c10"');
     expect(html).toContain('<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">');
-    expect(html).toContain('navigator.serviceWorker.register("/sw.js")');
+    // Registration lives in boot.js, not an inline script (WS-I / CSP).
+    expect(html).toMatch(/<script src="\/boot\.js\?v=[^"]+"><\/script>/);
+    expect(await (await fetch(`${base}/boot.js`)).text()).toContain(
+      'navigator.serviceWorker.register("/sw.js")',
+    );
     expect(html).toContain('id="install-card"');
   });
 

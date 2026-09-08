@@ -11,6 +11,7 @@ import * as render from "./render.ts";
 import { seasonStatsPayload, trackTypePayload, baselinesPayload } from "./data.ts";
 import { offlineContent, PWA_ICONS, serviceWorkerSource, webManifest } from "./pwa.ts";
 import { page } from "./layout.ts";
+import { securityHeaders } from "./http.ts";
 import { LIVE_API_BASE } from "./layout.ts";
 
 const DIST = "dist";
@@ -20,6 +21,43 @@ const ALL_SERIES = [
   ingestionConfig.SERIES.xfinity,
   ingestionConfig.SERIES.trucks,
 ];
+
+/**
+ * `dist/_headers` for Cloudflare Pages. Pure so it can be asserted without
+ * running a 600-page export.
+ *
+ * The security headers come from the same `securityHeaders()` the Bun server
+ * uses, so the two deployments cannot drift (WS-I) — before this, the static
+ * site, which is the one that is actually public, shipped no CSP at all.
+ * Plausible is listed only when the export emitted its tag (layout.ts reads
+ * the same env var), so the policy never names a host the page doesn't call.
+ */
+export function headersFile(env: Record<string, string | undefined> = process.env): string {
+  const security = securityHeaders({
+    production: true,
+    liveOrigin: new URL(LIVE_API_BASE).origin,
+    plausibleHost: env.PLAUSIBLE_DOMAIN ? (env.PLAUSIBLE_HOST ?? "https://plausible.io") : null,
+  });
+  const rule = (path: string, headers: Record<string, string>): string =>
+    `${path}\n` +
+    Object.entries(headers)
+      .map(([k, v]) => `  ${k}: ${v}\n`)
+      .join("");
+  const cache = (value: string) => ({ "Cache-Control": value });
+  // Data + assets change only on a weekly rebuild, so a modest cache is safe.
+  // The worker and manifest must revalidate, or an installed PWA pins itself
+  // to a stale worker and never picks up a deploy. Those two rules MUST stay
+  // after `/*.js`: Cloudflare applies every matching rule and the last one to
+  // set a header wins.
+  return (
+    rule("/*", security) +
+    rule("/data/*", cache("public, max-age=3600")) +
+    rule("/*.css", cache("public, max-age=3600")) +
+    rule("/*.js", cache("public, max-age=3600")) +
+    rule("/sw.js", cache("public, max-age=0, must-revalidate")) +
+    rule("/manifest.webmanifest", cache("public, max-age=0, must-revalidate"))
+  );
+}
 
 interface Log {
   info(msg: string): void;
@@ -109,6 +147,7 @@ export async function exportSite(dbPath = "data/nascar.db", log?: Log): Promise<
 
   // Static assets + 404.
   await Bun.write(join(DIST, "style.css"), Bun.file(new URL("./style.css", import.meta.url)));
+  await Bun.write(join(DIST, "boot.js"), Bun.file(new URL("./client/boot.js", import.meta.url)));
   await Bun.write(join(DIST, "compare.js"), Bun.file(new URL("./client/compare.js", import.meta.url)));
   await Bun.write(join(DIST, "tracks.js"), Bun.file(new URL("./client/tracks.js", import.meta.url)));
   await Bun.write(join(DIST, "live.js"), Bun.file(new URL("./client/live.js", import.meta.url)));
@@ -135,18 +174,7 @@ export async function exportSite(dbPath = "data/nascar.db", log?: Log): Promise<
   );
   await Bun.write(join(DIST, "404.html"), render.render404(1, render.currentSeason(p, 1), "Page"));
 
-  // Cloudflare Pages reads _headers from the output root. Data + assets change
-  // only on a weekly rebuild, so a modest cache is safe.
-  await Bun.write(
-    join(DIST, "_headers"),
-    `/data/*\n  Cache-Control: public, max-age=3600\n/*.css\n  Cache-Control: public, max-age=3600\n/*.js\n  Cache-Control: public, max-age=3600\n` +
-      // The worker and manifest must revalidate, or an installed PWA pins
-      // itself to a stale worker and never picks up a deploy. These MUST stay
-      // after the `/*.js` rule above: Cloudflare applies every matching rule
-      // and the last one to set a header wins.
-      `/sw.js\n  Cache-Control: public, max-age=0, must-revalidate\n` +
-      `/manifest.webmanifest\n  Cache-Control: public, max-age=0, must-revalidate\n`,
-  );
+  await Bun.write(join(DIST, "_headers"), headersFile());
 
   db.close();
   return { pages };

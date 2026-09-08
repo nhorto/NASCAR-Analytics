@@ -29,7 +29,10 @@ jobs:
           bun-version: latest
 
       - name: Install dependencies
-        run: bun install --frozen-lockfile
+        # --production: the canary only needs the one runtime dependency.
+        # Without it this daily job downloads the pinned wrangler (~150 MB of
+        # workerd it will never run) on every single run.
+        run: bun install --frozen-lockfile --production
 
       - name: Run canary
         run: bun run canary --json canary-report.json

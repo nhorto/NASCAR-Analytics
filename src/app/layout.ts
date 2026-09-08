@@ -55,6 +55,8 @@ export function page(opts: {
   seriesId: number;
   season: number | null;
   content: string;
+  /** Viewer's plan, published to the client via `<html data-pro>` (WS-I). */
+  pro?: boolean;
 }): string {
   const tabs = TABS.map((t) => {
     const cls = [t.id === opts.active ? "on" : "", t.id === "live" ? "tab-live" : ""].filter(Boolean).join(" ");
@@ -65,8 +67,11 @@ export function page(opts: {
     (s) =>
       `<a href="${withSeries(sectionIndex(opts.active), s.id)}" class="${s.id === opts.seriesId ? "on" : ""}">${s.short}</a>`,
   ).join("");
+  // Page config rides on <html> (not <body>, not an inline script) so boot.js
+  // can read it from <head> before any in-body page script runs — that is what
+  // lets the CSP drop 'unsafe-inline' from script-src. See client/boot.js.
   return `<!doctype html>
-<html lang="en">
+<html lang="en" data-live-api="${esc(LIVE_API_BASE)}" data-series="${opts.seriesId}" data-pro="${opts.pro ? "true" : "false"}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -79,7 +84,7 @@ export function page(opts: {
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Looplab">
-<script>window.__LIVE_API__=${JSON.stringify(LIVE_API_BASE)};window.__SERIES__=${opts.seriesId};</script>${analyticsTag()}
+<script src="/boot.js?v=${ASSET_VERSION}"></script>${analyticsTag()}
 </head>
 <body>
 <div class="shell">
@@ -96,12 +101,6 @@ ${opts.content}
   <nav class="tabbar">${tabs}</nav>
 </div>
 <script src="/install.js?v=${ASSET_VERSION}" defer></script>
-<script>
-(function(){try{if("serviceWorker" in navigator){navigator.serviceWorker.register("/sw.js");}}catch(e){}})();
-(function(){try{var a=window.__LIVE_API__,s=window.__SERIES__||1;if(!a)return;
-fetch(a+"/api/live/status?series="+s,{cache:"no-store"}).then(function(r){return r.json();}).then(function(d){
-if(d&&d.live){var el=document.querySelector(".tabbar .tab-live .livedot");if(el)el.hidden=false;}}).catch(function(){});}catch(e){}})();
-</script>
 </body>
 </html>`;
 }

@@ -32,7 +32,7 @@ export function racesIndexContent(
     .join("");
   const picker = `<form class="inline">
     <label class="note" for="season">Season</label>
-    <select id="season" onchange="if(this.value)location.href=this.value">${options}</select>
+    <select id="season" data-nav>${options}</select>
   </form>`;
   const rows = races
     .map((r) => {

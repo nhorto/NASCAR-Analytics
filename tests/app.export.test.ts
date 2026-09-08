@@ -7,6 +7,7 @@ import { analyticsService } from "../src/domains/analytics/index.ts";
 import { accountsService } from "../src/domains/accounts/index.ts";
 import { billingService } from "../src/domains/billing/index.ts";
 import { createNullArchive } from "../src/providers/raw-archive.ts";
+import { createNullHibp } from "../src/providers/hibp.ts";
 import { createNascarCdnClient } from "../src/providers/nascar-cdn.ts";
 import type { Providers } from "../src/providers/index.ts";
 import { DATASETS } from "../src/app/datasets.ts";
@@ -39,6 +40,7 @@ beforeAll(() => {
     db,
     cdn: createNascarCdnClient({ delayMs: 0, retries: 0, retryBaseDelayMs: 0, userAgent: "test" }),
     archive: createNullArchive(),
+    hibp: createNullHibp(),
   };
   analyticsService.computeAll(providers);
 
@@ -189,7 +191,7 @@ describe("export affordance on pages", () => {
     // no affordance at all.
     const html = render.renderHome(providers, 1);
     expect(html).not.toContain("export-bar");
-    expect(render.renderTracks(providers, 1)).toContain("window.__PRO__=false");
+    expect(render.renderTracks(providers, 1)).toContain('data-pro="false"');
   });
 
   test("the race log and career links carry the driver they belong to", async () => {
@@ -205,7 +207,7 @@ describe("compare and track-explorer shells", () => {
     expect(html).toContain('id="cmp-c"');
     expect(html).toContain('id="cmp-d"');
     expect(html).toContain('id="cmp-season-to"');
-    expect(html).toContain("window.__PRO__=true");
+    expect(html).toContain('data-pro="true"');
   });
 
   test("free keeps two slots, one season, and an upsell", async () => {
@@ -214,15 +216,15 @@ describe("compare and track-explorer shells", () => {
     expect(html).toContain('id="cmp-b"');
     expect(html).not.toContain('id="cmp-c"');
     expect(html).not.toContain('id="cmp-season-to"');
-    expect(html).toContain("window.__PRO__=false");
+    expect(html).toContain('data-pro="false"');
     expect(html).toContain("Compare up to four drivers");
   });
 
   test("the track explorer tells its client whether the viewer may export", async () => {
     expect(await (await get("/tracks", { headers: { cookie: proCookie } })).text()).toContain(
-      "window.__PRO__=true",
+      'data-pro="true"',
     );
-    expect(await (await get("/tracks")).text()).toContain("window.__PRO__=false");
+    expect(await (await get("/tracks")).text()).toContain('data-pro="false"');
   });
 });
 

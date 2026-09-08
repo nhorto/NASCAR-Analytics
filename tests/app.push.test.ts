@@ -12,6 +12,7 @@ import type { CandidateAlert } from "../src/domains/notifications/index.ts";
 import { b64urlEncode, generateVapidKeys } from "../src/providers/webpush.ts";
 import { dispatchAlerts } from "../src/app/push.ts";
 import { createNullArchive } from "../src/providers/raw-archive.ts";
+import { createNullHibp } from "../src/providers/hibp.ts";
 import { createNascarCdnClient } from "../src/providers/nascar-cdn.ts";
 import type { Providers } from "../src/providers/index.ts";
 import { testDb, seedDriver, seedRace, seedResult, seedUser } from "./seed.ts";
@@ -33,6 +34,7 @@ beforeAll(() => {
     db,
     cdn: createNascarCdnClient({ delayMs: 0, retries: 0, retryBaseDelayMs: 0, userAgent: "test" }),
     archive: createNullArchive(),
+    hibp: createNullHibp(),
   };
   analyticsService.computeAll(providers);
   proUserId = seedUser(db, { email: "pro@example.com" });
