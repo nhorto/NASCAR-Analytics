@@ -1,7 +1,10 @@
 # Production + Paid Launch — from today's frozen static site to taking money
 
-**Status:** ACTIVE — owner-approved shape 2026-09-07. Build starts immediately.
-**Target:** paid launch by **2026-11-01**, the week before championship weekend.
+**Status:** ACTIVE — owner-approved shape 2026-09-07; platform and timing
+revised by owner directive 2026-09-08 (D19–D21 below).
+**Target:** joint **web + native mobile** paid launch, shipped **when both are
+ready** (D20). 2026-11-01 is no longer a hard deadline; the owner accepts
+possibly missing championship weekend.
 **Spec:** [v1 paid product spec](../../product-specs/2026-09-07-v1-paid-product-spec.md).
 **Background:** [productization review](../../research/2026-09-07_productization-review.md).
 **Owner:** Nick. **Builder:** Claude sessions; owner does identity-bound steps
@@ -9,16 +12,16 @@
 
 ---
 
-## 1. Decisions register (2026-09-07)
+## 1. Decisions register (2026-09-07, revised 2026-09-08)
 
 When work collides with this table, the table wins until a new dated row
 replaces the old one.
 
 | # | Decision | Choice | Why / consequence |
 |---|---|---|---|
-| D1 | Mobile app | Installable web app (PWA); no store apps | One codebase; push via Web Push; payments stay on web |
+| D1 | Mobile app | ~~Installable web app (PWA); no store apps~~ **Superseded 2026-09-08 by D19** | PWA remains the web experience; native store apps added by owner directive |
 | D2 | Name / domain | Undecided; "LoopLab" is a placeholder | **Must be decided by end of week 2** — blocks Stripe product names, sender domain, manifest, terms |
-| D3 | Paid launch date | By 2026-11-01 | Eight weeks; cut order in §7 applies if a week is lost |
+| D3 | Paid launch date | ~~By 2026-11-01~~ **Superseded 2026-09-08 by D20** | The eight-week calendar in §6 becomes an ordering, not a set of deadlines |
 | D4 | Tier line | Free = Cup + live board; Pro = all three series + predictions + DFS + deep tools + push + preview email | Nothing feed-dependent is the reason someone paid (push is the accepted exception) |
 | D5 | Price | $9.99/mo (7-day trial, card required) or $69/season; 2026 buyers get a 2027 pass with the rest of 2026 free | |
 | D6 | Entity | Sole proprietor, personal Stripe | Fastest; move to an LLC before meaningful revenue (tracked in §8) |
@@ -34,14 +37,20 @@ replaces the old one.
 | D16 | Series | Free = Cup only; Pro = all three series everywhere. Predictions: Cup at launch, Xfinity/Trucks fast-follow | Gating Xfinity/Trucks pages requires the dynamic server |
 | D17 | Live Worker at launch | Stays on Cloudflare (moved to the new account); in-process poller is post-launch | Working and free; migration is not on the November critical path |
 | D18 | Weekly refresh | Moves onto the production server (cron in-process, lock-protected); GitHub Actions retained as a build-only smoke test | Structurally ends the weekly cold backfill |
+| D19 | Native mobile app (2026-09-08, owner directive) | Ship an Expo/React Native app for **iOS + Android in addition to** the web app; the PWA remains for web | Replaces D1. Store presence + native push (APNs/FCM). Build is WS-J; web workstreams are unchanged |
+| D20 | Launch timing (2026-09-08, owner directive) | Web and mobile launch **together**; the date is flexible — "when both are ready" | Replaces D3. Owner accepts possibly missing championship weekend; §6 is now an ordering, launch gates on readiness of both surfaces |
+| D21 | Payments channels (2026-09-08, owner directive) | Dual-path from day one: Stripe Checkout on web (WS-E) **and** native in-app purchases via RevenueCat in the mobile apps | Tiers/prices per D5/D9 unchanged. The server-side `entitlements` table is the single source of truth; Stripe and RevenueCat webhooks are its only two writers and must reconcile there (rule in the WS-J sub-plan) |
 
 ## 2. Goal and definition of done
 
-**Done means:** a stranger can find the site, install it on their phone, use
-the free Cup product, sign up, start a Pro trial or buy a season pass, receive
-predictions and a DFS sheet on Thursday, get push alerts for their driver
-during a race, manage or cancel from the account page, and every one of
-those paths is tested, monitored, backed up, and covered by published terms.
+**Done means:** a stranger can find the site, install it on their phone —
+from the browser (PWA) or from the App Store / Play Store (D19) — use the
+free Cup product, sign up, start a Pro trial or buy a season pass (Stripe on
+web, in-app purchase in the apps — D21), receive predictions and a DFS sheet
+on Thursday, get push alerts for their driver during a race, manage or cancel
+from the account page, and every one of those paths is tested, monitored,
+backed up, and covered by published terms. Launch is joint: neither surface
+ships paid before the other is ready (D20).
 
 Verification is the doctrine in `CLAUDE.md`: colocated tests, negative cases,
 exact asserts, architecture tests green, `bun test` zero failures, and each
@@ -64,9 +73,14 @@ Cloudflare (new account)           Fly.io app (Bun, one container)
                                            Thursday/Saturday predictions, emails
                                      push dispatcher: polls the Worker's /api/live
                                            during sessions, sends Web Push
-Stripe  ◀── Checkout / Portal / webhooks
+Stripe  ◀── Checkout / Portal / webhooks (web purchases)
+RevenueCat ◀── IAP webhooks (mobile purchases, D21) — second entitlement writer
 Resend  ◀── verify, reset, recap (free), preview (Pro), canary alerts
 Plausible ◀── aggregate analytics (no cookies)
+
+Expo app (iOS + Android, D19) → same server API: auth, JSON data, entitlements
+                              → native push via APNs/FCM (supersedes Web Push
+                                on mobile; Web Push stays for the web PWA)
 ```
 
 New code lives in these places (respecting `Utils → Types → Providers →
@@ -93,6 +107,9 @@ Domains → App` and the intra-domain layer order):
   legal pages.
 - `docs/runbooks/` — `deploy.md`, `feed-loss.md`, `backup-restore.md`,
   `incident.md`.
+- `mobile/` — the Expo/React Native app (WS-J). A self-contained package
+  beside the server's single-package `src/` layout; it consumes the server
+  API and ships to the stores, it is not part of the server build.
 
 Files stay ≤400 lines and functions ≤60 (the review flagged three files
 already over; they get split as they are touched, not in a big-bang).
@@ -252,15 +269,27 @@ Build:
   season pass one-time), Customer Portal link, webhook handler with
   idempotency (`stripe_events`), entitlement writes per §7 of the spec,
   grace handling, manual grants CLI for testers.
+  ✅ 2026-09-08 (webhook slice, ahead of the Stripe account): the webhook
+  state machine (`billingService.applyStripeEvent`) with `stripe_events`
+  idempotency, `billing_profiles` customer↔user mapping + out-of-order
+  guard, entitlement writes per §7, `/webhooks/stripe` with mandatory
+  signature verification, and account deletion cancelling the live
+  subscription at Stripe before deleting (spec §6). Checkout session
+  creation, Portal links, and the pricing CTAs still wait on E1–E3.
 - `/pricing`, upgrade CTAs, post-checkout landing, past-due banner.
 - Legal pages rendered from `docs/legal/*.md`; linked at checkout.
 
 Acceptance:
-- [ ] Webhook state machine unit-tested for: trial start, trial→paid,
+- [x] Webhook state machine unit-tested for: trial start, trial→paid,
       payment failed→grace→off, cancel at period end, season pass purchase,
       refund, duplicate event delivery, out-of-order events.
+      ✅ 2026-09-08 — tests/billing.webhooks.test.ts (synthetic Stripe
+      payloads), tests/providers.stripe.test.ts (signature negative cases),
+      endpoint + deletion e2e in tests/app.webhooks.test.ts and
+      tests/app.auth.test.ts.
 - [ ] Stripe test-mode end-to-end: trial signup, card update, cancel, pass
       purchase, each reflected on `/account` within one webhook.
+      (Gated on the owner's Stripe account — E1–E3 above.)
 - [ ] Lawyer review of terms/privacy done; changes applied.
 
 ### WS-F Predictions and DFS (weeks 5–6)
@@ -394,23 +423,86 @@ Acceptance:
       *(All need the deployed origin and real secrets — A1–A6.)*
 - [ ] Launch checklist (§9) walked live with the owner.
 
-## 6. Schedule (eight weeks, Mon 2026-09-07 → Sun 2026-11-01)
+### WS-J Native mobile app (added 2026-09-08 — D19/D20/D21)
 
-| Week | Dates | Workstreams | Owner-side deadlines |
+Build detail + status: [WS-J implementation plan](2026-09-08-ws-j-native-mobile-app.md).
+
+Owner steps (all gated on D2 naming except J3/J4 enrollment itself):
+- J1 Create the RevenueCat account; create the project and API keys.
+- J2 Create the IAP products (monthly w/ trial, season pass) in **App Store
+  Connect** and **Play Console**, matching D5 pricing, and connect them to
+  RevenueCat entitlements. Product identifiers need the D2 name.
+- J3 Enroll in the **Google Play Console** (new — not currently held).
+- J4 Apple Developer Program enrollment is **shared with the owner's existing
+  Fripp Island app** — no new enrollment needed; add the new bundle id there.
+- J5 APNs key + FCM project for native push; store listings (screenshots,
+  privacy labels) at submission time.
+
+Note: the Web Push work shipped in WS-H (PR #15) **remains correct for the
+web PWA**. On mobile, native push (APNs/FCM) supersedes Web Push; the
+`notifications` domain grows native tokens beside web subscriptions.
+
+Build (summary — the sub-plan is the source of truth):
+- Expo scaffold (`mobile/`), navigation, theming to match the web app.
+- Auth: email/password against the existing server auth API; session held
+  natively; same rate limits and CSRF posture as the web client.
+- Free tier: Cup live board + core screens (home, drivers, races, recap).
+- Pro surfaces: predictions, DFS, deep tools — rendered behind
+  entitlement-aware gating that reads **server** entitlements, which both
+  billing paths (Stripe web + RevenueCat IAP) feed (D21).
+- Billing: RevenueCat SDK purchase flow; a RevenueCat webhook on the server
+  as the **second entitlement writer** beside WS-E's Stripe state machine.
+  Reconciliation rule and event dedup are specified in the sub-plan; PR #17's
+  Stripe machine is extended, not rewritten.
+- Native push: APNs/FCM token registration + dispatcher reuse.
+- Store submission: EAS builds, TestFlight/internal track, review, release.
+
+Acceptance:
+- [ ] Sign-up/sign-in/reset from the app against the real server; session
+      survives app restart; sign-out everywhere kills the app session.
+- [ ] Free user sees Cup + live board; Pro screens show locked states that
+      deep-link to purchase; a server-side grant unlocks them without an
+      app update.
+- [ ] Sandbox IAP purchase (both stores) turns Pro on via the RevenueCat
+      webhook within one webhook delivery; a Stripe-web purchase shows Pro
+      in the app; no double-write or downgrade when both paths have fired.
+- [ ] Native push received on a real iOS and Android device for a followed
+      driver; dedup holds across web + mobile for the same user.
+- [ ] Apps approved and live in the App Store and Play Store.
+
+## 6. Schedule (revised 2026-09-08 — ordering, not deadlines)
+
+Per D20 the calendar below is **ordering and dependency, not deadlines**:
+launch gates on both surfaces being ready, not on a date. The dated column is
+kept for the dependency shape it encodes (what needs what, and which owner
+steps unblock which workstream). WS-J runs in parallel with the remaining web
+work from 2026-09-08; its build starts immediately (owner-free parts first),
+and its owner steps J1–J5 join the blocker list. D2 (naming) now also blocks
+the IAP products and store listings, which makes it the single most
+launch-critical owner decision.
+
+| Order | Originally | Workstreams | Owner-side blockers |
 |---|---|---|---|
 | 1 | Sep 7–13 | WS-A | A1–A5 done; A6 started |
-| 2 | Sep 14–20 | WS-B, WS-C | **Name + domain decided (D2)**; DNS on new CF account |
+| 2 | Sep 14–20 | WS-B, WS-C | **Name + domain decided (D2)** — now also blocks J2 store products; DNS on new CF account |
 | 3 | Sep 21–27 | WS-B finish, WS-C finish, WS-D | Lawyer booked |
 | 4 | Sep 28–Oct 4 | WS-E | Stripe products created; lawyer review |
 | 5 | Oct 5–11 | WS-F (model + backtest) | Recruit two DFS testers |
 | 6 | Oct 12–18 | WS-F (pages), WS-G | |
 | 7 | Oct 19–25 | WS-H, soak race | Owner installs on own phone, follows a driver |
-| 8 | Oct 26–Nov 1 | WS-I, launch | Launch go/no-go |
+| — | parallel from Sep 8 | WS-J (native mobile) | J1–J5: RevenueCat, IAP products, Play Console enrollment, APNs/FCM, store listings |
+| last | was Oct 26–Nov 1 | WS-I, joint launch | Launch go/no-go **when web and mobile are both ready** (incl. store review time) |
 
-## 7. Cut order (pre-agreed; drops from the bottom up if a week is lost)
+## 7. Cut order (pre-agreed scope priority)
 
-Never cut: accounts, billing, terms/privacy, canary, backups, Cup
-predictions, DraftKings projections, the free Cup product staying live.
+With D20 the launch date is flexible, so this list no longer defends a hard
+deadline; it survives as the agreed scope-priority order if the owner later
+re-fixes a date or wants to trim.
+
+Never cut: accounts, billing (both channels, D21), terms/privacy, canary,
+backups, Cup predictions, DraftKings projections, the free Cup product
+staying live, the joint web + mobile launch itself (D20 — shipping one
+surface alone requires a new owner decision).
 
 Drop in this order:
 1. NASCAR Fantasy Live scoring (already post-launch)
@@ -439,7 +531,11 @@ Drop in this order:
 - [ ] Stripe live mode; test purchase with a real card refunded
 - [ ] Backups restoring; uptime and error alerts reaching the owner
 - [ ] Canary green for seven days; feed-loss runbook read
-- [ ] PWA installs on the owner's phone; a push alert received
+- [ ] PWA installs on the owner's phone; a web push alert received
+- [ ] Mobile apps approved and live in the App Store and Play Store; owner
+      installs from the store; a native push alert received
+- [ ] Sandbox IAP purchase on each store and a Stripe test purchase all land
+      in the same `entitlements` row with no double-write (D21)
 - [ ] Predictions backtest published on the methodology page
 - [ ] Analytics shows traffic; email list has the recap opt-ins
 - [ ] ARCHITECTURE.md, QUALITY_SCORE.md, PLANS.md updated; this plan moved
@@ -449,9 +545,10 @@ Drop in this order:
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
-| Name/domain undecided past week 2 | Medium | Blocks Stripe, email sender, manifest, terms | Hard deadline D2; placeholder everywhere until then |
+| Name/domain undecided past week 2 | Medium | Blocks Stripe, email sender, manifest, terms, **IAP products + store listings (J2)** | Hard deadline D2; placeholder everywhere until then |
+| Store review rejection or delay | Medium | Joint launch (D20) slips for both surfaces | Submit early builds to TestFlight/internal track; owner accepts a flexible date |
 | Stripe identity verification delay | Low | Blocks WS-E | Start in week 1 (A3) |
 | Prediction model fails the honesty bar | Medium | Pro tier's headline feature slips | Start the backtest in week 5 day 1; fallback is a simpler form-only model that still beats baselines |
 | Live feed closes during build | Low | Live goes idle; push untestable | Live is free; soak race can use a captured replay |
-| Eight weeks is too few | Medium | Scope | Cut order §7; launch date holds, scope moves |
+| Build takes longer than hoped | Medium | Launch drifts past championship weekend | Accepted by owner under D20; §7 priority order still guards scope creep |
 | Sole-proprietor tax/1099 surprises | Low | Admin | Stripe Tax on; LLC in backlog |

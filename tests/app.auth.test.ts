@@ -11,6 +11,7 @@ import { accountsService } from "../src/domains/accounts/index.ts";
 import { billingService } from "../src/domains/billing/index.ts";
 import { createNullArchive } from "../src/providers/raw-archive.ts";
 import { createNullHibp } from "../src/providers/hibp.ts";
+import { createNullStripe } from "../src/providers/stripe.ts";
 import { createNascarCdnClient } from "../src/providers/nascar-cdn.ts";
 import type { Providers } from "../src/providers/index.ts";
 import { testDb, seedDriver, seedRace, seedResult } from "./seed.ts";
@@ -35,6 +36,7 @@ beforeAll(() => {
     cdn: createNascarCdnClient({ delayMs: 0, retries: 0, retryBaseDelayMs: 0, userAgent: "test" }),
     archive: createNullArchive(),
     hibp: createNullHibp(),
+    stripe: createNullStripe(),
   };
   analyticsService.computeAll(providers);
   analyticsService.computeAll(providers, 2);
@@ -258,5 +260,51 @@ describe("account deletion", () => {
     jar.session = oldSession;
     expect((await browse(jar, ip, "/account")).status).toBe(303);
     expect(accountsService.findUserByEmail(providers, "gone@example.com")).toBeNull();
+  });
+
+  test("deletion cancels a live subscription at Stripe first; a Stripe failure blocks it (WS-E)", async () => {
+    const jar: Jar = {};
+    const ip = "10.0.3.2";
+    await signUpFlow(jar, ip, "paying@example.com");
+    const me = accountsService.findUserByEmail(providers, "paying@example.com")!;
+    const now = new Date();
+    const created = Math.floor(now.getTime() / 1000);
+    billingService.applyStripeEvent(providers, {
+      id: "evt_del_1", type: "checkout.session.completed", created,
+      data: { object: { mode: "subscription", customer: "cus_del", client_reference_id: String(me.userId), subscription: "sub_del" } },
+    }, now);
+    billingService.applyStripeEvent(providers, {
+      id: "evt_del_2", type: "customer.subscription.created", created: created + 1,
+      data: { object: { id: "sub_del", customer: "cus_del", status: "active", current_period_end: created + 30 * 86400 } },
+    }, now);
+    expect(billingService.isPro(providers, me.userId, now)).toBe(true);
+
+    const original = providers.stripe;
+    const canceled: string[] = [];
+    try {
+      // Stripe down: the account (and its paying subscription) must survive.
+      providers.stripe = {
+        configured: true,
+        cancelSubscription: async () => ({ ok: false, detail: "stripe HTTP 500: boom" }),
+      };
+      const blocked = await post(jar, ip, "/auth/delete", { password: PW });
+      expect(blocked.status).toBe(502);
+      expect(await blocked.text()).toContain("could not cancel your subscription");
+      expect(accountsService.findUserByEmail(providers, "paying@example.com")).not.toBeNull();
+
+      // Stripe up: cancel exactly the live subscription, then delete.
+      providers.stripe = {
+        configured: true,
+        cancelSubscription: async (id) => (canceled.push(id), { ok: true, detail: "canceled" }),
+      };
+      const done = await post(jar, ip, "/auth/delete", { password: PW });
+      expect(done.status).toBe(200);
+      expect(await done.text()).toContain("Account deleted");
+      expect(canceled).toEqual(["sub_del"]);
+      expect(accountsService.findUserByEmail(providers, "paying@example.com")).toBeNull();
+      expect(billingService.isPro(providers, me.userId, now)).toBe(false);
+    } finally {
+      providers.stripe = original;
+    }
   });
 });

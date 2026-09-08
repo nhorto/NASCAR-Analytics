@@ -7,6 +7,7 @@ import { accountsService } from "../src/domains/accounts/index.ts";
 import { billingService } from "../src/domains/billing/index.ts";
 import { createNullArchive } from "../src/providers/raw-archive.ts";
 import { createNullHibp } from "../src/providers/hibp.ts";
+import { createNullStripe } from "../src/providers/stripe.ts";
 import { createNascarCdnClient } from "../src/providers/nascar-cdn.ts";
 import type { Providers } from "../src/providers/index.ts";
 import { testDb, seedDriver, seedRace, seedResult, seedLoop } from "./seed.ts";
@@ -59,6 +60,7 @@ beforeAll(async () => {
     cdn: createNascarCdnClient({ delayMs: 0, retries: 0, retryBaseDelayMs: 0, userAgent: "test" }),
     archive: createNullArchive(),
     hibp: createNullHibp(),
+    stripe: createNullStripe(),
   };
   analyticsService.computeAll(providers); // Cup
   analyticsService.computeAll(providers, 2); // Xfinity
@@ -88,6 +90,15 @@ describe("web app", () => {
     expect(body).toContain("Road Grand Prix"); // latest completed race
     expect(body).toContain("Beta Racer"); // its winner
     expect(body).toContain("Championship");
+  });
+
+  test("Cup home carries the predictions entry card; other series do not", async () => {
+    const cup = await get("/");
+    expect(cup.body).toContain('href="/predictions"');
+    expect(cup.body).toContain('href="/dfs"');
+    // Predictions are Cup-only at launch (D16): no dead entry point elsewhere.
+    const xfinity = await get("/xfinity");
+    expect(xfinity.body).not.toContain('href="/predictions"');
   });
 
   test("stylesheet is served", async () => {
@@ -320,6 +331,7 @@ describe("web app", () => {
       cdn: createNascarCdnClient({ delayMs: 0, retries: 0, retryBaseDelayMs: 0, userAgent: "test" }),
       archive: createNullArchive(),
       hibp: createNullHibp(),
+      stripe: createNullStripe(),
     };
     const failing = (at: string) => ({
       at,
@@ -355,6 +367,7 @@ describe("web app", () => {
       cdn: createNascarCdnClient({ delayMs: 0, retries: 0, retryBaseDelayMs: 0, userAgent: "test" }),
       archive: createNullArchive(),
       hibp: createNullHibp(),
+      stripe: createNullStripe(),
     };
     dataHealthService.recordReport(providers, {
       at: "2026-09-07T09:00:00Z",
@@ -379,6 +392,7 @@ describe("web app", () => {
       cdn: createNascarCdnClient({ delayMs: 0, retries: 0, retryBaseDelayMs: 0, userAgent: "test" }),
       archive: createNullArchive(),
       hibp: createNullHibp(),
+      stripe: createNullStripe(),
     };
     const prod = createServer(providers, 0, {
       production: true,
@@ -392,6 +406,7 @@ describe("web app", () => {
       enablePredictionsCron: false,
     enableEmailDigests: false,
     resendWebhookSecret: null,
+    stripeWebhookSecret: null,
     pushConfigured: false,
     enablePushDispatcher: false,
       logRequests: false,

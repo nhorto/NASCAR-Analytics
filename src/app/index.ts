@@ -18,6 +18,7 @@ function providers() {
       retryBaseDelayMs: ingestionConfig.FETCH_RETRY_BASE_DELAY_MS,
       userAgent: ingestionConfig.USER_AGENT,
     },
+    stripe: process.env.STRIPE_SECRET_KEY ? { secretKey: process.env.STRIPE_SECRET_KEY } : null,
   });
 }
 
@@ -460,7 +461,9 @@ serve env: APP_ENV=production (strict env + HSTS + request logs), PORT,
      ENABLE_CANARY_CRON=1 (in-process daily 09:00 UTC canary),
      ENABLE_PREDICTIONS_CRON=1 (Thu 16:00 + Sat 22:00 UTC model runs),
      ENABLE_PUSH_DISPATCHER=1 + VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY (race push alerts), LOG_REQUESTS,
-     RESEND_WEBHOOK_SECRET (bounce/complaint suppression at /webhooks/resend)
+     RESEND_WEBHOOK_SECRET (bounce/complaint suppression at /webhooks/resend),
+     STRIPE_WEBHOOK_SECRET (billing events at /webhooks/stripe),
+     STRIPE_SECRET_KEY (cancel-at-Stripe on account deletion)
 canary env: RESEND_API_KEY + ALERT_EMAIL_TO [+ EMAIL_FROM] (owner outage emails)
 email env: ENABLE_EMAIL_DIGESTS=1 (auto-send after refresh/predict), APP_BASE_URL (link base),
      RESEND_API_KEY [+ EMAIL_FROM] (without them, digests are logged, not sent)`);
