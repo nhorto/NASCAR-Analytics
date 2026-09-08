@@ -79,6 +79,74 @@ export function Button({
   );
 }
 
+/**
+ * A row of mutually exclusive options — the DK/FD toggle, track types, sort
+ * keys. Locked options render dimmed with a padlock and do not fire onChange,
+ * which is how a Pro-only choice states itself on a free account.
+ */
+export function Segmented<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: ReadonlyArray<{ value: T; label: string; locked?: boolean }>;
+  value: T;
+  onChange: (value: T) => void;
+}) {
+  return (
+    <View style={styles.segmented}>
+      {options.map((option) => {
+        const on = option.value === value;
+        return (
+          <Pressable
+            key={option.value}
+            onPress={() => !option.locked && onChange(option.value)}
+            style={[styles.segment, on && styles.segmentOn, option.locked && styles.segmentLocked]}
+          >
+            <Text style={[styles.segmentText, on && styles.segmentTextOn]} numberOfLines={1}>
+              {option.locked ? `${option.label} 🔒` : option.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+/** A labelled value stepper for bounded numbers (season range, min starts). */
+export function Stepper({
+  label,
+  value,
+  min,
+  max,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  onChange: (value: number) => void;
+}) {
+  return (
+    <View style={styles.stepper}>
+      <Text style={styles.stepperLabel}>{label}</Text>
+      <Pressable
+        onPress={() => value > min && onChange(value - 1)}
+        style={[styles.stepperButton, value <= min && styles.buttonDisabled]}
+      >
+        <Text style={styles.stepperGlyph}>−</Text>
+      </Pressable>
+      <Text style={styles.stepperValue}>{value}</Text>
+      <Pressable
+        onPress={() => value < max && onChange(value + 1)}
+        style={[styles.stepperButton, value >= max && styles.buttonDisabled]}
+      >
+        <Text style={styles.stepperGlyph}>+</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 export function ProBadge() {
   return (
     <View style={styles.proBadge}>
@@ -122,6 +190,40 @@ const styles = StyleSheet.create({
   buttonDisabled: { opacity: 0.45 },
   buttonText: { color: "#0a0c10", fontWeight: "700", fontSize: 14 },
   buttonQuietText: { color: colors.text },
+  segmented: {
+    flexDirection: "row",
+    backgroundColor: colors.surface2,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 3,
+    gap: 3,
+  },
+  segment: { flex: 1, paddingVertical: 7, borderRadius: 7, alignItems: "center" },
+  segmentOn: { backgroundColor: colors.accent },
+  segmentLocked: { opacity: 0.45 },
+  segmentText: { color: colors.muted, fontSize: 12, fontWeight: "600" },
+  segmentTextOn: { color: "#0a0c10" },
+  stepper: { flexDirection: "row", alignItems: "center", gap: 8 },
+  stepperLabel: { color: colors.muted, fontSize: 12, flex: 1 },
+  stepperButton: {
+    backgroundColor: colors.surface2,
+    borderColor: colors.border,
+    borderWidth: 1,
+    borderRadius: 8,
+    width: 32,
+    height: 30,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  stepperGlyph: { color: colors.text, fontSize: 16, fontWeight: "700" },
+  stepperValue: {
+    color: colors.text,
+    fontSize: 14,
+    width: 46,
+    textAlign: "center",
+    fontVariant: ["tabular-nums"],
+  },
   proBadge: {
     backgroundColor: colors.accent,
     borderRadius: 6,

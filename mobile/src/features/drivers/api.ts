@@ -39,6 +39,14 @@ export interface SeasonStatsRow {
   avgRating: number | null;
   adjPassEfficiency: number | null;
   closerScore: number | null;
+  /**
+   * Races that actually had loop data. Aggregating a season *range* must
+   * weight the loop metrics by this and not by `races`, or a pre-2019 season
+   * with no loop data drags the average toward zero (the same trap
+   * src/app/client/compare.js documents).
+   */
+  loopRaces: number;
+  top15LapPct: number | null;
 }
 
 export interface DriverProfile {
@@ -125,17 +133,46 @@ export function parseSeasons(value: unknown): SeasonStatsRow[] {
         avgRating: numOrNull(r.avgRating),
         adjPassEfficiency: numOrNull(r.adjPassEfficiency),
         closerScore: numOrNull(r.closerScore),
+        loopRaces: num(r.loopRaces),
+        top15LapPct: numOrNull(r.top15LapPct),
       },
     ];
   });
 }
 
-export async function fetchDrivers(base: string, query: string): Promise<DriverSummary[] | null> {
+export async function fetchDrivers(
+  base: string,
+  query: string,
+  seriesId = 1,
+): Promise<DriverSummary[] | null> {
   try {
     const q = query.trim() === "" ? "" : `&q=${encodeURIComponent(query.trim())}`;
-    const res = await timedFetch(`${base}/api/drivers?series=1${q}`);
+    const res = await timedFetch(`${base}/api/drivers?series=${seriesId}${q}`, {
+      credentials: "include",
+    });
     if (!res.ok) return null;
     return parseDrivers(await res.json());
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * One driver's per-season stats for a series. Non-Cup series are Pro-gated
+ * server-side, so a free viewer's request for series 2/3 comes back 403 and
+ * this returns null — which the compare screen renders as its locked state.
+ */
+export async function fetchDriverSeasons(
+  base: string,
+  driverId: number,
+  seriesId: number,
+): Promise<SeasonStatsRow[] | null> {
+  try {
+    const res = await timedFetch(`${base}/api/drivers/${driverId}/stats?series=${seriesId}`, {
+      credentials: "include",
+    });
+    if (!res.ok) return null;
+    return parseSeasons(await res.json());
   } catch {
     return null;
   }
