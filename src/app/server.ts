@@ -34,6 +34,7 @@ import { handleDownloadRequest } from "./downloads.ts";
 import { offlineContent, PWA_ICONS, serviceWorkerSource, webManifest } from "./pwa.ts";
 import { handleWebhookRequest } from "./webhooks.ts";
 import { handlePushRequest, vapidFromEnv } from "./push.ts";
+import { handleMeRequest } from "./me.ts";
 
 // Headline numbers from the held-out backtest, shown on the methodology page.
 // Source: docs/research/2026-09-07_predictions-backtest.md (re-derive with
@@ -394,6 +395,7 @@ export function createServer(
         res =
           (await handleWebhookRequest(p, req, url, webhookDeps)) ??
           (await handlePushRequest(p, req, url, viewer, pushDeps)) ??
+          handleMeRequest(req, url, viewer) ??
           (await handleAuthRequest(p, req, url, viewer, authDeps)) ??
           route(url, viewer);
       } catch (err) {

@@ -1,0 +1,20 @@
+{
+  "expo": {
+    "name": "LoopLab",
+    "slug": "looplab",
+    "version": "0.1.0",
+    "scheme": "looplab",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0a0c10",
+    "ios": {
+      "bundleIdentifier": "app.looplab.placeholder",
+      "supportsTablet": false
+    },
+    "android": {
+      "package": "app.looplab.placeholder",
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": ["expo-router"]
+  }
+}
