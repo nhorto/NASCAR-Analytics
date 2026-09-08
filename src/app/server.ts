@@ -23,6 +23,7 @@ import { page, seriesLabel } from "./layout.ts";
 import { exportBar } from "./html.ts";
 import { predictionsService } from "../domains/predictions/index.ts";
 import {
+  METHODOLOGY_BACKTEST,
   predictionsContent,
   predictionsEmptyContent,
   cupOnlyContent,
@@ -35,17 +36,7 @@ import { offlineContent, PWA_ICONS, serviceWorkerSource, webManifest } from "./p
 import { handleWebhookRequest, handleStripeWebhookRequest } from "./webhooks.ts";
 import { handlePushRequest, vapidFromEnv } from "./push.ts";
 import { handleMeRequest } from "./me.ts";
-
-// Headline numbers from the held-out backtest, shown on the methodology page.
-// Source: docs/research/2026-09-07_predictions-backtest.md (re-derive with
-// `bun run backtest:predictions`).
-const METHODOLOGY_BACKTEST = {
-  evalSeason: 2025,
-  winBrier: "0.0255 vs 0.0268 trailing-5 and 0.0256 uniform",
-  top10Brier: "0.173 vs 0.194 for both baselines, about 11% better",
-  calibrationNote:
-    "Calibration is inside ±5 points on six of seven probability bins; the seventh (60–70%, n=39) sits 5.2 off — within one standard error of exact. Win odds firm up after qualifying: the Thursday form-only run is honest about being weaker on outright winners.",
-};
+import { handleProApiRequest } from "./pro-api.ts";
 
 const STYLE_URL = new URL("./style.css", import.meta.url);
 const BOOT_JS_URL = new URL("./client/boot.js", import.meta.url);
@@ -215,7 +206,7 @@ export function createServer(
     }
   };
 
-  const route = (url: URL, viewer: Viewer): Response => {
+  const route = (url: URL, viewer: Viewer, method: string): Response => {
       const path = url.pathname;
 
       if (path === "/health") return health();
@@ -282,6 +273,10 @@ export function createServer(
       }
 
       // --- JSON API (dev convenience; not part of the static export) ---
+      // The native app's read of the WS-F Pro content; same gating verdicts as
+      // the pages it mirrors (src/app/pro-api.ts).
+      const proApi = handleProApiRequest(p, method, url, viewer);
+      if (proApi) return proApi;
       if (path === "/api/drivers") return driversRuntime.handleDriverIndex(p, url);
       m = path.match(/^\/api\/drivers\/(\d+)$/);
       if (m) return driversRuntime.handleDriver(p, m[1]!, url);
@@ -403,7 +398,7 @@ export function createServer(
           (await handlePushRequest(p, req, url, viewer, pushDeps)) ??
           handleMeRequest(req, url, viewer) ??
           (await handleAuthRequest(p, req, url, viewer, authDeps)) ??
-          route(url, viewer);
+          route(url, viewer, req.method);
       } catch (err) {
         console.error(
           logLine("error", "unhandled route error", { id, path: url.pathname, error: String(err) }),
