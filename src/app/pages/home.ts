@@ -37,6 +37,20 @@ export function homeContent(data: {
     );
   }
 
+  // Entry point for /predictions and /dfs (tech-debt: "no nav placement" —
+  // the 8-tab tabbar is full, so the placement decision landed on a home
+  // card). Cup only at launch (D16); the pages themselves gate Pro features.
+  // Skipped on an empty database so the "No data yet" hint still shows.
+  if (s === 1 && data.latestRace) {
+    parts.push(
+      card(
+        "Race Predictions",
+        `<p class="note">Win / top-5 / top-10 odds for every driver in the next race — published Thursday, refreshed after qualifying. Pro adds <a href="/dfs">DFS projections</a> for DraftKings and FanDuel.</p>`,
+        { href: "/predictions", label: "This week's predictions →" },
+      ),
+    );
+  }
+
   const board = data.metricBoard;
   if (board && (board.adjPass.length > 0 || board.closer.length > 0)) {
     const leaderRow = (label: string, m: (typeof board.adjPass)[number] | undefined, digits: number) =>
