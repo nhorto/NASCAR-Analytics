@@ -333,6 +333,40 @@ CREATE TABLE IF NOT EXISTS email_sends (
   PRIMARY KEY (user_id, kind, ref_id)
 );
 
+-- Web Push (domains/notifications/repo.ts, WS-H). One row per browser push
+-- endpoint (a user can have several devices). p256dh/auth are the subscriber's
+-- public key material from the PushSubscription, required to encrypt payloads
+-- per RFC 8291. followed_driver_id + kinds say what that device wants.
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  endpoint TEXT PRIMARY KEY,
+  user_id INTEGER NOT NULL,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  followed_driver_id INTEGER,
+  kinds TEXT NOT NULL,
+  quiet_from_hour INTEGER,
+  quiet_to_hour INTEGER,
+  -- IANA zone from the device. Quiet hours are meaningless without it, and
+  -- storing a fixed UTC offset instead would drift by an hour across DST.
+  timezone TEXT,
+  created_at TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL,
+  failure_count INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_push_subs_user ON push_subscriptions(user_id);
+
+-- Dedup ledger: the live Durable Object can restart and re-derive an alert it
+-- already emitted, so the dispatcher records what each endpoint was sent and
+-- refuses a repeat rather than trusting the feed to be exactly-once.
+CREATE TABLE IF NOT EXISTS push_sends (
+  endpoint TEXT NOT NULL,
+  race_id INTEGER NOT NULL,
+  dedup_key TEXT NOT NULL,
+  sent_at TEXT NOT NULL,
+  PRIMARY KEY (endpoint, race_id, dedup_key)
+);
+CREATE INDEX IF NOT EXISTS idx_push_sends_race ON push_sends(race_id, sent_at);
+
 CREATE TABLE IF NOT EXISTS raw_fetches (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   url TEXT NOT NULL,

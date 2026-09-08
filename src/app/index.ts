@@ -218,6 +218,20 @@ switch (command) {
       const { startPredictionsScheduler } = await import("./scheduler.ts");
       startPredictionsScheduler({ log });
     }
+    if (config.enablePushDispatcher) {
+      // WS-H: poll the live Worker and push race alerts to subscribers.
+      const { startPushDispatcher } = await import("./scheduler.ts");
+      const { vapidFromEnv } = await import("../providers/webpush.ts");
+      const vapid = vapidFromEnv(process.env);
+      if (!vapid) log.warn("ENABLE_PUSH_DISPATCHER set but VAPID keys are missing — no alerts will send");
+      startPushDispatcher({
+        p,
+        liveApiBase: config.liveApiBase,
+        seriesId: ingestionConfig.SERIES.cup,
+        vapid,
+        log,
+      });
+    }
     console.log(`Looplab running at ${server.url}`);
     break;
   }
@@ -280,6 +294,19 @@ switch (command) {
     });
     // The Thursday preview goes out on the back of the run that produced it.
     await maybeSendDigest(predictProviders, "preview");
+    break;
+  }
+  case "gen:vapid": {
+    // WS-H: mint the application-server identity for Web Push. Run once; put
+    // the private key in `fly secrets set`, never in the repo.
+    const { generateVapidKeys } = await import("../providers/webpush.ts");
+    const subject = argString("--subject") ?? "mailto:alerts@example.com";
+    const keys = await generateVapidKeys(subject);
+    console.log(`VAPID_PUBLIC_KEY=${keys.publicKey}`);
+    console.log(`VAPID_PRIVATE_KEY=${keys.privateKey}`);
+    console.log(`VAPID_SUBJECT=${keys.subject}`);
+    console.log(`\nThe public key is safe to ship to browsers. Keep the private key secret:`);
+    console.log(`  fly secrets set VAPID_PRIVATE_KEY=… VAPID_PUBLIC_KEY=… VAPID_SUBJECT=…`);
     break;
   }
   case "email": {
@@ -419,6 +446,7 @@ Usage:
   bun run src/app/index.ts capture [--series ID] [--interval SEC] [--ticks N] [--out DIR]  # capture live feed
   bun run src/app/index.ts canary [--series ID] [--json PATH]   # upstream-feed health check (exit 1 on failure)
   bun run src/app/index.ts predict [--race ID] [--stage thursday|saturday] [--series ID]   # WS-F model run
+  bun run src/app/index.ts gen:vapid [--subject mailto:you@example.com]   # WS-H push keys
   bun run src/app/index.ts email --kind recap|preview [--race ID] [--to a@b.c] [--dry-run]   # digest send
   bun run src/app/index.ts grant --email a@b.c [--until ISO] [--revoke]   # manual Pro grant (testers)
   bun run src/app/index.ts refresh [--no-deploy]   # data+site+Worker artifacts; deploy both, all series
@@ -430,7 +458,8 @@ serve env: APP_ENV=production (strict env + HSTS + request logs), PORT,
      LIVE_API_BASE, PLAUSIBLE_DOMAIN [+ PLAUSIBLE_HOST],
      ENABLE_REFRESH_CRON=1 (in-process Monday 12:00 UTC refresh),
      ENABLE_CANARY_CRON=1 (in-process daily 09:00 UTC canary),
-     ENABLE_PREDICTIONS_CRON=1 (Thu 16:00 + Sat 22:00 UTC model runs), LOG_REQUESTS,
+     ENABLE_PREDICTIONS_CRON=1 (Thu 16:00 + Sat 22:00 UTC model runs),
+     ENABLE_PUSH_DISPATCHER=1 + VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY (race push alerts), LOG_REQUESTS,
      RESEND_WEBHOOK_SECRET (bounce/complaint suppression at /webhooks/resend)
 canary env: RESEND_API_KEY + ALERT_EMAIL_TO [+ EMAIL_FROM] (owner outage emails)
 email env: ENABLE_EMAIL_DIGESTS=1 (auto-send after refresh/predict), APP_BASE_URL (link base),

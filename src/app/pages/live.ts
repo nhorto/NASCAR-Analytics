@@ -6,7 +6,10 @@
 
 import { ASSET_VERSION } from "../html.ts";
 
-export function liveShell(seriesId: number): string {
+export function liveShell(seriesId: number, pro = false): string {
+  // Push is a Pro capability (spec §4); the mount only exists for Pro viewers,
+  // and push.js fills it in based on what the device actually supports.
+  const pushMount = pro ? `<div id="push-mount"></div>` : "";
   return `<div id="live-status"></div>
   <nav class="subtabs" id="live-subtabs" hidden>
     <a class="on" data-tab="board">Board</a>
@@ -15,7 +18,9 @@ export function liveShell(seriesId: number): string {
     <a data-tab="mydriver">My Driver</a>
   </nav>
   <div id="live-body"><div class="card"><p class="note">Connecting to the live feed…</p></div></div>
+  ${pushMount}
   <p class="live-foot" id="live-foot"></p>
   <script>window.__SERIES__=${seriesId};</script>
-  <script src="/live.js?v=${ASSET_VERSION}"></script>`;
+  <script src="/live.js?v=${ASSET_VERSION}"></script>
+  ${pro ? `<script src="/push.js?v=${ASSET_VERSION}" defer></script>` : ""}`;
 }

@@ -8,6 +8,9 @@ import {
   runScheduledRefresh,
   REFRESH_LOCK_NAME,
   REFRESH_LOCK_TTL_MS,
+  pollAndDispatch,
+  PUSH_POLL_IDLE_MS,
+  PUSH_POLL_LIVE_MS,
 } from "../src/app/scheduler.ts";
 import { acquireLock } from "../src/providers/lock.ts";
 import { testDb } from "./seed.ts";
@@ -179,5 +182,104 @@ describe("startPredictionsScheduler", () => {
       scheduler.stop();
     }
     expect(ran).toEqual([]); // nothing fires synchronously
+  });
+});
+
+// --- race-day push dispatcher (WS-H) ---
+
+describe("push dispatcher polling", () => {
+  const log = { info: () => {}, warn: () => {} };
+  const base = "https://live.example.workers.dev";
+
+  function payload(over: Record<string, unknown> = {}) {
+    return {
+      ok: true,
+      live: true,
+      snapshot: { raceId: 5555, runName: "Southern 500", trackName: "Darlington", lap: 120 },
+      alerts: [{ kind: "pit", message: "Bell pits", driverId: 10, atLap: 120 }],
+      ...over,
+    };
+  }
+
+  function deps(over: Record<string, unknown> = {}) {
+    const dispatched: unknown[] = [];
+    return {
+      dispatched,
+      deps: {
+        p: { db: testDb() },
+        liveApiBase: base,
+        seriesId: 1,
+        vapid: { publicKey: "pub", privateKey: "priv", subject: "mailto:a@b.c" },
+        log,
+        dispatch: (async (_p: unknown, alerts: unknown[]) => {
+          dispatched.push(...alerts);
+          return { considered: alerts.length, sent: alerts.length, skippedDuplicate: 0, skippedFiltered: 0, failed: 0, pruned: 0 };
+        }) as never,
+        ...over,
+      } as never,
+    };
+  }
+
+  test("dispatches the Worker's alerts and polls fast while racing", async () => {
+    const { deps: d, dispatched } = deps({
+      fetchImpl: async () => new Response(JSON.stringify(payload())),
+    });
+    const result = await pollAndDispatch(d, false);
+    expect(result.live).toBe(true);
+    expect(result.sent).toBe(1);
+    expect(result.nextDelayMs).toBe(PUSH_POLL_LIVE_MS);
+    expect(dispatched).toEqual([
+      { kind: "pit", message: "Bell pits", driverId: 10, atLap: 120, raceId: 5555 },
+    ]);
+  });
+
+  test("backs off to the idle interval when no session is on track", async () => {
+    const { deps: d } = deps({
+      fetchImpl: async () => new Response(JSON.stringify(payload({ live: false, alerts: [] }))),
+    });
+    const result = await pollAndDispatch(d, false);
+    expect(result.live).toBe(false);
+    expect(result.nextDelayMs).toBe(PUSH_POLL_IDLE_MS);
+  });
+
+  test("synthesizes a finish alert on the live-to-idle transition", async () => {
+    // The checkered flag isn't a snapshot diff, so it has to be inferred.
+    const { deps: d, dispatched } = deps({
+      fetchImpl: async () => new Response(JSON.stringify(payload({ live: false, alerts: [] }))),
+    });
+    await pollAndDispatch(d, true);
+    expect(dispatched).toEqual([
+      { kind: "finish", message: "Southern 500 is complete", driverId: null, atLap: 120, raceId: 5555 },
+    ]);
+  });
+
+  test("a finish is not re-synthesized while the session stays idle", async () => {
+    const { deps: d, dispatched } = deps({
+      fetchImpl: async () => new Response(JSON.stringify(payload({ live: false, alerts: [] }))),
+    });
+    await pollAndDispatch(d, false); // already idle last time
+    expect(dispatched).toEqual([]);
+  });
+
+  test("an unreachable or erroring Worker backs off instead of throwing", async () => {
+    const down = deps({ fetchImpl: async () => { throw new Error("network down"); } });
+    await expect(pollAndDispatch(down.deps, true)).resolves.toMatchObject({
+      live: false, sent: 0, nextDelayMs: PUSH_POLL_IDLE_MS,
+    });
+
+    const err = deps({ fetchImpl: async () => new Response("nope", { status: 502 }) });
+    await expect(pollAndDispatch(err.deps, true)).resolves.toMatchObject({ live: false, sent: 0 });
+
+    const junk = deps({ fetchImpl: async () => new Response("not json") });
+    await expect(pollAndDispatch(junk.deps, true)).resolves.toMatchObject({ live: false, sent: 0 });
+  });
+
+  test("a payload the Worker marks not-ok is ignored", async () => {
+    const { deps: d, dispatched } = deps({
+      fetchImpl: async () => new Response(JSON.stringify({ ok: false })),
+    });
+    const result = await pollAndDispatch(d, true);
+    expect(result.sent).toBe(0);
+    expect(dispatched).toEqual([]);
   });
 });

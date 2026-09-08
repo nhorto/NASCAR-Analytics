@@ -259,13 +259,13 @@ export function renderTracks(p: P, seriesId: number, pro: ViewerPro = null): str
   });
 }
 
-export function renderLive(p: P, seriesId: number): string {
+export function renderLive(p: P, seriesId: number, pro: ViewerPro = null): string {
   return page({
     title: "Live",
     active: "live",
     seriesId,
     season: currentSeason(p, seriesId),
-    content: liveShell(seriesId),
+    content: liveShell(seriesId, pro === true),
   });
 }
 

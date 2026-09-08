@@ -1,0 +1,8 @@
+[test]
+# Account tests exercise argon2id through the real service, and argon2 is
+# deliberately expensive (~1 s per hash). Under `bun test`'s parallel file
+# execution — especially alongside the WS-H push tests' EC key generation —
+# those tests legitimately exceed Bun's 5 s default and fail as timeouts
+# rather than as real defects. 30 s is generous for a correct run and still
+# catches a genuine hang.
+timeout = 30000
