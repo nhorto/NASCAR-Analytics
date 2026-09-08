@@ -90,6 +90,15 @@ describe("web app", () => {
     expect(body).toContain("Championship");
   });
 
+  test("Cup home carries the predictions entry card; other series do not", async () => {
+    const cup = await get("/");
+    expect(cup.body).toContain('href="/predictions"');
+    expect(cup.body).toContain('href="/dfs"');
+    // Predictions are Cup-only at launch (D16): no dead entry point elsewhere.
+    const xfinity = await get("/xfinity");
+    expect(xfinity.body).not.toContain('href="/predictions"');
+  });
+
   test("stylesheet is served", async () => {
     const { status, body } = await get("/style.css");
     expect(status).toBe(200);
