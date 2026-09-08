@@ -27,6 +27,10 @@ export interface ServerConfig {
   /** Stripe webhook signing secret (entitlement source of truth, WS-E).
    *  Null leaves /webhooks/stripe answering 503 instead of trusting input. */
   stripeWebhookSecret: string | null;
+  /** RevenueCat webhook shared secret (the second entitlement writer, WS-J).
+   *  Null leaves /webhooks/revenuecat answering 503 instead of trusting
+   *  input; unset until the owner has a RevenueCat account (J1). */
+  revenuecatWebhookSecret: string | null;
   /** True when both VAPID keys are present — push is offered only then (WS-H). */
   pushConfigured: boolean;
   /** Poll the live Worker and push race alerts to subscribers (WS-H). */
@@ -141,6 +145,8 @@ export function readServerEnv(env: Env): ServerEnvResult {
       warnings.push("STRIPE_WEBHOOK_SECRET not set — Stripe billing webhooks are disabled");
     if (!env.STRIPE_SECRET_KEY)
       warnings.push("STRIPE_SECRET_KEY not set — account deletion cannot cancel subscriptions at Stripe");
+    if (!env.REVENUECAT_WEBHOOK_SECRET)
+      warnings.push("REVENUECAT_WEBHOOK_SECRET not set — RevenueCat billing webhooks are disabled (WS-J, owner-gated)");
     if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY)
       warnings.push("VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY not set — race push alerts are disabled");
   }
@@ -159,6 +165,7 @@ export function readServerEnv(env: Env): ServerEnvResult {
       enableEmailDigests: enableEmailDigests ?? false,
       resendWebhookSecret: env.RESEND_WEBHOOK_SECRET || null,
       stripeWebhookSecret: env.STRIPE_WEBHOOK_SECRET || null,
+      revenuecatWebhookSecret: env.REVENUECAT_WEBHOOK_SECRET || null,
       pushConfigured: Boolean(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY),
       enablePushDispatcher: enablePushDispatcher ?? false,
       logRequests: logRequests ?? production,

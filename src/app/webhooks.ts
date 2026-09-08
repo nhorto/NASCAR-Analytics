@@ -1,15 +1,19 @@
 // Inbound provider webhooks: Resend delivery events (WS-G — a hard bounce or
-// spam complaint suppresses that address so we stop mailing it) and Stripe
-// billing events (WS-E — the only source of truth for entitlement).
+// spam complaint suppresses that address so we stop mailing it), Stripe
+// billing events (WS-E), and RevenueCat billing events (WS-J) — Stripe and
+// RevenueCat are independent writers of the same entitlement (see
+// domains/billing/service.ts).
 //
-// The signature checks are mandatory: these endpoints mutate deliverability
-// and billing state from an unauthenticated origin, so an unsigned or stale
-// request is refused before the body is parsed as anything meaningful.
+// The auth checks are mandatory: these endpoints mutate deliverability and
+// billing state from an unauthenticated origin, so an unsigned/unauthorized
+// or stale request is refused before the body is parsed as anything
+// meaningful.
 import type { Providers } from "../providers/index.ts";
 import { accountsService } from "../domains/accounts/index.ts";
 import { billingService } from "../domains/billing/index.ts";
 import { verifyWebhookSignature } from "../providers/email.ts";
 import { verifyStripeSignature } from "../providers/stripe.ts";
+import { verifyRevenueCatAuthorization } from "../providers/revenuecat.ts";
 import { logLine } from "./http.ts";
 
 type P = Pick<Providers, "db">;
@@ -162,6 +166,65 @@ export async function handleStripeWebhookRequest(
   deps.log?.info(
     logLine("info", "stripe webhook", {
       type: (payload as { type?: string }).type ?? "unknown",
+      applied: outcome.applied,
+      action: outcome.action,
+    }),
+  );
+  return json({ ok: true, applied: outcome.applied, action: outcome.action }, 200);
+}
+
+export const REVENUECAT_WEBHOOK_PATH = "/webhooks/revenuecat";
+
+export interface RevenueCatWebhookDeps {
+  /** REVENUECAT_WEBHOOK_SECRET; null disables the endpoint (503 rather than
+   *  trusting an unauthenticated caller). Owner-gated (J1) — unset until the
+   *  owner has a RevenueCat account. */
+  secret: string | null;
+  now?: () => Date;
+  log?: { info: (m: string) => void; warn: (m: string) => void };
+}
+
+/**
+ * Handles RevenueCat webhook deliveries; returns null for every other path
+ * so the server falls through to its router. Verified events feed the
+ * billing state machine's RevenueCat side; anything it cannot apply (unknown
+ * type, unknown subscriber, stale or duplicate delivery) is still
+ * acknowledged with a 200 — a non-2xx would make RevenueCat retry a delivery
+ * that will never succeed.
+ */
+export async function handleRevenueCatWebhookRequest(
+  p: P,
+  req: Request,
+  url: URL,
+  deps: RevenueCatWebhookDeps,
+): Promise<Response | null> {
+  if (url.pathname !== REVENUECAT_WEBHOOK_PATH) return null;
+  if (req.method !== "POST") return json({ error: "method_not_allowed" }, 405);
+  const now = deps.now?.() ?? new Date();
+
+  if (!deps.secret) {
+    deps.log?.warn(logLine("error", "revenuecat webhook received but REVENUECAT_WEBHOOK_SECRET is unset", {}));
+    return json({ error: "webhook_not_configured" }, 503);
+  }
+
+  if (!verifyRevenueCatAuthorization({ secret: deps.secret, header: req.headers.get("authorization") })) {
+    deps.log?.warn(logLine("error", "revenuecat webhook authorization rejected", {}));
+    return json({ error: "invalid_authorization" }, 401);
+  }
+
+  const body = await req.text();
+  let payload: unknown;
+  try {
+    payload = JSON.parse(body);
+  } catch {
+    return json({ error: "invalid_json" }, 400);
+  }
+
+  const outcome = billingService.applyRevenueCatEvent(p, payload, now);
+  if (outcome.action === "malformed_event") return json({ error: "malformed_event" }, 400);
+  deps.log?.info(
+    logLine("info", "revenuecat webhook", {
+      type: (payload as { event?: { type?: string } })?.event?.type ?? "unknown",
       applied: outcome.applied,
       action: outcome.action,
     }),

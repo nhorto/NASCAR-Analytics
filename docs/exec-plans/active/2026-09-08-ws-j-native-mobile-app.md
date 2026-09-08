@@ -150,10 +150,17 @@ adds a **second entitlement writer**, not a second entitlement model:
       markers reference J1/J2).
 - [ ] RevenueCat SDK adapter behind the interface; paywall screen from
       server-declared tier copy.
-- [ ] Server: `revenuecat_events` table, webhook route + state machine,
+- [x] Server: `revenuecat_events` table, webhook route + state machine,
       reconciliation per the rule above, all with the same test discipline
       as `tests/billing.webhooks.test.ts` (duplicate, out-of-order, refund,
-      cross-channel non-interference cases).
+      cross-channel non-interference cases). Everything buildable without a
+      RevenueCat account: `POST /webhooks/revenuecat` (Authorization
+      shared-secret, fail-closed when `REVENUECAT_WEBHOOK_SECRET` is unset),
+      `billing_grants` per-(channel, kind) ledger with `entitlements`
+      projected as the max `pro_until` across it, and account deletion
+      dropping every channel's grant. No outbound RevenueCat client exists —
+      unlike Stripe, RevenueCat cannot cancel a live store subscription on
+      our command, so there is nothing to build there yet.
 - [ ] Sandbox purchases on both stores reflected in `/account` and the app.
 
 ### Stage 4 — native push + stores (owner-gated: J3–J5)
