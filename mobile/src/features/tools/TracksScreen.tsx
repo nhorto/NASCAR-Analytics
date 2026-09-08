@@ -7,10 +7,11 @@ import { useCallback, useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { serverBase } from "../../lib/config.ts";
+import { useReload } from "../../lib/reload.ts";
 import { usePro } from "../../lib/viewer.tsx";
 import { Card, ErrorNote, Loading, Screen, Segmented, Stepper } from "../../ui/components.tsx";
 import { colors } from "../../ui/theme.ts";
-import { fetchLatestSeason } from "../stats/api.ts";
+import { useLatestSeason } from "../stats/api.ts";
 import { ProLock } from "../pro/ProLock.tsx";
 import { fetchTrackBoard, TRACK_TYPES, type TrackResult, type TrackType } from "./api.ts";
 import {
@@ -40,7 +41,7 @@ const DEFAULT_WINDOW = 7;
 
 export function TracksScreen() {
   const pro = usePro();
-  const [latestSeason, setLatestSeason] = useState<number | null>(null);
+  const { season: latestSeason, retry: retryBoot } = useLatestSeason();
   const [range, setRange] = useState<{ from: number; to: number } | null>(null);
   const [seriesId, setSeriesId] = useState("1");
   const [trackType, setTrackType] = useState<TrackType>("road");
@@ -49,12 +50,8 @@ export function TracksScreen() {
   const [result, setResult] = useState<TrackResult | undefined>(undefined);
 
   useEffect(() => {
-    void (async () => {
-      const season = await fetchLatestSeason(await serverBase());
-      setLatestSeason(season);
-      if (season !== null) setRange({ from: season - DEFAULT_WINDOW, to: season });
-    })();
-  }, []);
+    if (typeof latestSeason === "number") setRange({ from: latestSeason - DEFAULT_WINDOW, to: latestSeason });
+  }, [latestSeason]);
 
   const load = useCallback(async () => {
     if (!range) return;
@@ -74,11 +71,19 @@ export function TracksScreen() {
       void load();
     }, [load]),
   );
+  const { refreshing, onRefresh } = useReload(load);
 
-  if (latestSeason === null || range === null) return <Loading />;
+  if (latestSeason === undefined) return <Loading />;
+  if (latestSeason === null)
+    return (
+      <Screen>
+        <ErrorNote message="Could not reach the server." onRetry={retryBoot} />
+      </Screen>
+    );
+  if (range === null) return <Loading />;
 
   return (
-    <Screen>
+    <Screen refreshing={refreshing} onRefresh={onRefresh}>
       <Card title="Track type">
         <Segmented
           options={TRACK_TYPES.map((type) => ({ value: type.value, label: type.label }))}

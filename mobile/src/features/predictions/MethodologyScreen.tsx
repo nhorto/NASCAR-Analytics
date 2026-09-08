@@ -7,6 +7,7 @@ import { useCallback, useState } from "react";
 import { StyleSheet, Text } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { serverBase } from "../../lib/config.ts";
+import { useReload } from "../../lib/reload.ts";
 import { Card, Loading, Screen } from "../../ui/components.tsx";
 import { colors } from "../../ui/theme.ts";
 import { fetchPredictions, type Methodology } from "./api.ts";
@@ -24,11 +25,12 @@ export function MethodologyScreen() {
       if (backtest === undefined) void load();
     }, [backtest, load]),
   );
+  const { refreshing, onRefresh } = useReload(load);
 
   if (backtest === undefined) return <Loading />;
 
   return (
-    <Screen>
+    <Screen refreshing={refreshing} onRefresh={onRefresh}>
       <Card title="How predictions work">
         <Text style={styles.body}>
           Each driver gets a rating in finish-position units built only from races before the
@@ -58,8 +60,8 @@ export function MethodologyScreen() {
           </Text>
         ) : (
           <Text style={styles.body}>
-            The backtest numbers come from the server and it could not be reached. Pull to retry
-            from the predictions screen.
+            The backtest numbers come from the server and it could not be reached. Pull down to
+            retry.
           </Text>
         )}
         <Text style={styles.body}>

@@ -7,6 +7,7 @@ import { useCallback, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { serverBase } from "../../lib/config.ts";
+import { useReload } from "../../lib/reload.ts";
 import { useViewer } from "../../lib/viewer.tsx";
 import { Card, ErrorNote, Loading, Screen } from "../../ui/components.tsx";
 import { colors } from "../../ui/theme.ts";
@@ -38,6 +39,7 @@ export function PredictionsScreen() {
       void load();
     }, [load, viewer.status]),
   );
+  const { refreshing, onRefresh } = useReload(load);
 
   if (data === undefined) return <Loading label="Loading predictions…" />;
   if (data === null)
@@ -49,7 +51,7 @@ export function PredictionsScreen() {
 
   if (isEmpty(data))
     return (
-      <Screen>
+      <Screen refreshing={refreshing} onRefresh={onRefresh}>
         <Card title="Predictions">
           <Text style={styles.note}>
             No prediction run is stored yet — the model publishes Thursday (form) and Saturday
@@ -67,7 +69,7 @@ export function PredictionsScreen() {
   const showActual = data.race?.hasResults === true;
 
   return (
-    <Screen>
+    <Screen refreshing={refreshing} onRefresh={onRefresh}>
       <Card title={title(data)} right={data.race ? String(data.race.season) : undefined}>
         <Text style={styles.note}>{provenance(data)}</Text>
         <Pressable onPress={() => router.push("/methodology")}>

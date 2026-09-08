@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { serverBase } from "../../lib/config.ts";
+import { useReload } from "../../lib/reload.ts";
 import { Card, ErrorNote, Loading, Screen } from "../../ui/components.tsx";
 import { colors } from "../../ui/theme.ts";
 import { fetchStats, type MetricRow, type StatsData } from "./api.ts";
@@ -19,6 +20,7 @@ export function StatsScreen() {
       if (data === undefined || data === null) void load();
     }, [data, load]),
   );
+  const { refreshing, onRefresh } = useReload(load);
 
   if (data === undefined) return <Loading label="Loading standings…" />;
   if (data === null)
@@ -29,7 +31,7 @@ export function StatsScreen() {
     );
 
   return (
-    <Screen>
+    <Screen refreshing={refreshing} onRefresh={onRefresh}>
       <Card title={`${data.season} Cup standings`}>
         {data.standings.slice(0, 20).map((row, index) => (
           <View key={row.driverId} style={styles.row}>

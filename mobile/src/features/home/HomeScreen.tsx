@@ -3,6 +3,7 @@ import { useCallback, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { serverBase } from "../../lib/config.ts";
+import { useReload } from "../../lib/reload.ts";
 import { Card, Loading, Screen } from "../../ui/components.tsx";
 import { colors } from "../../ui/theme.ts";
 import { fetchLive, type LiveData } from "../live/api.ts";
@@ -28,13 +29,14 @@ export function HomeScreen() {
       if (data === undefined) void load();
     }, [data, load]),
   );
+  const { refreshing, onRefresh } = useReload(load);
 
   if (data === undefined) return <Loading />;
   const liveNow = data.live?.live === true;
   const next = data.live?.nextRace ?? null;
 
   return (
-    <Screen>
+    <Screen refreshing={refreshing} onRefresh={onRefresh}>
       <Pressable onPress={() => router.push("/live")}>
         <Card title={liveNow ? "Live now" : "Next up"}>
           {liveNow ? (

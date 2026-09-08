@@ -6,6 +6,7 @@ import { useCallback, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { router, useFocusEffect } from "expo-router";
 import { serverBase } from "../../lib/config.ts";
+import { useReload } from "../../lib/reload.ts";
 import { useViewer } from "../../lib/viewer.tsx";
 import { Button, Card, ErrorNote, Loading, Screen, Segmented } from "../../ui/components.tsx";
 import { colors } from "../../ui/theme.ts";
@@ -41,6 +42,7 @@ export function DfsScreen() {
       void load(platform);
     }, [load, platform, viewer.status]),
   );
+  const { refreshing, onRefresh } = useReload(useCallback(() => load(platform), [load, platform]));
 
   if (result === undefined) return <Loading label="Loading projections…" />;
 
@@ -68,7 +70,7 @@ export function DfsScreen() {
   const scoring = scoringLine(data.scoring);
 
   return (
-    <Screen>
+    <Screen refreshing={refreshing} onRefresh={onRefresh}>
       <Card title={`DFS projections — ${PLATFORM_LABELS[data.platform]}`}>
         <Segmented options={PLATFORM_OPTIONS} value={platform} onChange={setPlatform} />
         {data.rows.length === 0 ? (

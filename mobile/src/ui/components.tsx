@@ -4,18 +4,55 @@ import type { ReactNode } from "react";
 import {
   ActivityIndicator,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { colors } from "./theme.ts";
 
-export function Screen({ children, scroll = true }: { children: ReactNode; scroll?: boolean }) {
-  if (!scroll) return <View style={styles.screen}>{children}</View>;
+/** Above this width (a tablet in portrait or wider) content stops stretching
+ *  edge-to-edge and centers in a column, matching the web app's fixed-column
+ *  convention instead of spreading rows uncomfortably wide. */
+const MAX_CONTENT_WIDTH = 680;
+
+export function Screen({
+  children,
+  scroll = true,
+  refreshing = false,
+  onRefresh,
+}: {
+  children: ReactNode;
+  scroll?: boolean;
+  /** Pull-to-refresh state; both are ignored when scroll=false (the caller
+   *  wraps a FlatList itself and should pass these to it directly instead —
+   *  see DriversScreen). */
+  refreshing?: boolean;
+  onRefresh?: () => void;
+}) {
+  const { width } = useWindowDimensions();
+  const wide = width > MAX_CONTENT_WIDTH;
+
+  if (!scroll) {
+    return (
+      <View style={[styles.screen, wide && styles.screenCenter]}>
+        <View style={[styles.nonScrollInner, wide && styles.wideContent]}>{children}</View>
+      </View>
+    );
+  }
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.screenContent}>
-      {children}
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={[styles.scrollContent, wide && styles.screenCenter]}
+      refreshControl={
+        onRefresh ? (
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.accent} />
+        ) : undefined
+      }
+    >
+      <View style={[styles.screenContent, wide && styles.wideContent]}>{children}</View>
     </ScrollView>
   );
 }
@@ -49,7 +86,12 @@ export function ErrorNote({ message, onRetry }: { message: string; onRetry?: () 
     <View style={styles.center}>
       <Text style={styles.errorText}>{message}</Text>
       {onRetry ? (
-        <Pressable onPress={onRetry} style={styles.button}>
+        <Pressable
+          onPress={onRetry}
+          style={styles.button}
+          accessibilityRole="button"
+          accessibilityLabel="Retry"
+        >
           <Text style={styles.buttonText}>Retry</Text>
         </Pressable>
       ) : null}
@@ -73,6 +115,9 @@ export function Button({
       onPress={onPress}
       disabled={disabled}
       style={[styles.button, tone === "quiet" && styles.buttonQuiet, disabled && styles.buttonDisabled]}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ disabled }}
     >
       <Text style={[styles.buttonText, tone === "quiet" && styles.buttonQuietText]}>{label}</Text>
     </Pressable>
@@ -102,6 +147,9 @@ export function Segmented<T extends string>({
             key={option.value}
             onPress={() => !option.locked && onChange(option.value)}
             style={[styles.segment, on && styles.segmentOn, option.locked && styles.segmentLocked]}
+            accessibilityRole="button"
+            accessibilityLabel={option.locked ? `${option.label}, Pro only` : option.label}
+            accessibilityState={{ selected: on, disabled: option.locked === true }}
           >
             <Text style={[styles.segmentText, on && styles.segmentTextOn]} numberOfLines={1}>
               {option.locked ? `${option.label} 🔒` : option.label}
@@ -133,13 +181,21 @@ export function Stepper({
       <Pressable
         onPress={() => value > min && onChange(value - 1)}
         style={[styles.stepperButton, value <= min && styles.buttonDisabled]}
+        accessibilityRole="button"
+        accessibilityLabel={`Decrease ${label}`}
+        accessibilityState={{ disabled: value <= min }}
       >
         <Text style={styles.stepperGlyph}>−</Text>
       </Pressable>
-      <Text style={styles.stepperValue}>{value}</Text>
+      <Text style={styles.stepperValue} accessibilityLabel={`${label}: ${value}`}>
+        {value}
+      </Text>
       <Pressable
         onPress={() => value < max && onChange(value + 1)}
         style={[styles.stepperButton, value >= max && styles.buttonDisabled]}
+        accessibilityRole="button"
+        accessibilityLabel={`Increase ${label}`}
+        accessibilityState={{ disabled: value >= max }}
       >
         <Text style={styles.stepperGlyph}>+</Text>
       </Pressable>
@@ -157,7 +213,11 @@ export function ProBadge() {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  screenContent: { padding: 14, gap: 12, paddingBottom: 48 },
+  screenCenter: { alignItems: "center" },
+  nonScrollInner: { flex: 1, width: "100%" },
+  scrollContent: { flexGrow: 1 },
+  screenContent: { padding: 14, gap: 12, paddingBottom: 48, width: "100%" },
+  wideContent: { maxWidth: MAX_CONTENT_WIDTH },
   card: {
     backgroundColor: colors.surface,
     borderColor: colors.border,

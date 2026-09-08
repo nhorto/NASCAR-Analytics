@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { serverBase } from "../../lib/config.ts";
+import { useReload } from "../../lib/reload.ts";
 import { Card, ErrorNote, Loading, Screen } from "../../ui/components.tsx";
 import { colors } from "../../ui/theme.ts";
 import { fetchDriverProfile, type DriverProfile } from "./api.ts";
@@ -17,6 +18,7 @@ export function DriverScreen({ driverId }: { driverId: number }) {
   useEffect(() => {
     void load();
   }, [load]);
+  const { refreshing, onRefresh } = useReload(load);
 
   if (profile === undefined) return <Loading />;
   if (profile === null)
@@ -28,7 +30,7 @@ export function DriverScreen({ driverId }: { driverId: number }) {
 
   const model = profileModel(profile);
   return (
-    <Screen>
+    <Screen refreshing={refreshing} onRefresh={onRefresh}>
       <View>
         <Text style={styles.name}>{model.name}</Text>
         <Text style={styles.subtitle}>{model.subtitle}</Text>
