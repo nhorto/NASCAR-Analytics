@@ -1,12 +1,27 @@
 // Billing service — the entitlement model of spec §7: Pro is on iff
 // `pro_until` is in the future. WS-D shipped status reads, manual grants
 // (testers/support), and the verified-email purchase guard; WS-E adds the
-// Stripe webhook state machine (`applyStripeEvent`), the only entitlement
-// writer besides manual grants.
+// Stripe webhook state machine (`applyStripeEvent`); WS-J adds the
+// RevenueCat one (`applyRevenueCatEvent`) beside it. Stripe, RevenueCat, and
+// manual grants are three independent writers that never touch `entitlements`
+// directly — each owns one `billing_grants` (channel, kind) slot, and
+// `entitlements` is always the projection of those rows (repo.projectEntitlement):
+// the max `pro_until` across a user's surviving grants. That is the whole
+// reconciliation rule — a channel can only ever help or hurt its own slot.
 import type { Providers } from "../../providers/index.ts";
 import type { User } from "../accounts/types.ts";
-import type { BillingProfile, Entitlement, ProSource, ProStatus, WebhookOutcome } from "./types.ts";
-import { ENTITLING_SUB_STATUSES, GRACE_DAYS, SEASON_PASS_UNTIL } from "./config.ts";
+import type {
+  BillingProfile,
+  Entitlement,
+  GrantChannel,
+  GrantKind,
+  ProSource,
+  ProStatus,
+  RevenueCatOutcome,
+  RevenueCatProfile,
+  WebhookOutcome,
+} from "./types.ts";
+import { ENTITLING_SUB_STATUSES, GRACE_DAYS, REVENUECAT_REFUND_REASONS, SEASON_PASS_UNTIL } from "./config.ts";
 import * as repo from "./repo.ts";
 
 type P = Pick<Providers, "db">;
@@ -23,7 +38,31 @@ export function isPro(p: P, userId: number, now: Date): boolean {
   return proStatus(p, userId, now).pro;
 }
 
-/** Manual grant (or extension/downgrade) — the tester/support path. */
+/** Writes one channel's (channel, kind) slot and reprojects `entitlements`
+ *  from the surviving grants. Every writer below — Stripe, RevenueCat, and
+ *  manual grants — funnels through this, so none of them can touch another
+ *  channel's slot even by accident. */
+function writeGrant(
+  p: P,
+  userId: number,
+  channel: GrantChannel,
+  kind: GrantKind,
+  untilIso: string,
+  source: ProSource,
+  now: Date,
+): void {
+  repo.upsertGrant(p.db, { userId, channel, kind, proUntil: untilIso, proSource: source, updatedAt: now.toISOString() });
+  repo.projectEntitlement(p.db, userId, now);
+}
+
+/**
+ * Manual grant (or extension/downgrade) — the tester/support path. Always
+ * writes the single `manual` slot (so a second call replaces the first, the
+ * long-standing "grants overwrite" behavior), then returns the *effective*
+ * entitlement — which may belong to a different channel, if that channel
+ * already entitles further out. A support comp can never shrink a real
+ * payer's Pro; `revoke` (below) is the tool for actually taking Pro away.
+ */
 export function grantPro(
   p: P,
   userId: number,
@@ -33,12 +72,18 @@ export function grantPro(
 ): Entitlement {
   if (!Number.isFinite(Date.parse(untilIso)))
     throw new Error(`grantPro: pro_until must be an ISO date, got "${untilIso}"`);
-  const e: Entitlement = { userId, proUntil: untilIso, proSource: source, updatedAt: now.toISOString() };
-  repo.upsertEntitlement(p.db, e);
-  return e;
+  writeGrant(p, userId, "manual", "manual", untilIso, source, now);
+  // A grant was just written, so a projected row is guaranteed to exist.
+  return repo.entitlementFor(p.db, userId)!;
 }
 
+/** Removes every grant (all channels) and the projected entitlement — the
+ *  tester `--revoke` path and account deletion both want a clean slate,
+ *  which is also what makes deletion cancel a RevenueCat grant exactly like
+ *  it already cancels a Stripe one (src/app/auth.ts): both are just grants
+ *  in this table now. */
 export function revoke(p: P, userId: number): void {
+  repo.deleteGrantsForUser(p.db, userId);
   repo.deleteEntitlement(p.db, userId);
 }
 
@@ -82,22 +127,25 @@ function graceIso(periodEndSeconds: number): string {
   return new Date((periodEndSeconds + GRACE_DAYS * 86400) * 1000).toISOString();
 }
 
-/** Extend, never shrink: skips the write when a *different* source already
- *  entitles further out (a season pass must survive subscription churn). */
-function extendEntitlement(p: P, userId: number, untilIso: string, source: ProSource, now: Date): void {
-  const existing = repo.entitlementFor(p.db, userId);
-  if (existing && existing.proSource !== source && Date.parse(existing.proUntil) >= Date.parse(untilIso))
-    return;
-  repo.upsertEntitlement(p.db, { userId, proUntil: untilIso, proSource: source, updatedAt: now.toISOString() });
-}
-
-/** Pull entitlement back to the event's own time, only for a matching source
- *  and only if a row exists (deleted accounts stay deleted). */
-function clampEntitlement(p: P, userId: number, source: ProSource, atIso: string, now: Date): boolean {
-  const existing = repo.entitlementFor(p.db, userId);
-  if (!existing || existing.proSource !== source) return false;
-  if (Date.parse(existing.proUntil) <= Date.parse(atIso)) return false;
-  repo.upsertEntitlement(p.db, { userId, proUntil: atIso, proSource: source, updatedAt: now.toISOString() });
+/** Pull one channel's (channel, kind) grant back to the event's own time —
+ *  only if that slot already has a grant and the new value actually reduces
+ *  it (a refund of a slot we never wrote is a no-op signal, not a write).
+ *  Because it targets one slot, refunding a subscription can never touch a
+ *  season pass grant on the same channel, and never touches another
+ *  channel's grant at all — no source-matching guard needed, the slot key
+ *  already is the guard. */
+function clampGrant(
+  p: P,
+  userId: number,
+  channel: GrantChannel,
+  kind: GrantKind,
+  atIso: string,
+  source: ProSource,
+  now: Date,
+): boolean {
+  const existing = repo.grantFor(p.db, userId, channel, kind);
+  if (!existing || Date.parse(existing.proUntil) <= Date.parse(atIso)) return false;
+  writeGrant(p, userId, channel, kind, atIso, source, now);
   return true;
 }
 
@@ -152,7 +200,7 @@ export function applyStripeEvent(p: P, event: unknown, now: Date): WebhookOutcom
         (ENTITLING_SUB_STATUSES as readonly string[]).includes(profile.subscriptionStatus ?? "") &&
         profile.currentPeriodEnd !== null
       )
-        extendEntitlement(p, profile.userId, graceIso(profile.currentPeriodEnd), "subscription", now);
+        writeGrant(p, profile.userId, "stripe", "subscription", graceIso(profile.currentPeriodEnd), "subscription", now);
       return { applied: true, action: "subscription_synced" };
     }
 
@@ -162,7 +210,7 @@ export function applyStripeEvent(p: P, event: unknown, now: Date): WebhookOutcom
       repo.upsertProfile(p.db, profile);
       // The subscription truly ended (period-end cancel reached, or retries
       // exhausted): Pro stops at the event's own time, grace included.
-      clampEntitlement(p, profile.userId, "subscription", new Date(created * 1000).toISOString(), now);
+      clampGrant(p, profile.userId, "stripe", "subscription", new Date(created * 1000).toISOString(), "subscription", now);
       return { applied: true, action: "subscription_ended" };
     }
 
@@ -174,7 +222,7 @@ export function applyStripeEvent(p: P, event: unknown, now: Date): WebhookOutcom
       if (periodEnd !== null) profile.currentPeriodEnd = periodEnd;
       repo.upsertProfile(p.db, profile);
       if (periodEnd !== null)
-        extendEntitlement(p, profile.userId, graceIso(periodEnd), "subscription", now);
+        writeGrant(p, profile.userId, "stripe", "subscription", graceIso(periodEnd), "subscription", now);
       return { applied: true, action: "invoice_paid" };
     }
 
@@ -193,9 +241,9 @@ export function applyStripeEvent(p: P, event: unknown, now: Date): WebhookOutcom
       // stray subscription invoice cannot kill a season pass and vice versa.
       if (o.refunded !== true) return { applied: false, action: "refund_ignored" };
       repo.upsertProfile(p.db, profile);
-      const source: ProSource = str(o.invoice) ? "subscription" : "season_pass";
-      const revoked = clampEntitlement(
-        p, profile.userId, source, new Date(created * 1000).toISOString(), now,
+      const kind = str(o.invoice) ? "subscription" : "season_pass";
+      const revoked = clampGrant(
+        p, profile.userId, "stripe", kind, new Date(created * 1000).toISOString(), kind, now,
       );
       return revoked
         ? { applied: true, action: "refund_revoked" }
@@ -240,8 +288,241 @@ function applyCheckoutCompleted(
   repo.upsertProfile(p.db, profile);
 
   if (str(o.mode) === "payment") {
-    extendEntitlement(p, userId, SEASON_PASS_UNTIL, "season_pass", now);
+    writeGrant(p, userId, "stripe", "season_pass", SEASON_PASS_UNTIL, "season_pass", now);
     return { applied: true, action: "season_pass_granted" };
   }
   return { applied: true, action: "checkout_linked" };
+}
+
+// --- RevenueCat webhook state machine (WS-J) ---
+//
+// RevenueCat delivers at-least-once and out of order, same as Stripe, and
+// the same three guards apply: the revenuecat_events ledger drops duplicate
+// ids; last_event_at on the profile drops events older than the newest one
+// applied; every grant value is computed from the event's own payload
+// (`expiration_at_ms`), never from "now". The one thing that is genuinely
+// different from Stripe: the app configures RevenueCat's SDK with our own
+// numeric user id as its `app_user_id`, so most events carry the user id
+// directly — there is no separate "checkout completed" linking step. The
+// alias table only exists for the purchase-before-login edge case (an
+// anonymous RevenueCat id later merged into a signed-in account).
+//
+// Only subscriptions (INITIAL_PURCHASE/RENEWAL/CANCELLATION/UNCANCELLATION/
+// EXPIRATION/BILLING_ISSUE/PRODUCT_CHANGE) use the `subscription` slot;
+// NON_RENEWING_PURCHASE — RevenueCat's shape for a one-time IAP — is the
+// store's season pass and uses the `season_pass` slot, same fixed end date
+// as Stripe's (spec §4/D5 is one product, sold on two channels).
+
+function numericId(v: unknown): number | null {
+  return typeof v === "string" && /^\d+$/.test(v) ? Number(v) : null;
+}
+
+function msToIso(ms: number): string {
+  return new Date(ms).toISOString();
+}
+
+/** Most events carry our user id directly as `app_user_id` (the app
+ *  configures RevenueCat that way). The fallbacks cover a purchase that
+ *  started anonymous and was later merged: a recorded alias, or — before
+ *  that merge event has even arrived — RevenueCat still listing our real id
+ *  among this subscriber's other known aliases. */
+function resolveUserId(p: P, o: Record<string, unknown>): number | null {
+  const direct = numericId(o.app_user_id);
+  if (direct !== null) return direct;
+  const appUserId = str(o.app_user_id);
+  const viaAlias = appUserId ? repo.userForAlias(p.db, appUserId) : null;
+  if (viaAlias !== null) return viaAlias;
+  const aliases = Array.isArray(o.aliases) ? o.aliases : [];
+  for (const a of aliases) {
+    const n = numericId(a);
+    if (n !== null) return n;
+  }
+  return null;
+}
+
+function blankRevenueCatProfile(userId: number, appUserId: string, now: Date): RevenueCatProfile {
+  return {
+    userId,
+    appUserId,
+    store: null,
+    environment: null,
+    productId: null,
+    entitlementStatus: null,
+    autoRenew: true,
+    expiresAt: null,
+    lastEventAt: 0,
+    updatedAt: now.toISOString(),
+  };
+}
+
+/** TRANSFER moves a subscriber's grant between app_user_ids (e.g. a purchase
+ *  reassigned between accounts). Keeping this "straightforward" per plan: we
+ *  record the old ids as aliases of the new owner so a late event addressed
+ *  to one still resolves, but do not retroactively migrate grants already
+ *  written under the old id. */
+function applyRevenueCatTransfer(p: P, o: Record<string, unknown>): RevenueCatOutcome {
+  const to = Array.isArray(o.transferred_to) ? o.transferred_to : [];
+  let userId: number | null = null;
+  for (const t of to) {
+    const n = numericId(t);
+    if (n !== null) {
+      userId = n;
+      break;
+    }
+  }
+  if (userId === null) return { applied: false, action: "missing_reference" };
+  const from = Array.isArray(o.transferred_from) ? o.transferred_from : [];
+  for (const f of from) {
+    const alias = str(f);
+    if (alias && numericId(alias) === null) repo.recordRevenueCatAlias(p.db, alias, userId);
+  }
+  return { applied: true, action: "grant_transferred" };
+}
+
+/** SUBSCRIBER_ALIAS (older/deprecated but simple): records the mapping from
+ *  a pre-login anonymous id to the signed-in user id it was merged into. */
+function applyRevenueCatAlias(p: P, o: Record<string, unknown>): RevenueCatOutcome {
+  const userId = resolveUserId(p, o);
+  const oldAlias = str(o.original_app_user_id) ?? str(o.app_user_id);
+  if (userId === null || !oldAlias) return { applied: false, action: "missing_reference" };
+  repo.recordRevenueCatAlias(p.db, oldAlias, userId);
+  return { applied: true, action: "alias_linked" };
+}
+
+/**
+ * Feed one RevenueCat webhook event (parsed JSON, Authorization header
+ * already verified) through the state machine. Handles: initial purchase,
+ * renewal, the one-time (non-renewing) season pass, cancellation —
+ * including the refund flavor Apple/Google report as a CANCELLATION with
+ * `cancel_reason: CUSTOMER_SUPPORT`, plus a literal `REFUND` type some store
+ * configurations send directly for one-time purchases — uncancellation,
+ * expiration, billing issues, product changes, and alias/transfer. Anything
+ * else is recorded and ignored.
+ */
+export function applyRevenueCatEvent(p: P, payload: unknown, now: Date): RevenueCatOutcome {
+  const root = payload as { event?: unknown } | null;
+  const o = (root && typeof root === "object" ? root.event : undefined) as Record<string, unknown> | undefined;
+  const eventId = str(o?.id);
+  const type = str(o?.type);
+  const eventAt = num(o?.event_timestamp_ms);
+  if (!o || !eventId || !type || eventAt === null) return { applied: false, action: "malformed_event" };
+
+  if (!repo.recordRevenueCatEvent(p.db, { eventId, type, eventAt }, now))
+    return { applied: false, action: "duplicate" };
+
+  if (type === "TRANSFER") return applyRevenueCatTransfer(p, o);
+  if (type === "SUBSCRIBER_ALIAS") return applyRevenueCatAlias(p, o);
+
+  const userId = resolveUserId(p, o);
+  if (userId === null) return { applied: false, action: "unknown_subscriber" };
+
+  let profile = repo.revenueCatProfileForUser(p.db, userId);
+  if (profile && eventAt < profile.lastEventAt) return { applied: false, action: "stale_event" };
+  profile = profile ?? blankRevenueCatProfile(userId, str(o.app_user_id) ?? String(userId), now);
+  profile.appUserId = str(o.app_user_id) ?? profile.appUserId;
+  profile.store = str(o.store) ?? profile.store;
+  profile.environment = str(o.environment) ?? profile.environment;
+  profile.productId = str(o.product_id) ?? profile.productId;
+  profile.lastEventAt = eventAt;
+  profile.updatedAt = now.toISOString();
+
+  const expiresAtMs = num(o.expiration_at_ms);
+  const atIso = msToIso(eventAt);
+
+  switch (type) {
+    case "NON_RENEWING_PURCHASE": {
+      profile.entitlementStatus = "active";
+      profile.autoRenew = false;
+      profile.expiresAt = null;
+      repo.upsertRevenueCatProfile(p.db, profile);
+      writeGrant(p, userId, "revenuecat", "season_pass", SEASON_PASS_UNTIL, "iap_season_pass", now);
+      return { applied: true, action: "season_pass_granted" };
+    }
+
+    case "INITIAL_PURCHASE":
+    case "RENEWAL":
+    case "PRODUCT_CHANGE": {
+      profile.entitlementStatus = "active";
+      profile.autoRenew = true;
+      profile.expiresAt = expiresAtMs;
+      repo.upsertRevenueCatProfile(p.db, profile);
+      if (expiresAtMs !== null)
+        writeGrant(p, userId, "revenuecat", "subscription", msToIso(expiresAtMs), "iap_subscription", now);
+      return {
+        applied: true,
+        action:
+          type === "INITIAL_PURCHASE" ? "purchase_granted"
+          : type === "RENEWAL" ? "subscription_renewed"
+          : "product_changed",
+      };
+    }
+
+    case "UNCANCELLATION": {
+      profile.entitlementStatus = "active";
+      profile.autoRenew = true;
+      profile.expiresAt = expiresAtMs ?? profile.expiresAt;
+      repo.upsertRevenueCatProfile(p.db, profile);
+      if (expiresAtMs !== null)
+        writeGrant(p, userId, "revenuecat", "subscription", msToIso(expiresAtMs), "iap_subscription", now);
+      return { applied: true, action: "uncancellation_recorded" };
+    }
+
+    case "CANCELLATION": {
+      const reason = str(o.cancel_reason);
+      if (reason !== null && (REVENUECAT_REFUND_REASONS as readonly string[]).includes(reason)) {
+        // Refunded through the store's support flow: Pro stops now, not at
+        // the paid expiry.
+        profile.entitlementStatus = "refunded";
+        profile.autoRenew = false;
+        repo.upsertRevenueCatProfile(p.db, profile);
+        const revoked = clampGrant(p, userId, "revenuecat", "subscription", atIso, "iap_subscription", now);
+        return revoked
+          ? { applied: true, action: "refund_revoked" }
+          : { applied: false, action: "refund_ignored" };
+      }
+      // Ordinary cancellation: auto-renew turned off, Pro keeps running to
+      // the expiry already on file — EXPIRATION clamps it when that arrives.
+      profile.entitlementStatus = "active";
+      profile.autoRenew = false;
+      repo.upsertRevenueCatProfile(p.db, profile);
+      return { applied: true, action: "cancellation_recorded" };
+    }
+
+    case "REFUND": {
+      // Some store configurations report a refunded one-time purchase as its
+      // own event type rather than a CANCELLATION (which only applies to
+      // auto-renewing subscriptions). Clamp the season pass slot only.
+      profile.entitlementStatus = "refunded";
+      repo.upsertRevenueCatProfile(p.db, profile);
+      const revoked = clampGrant(p, userId, "revenuecat", "season_pass", atIso, "iap_season_pass", now);
+      return revoked
+        ? { applied: true, action: "refund_revoked" }
+        : { applied: false, action: "refund_ignored" };
+    }
+
+    case "EXPIRATION": {
+      profile.entitlementStatus = "expired";
+      profile.autoRenew = false;
+      repo.upsertRevenueCatProfile(p.db, profile);
+      clampGrant(p, userId, "revenuecat", "subscription", expiresAtMs !== null ? msToIso(expiresAtMs) : atIso, "iap_subscription", now);
+      return { applied: true, action: "subscription_expired" };
+    }
+
+    case "BILLING_ISSUE": {
+      // Spec §7 grace equivalent: the store is retrying, RevenueCat's own
+      // expiration_at_ms already reflects any grace window Apple/Google
+      // grant, so we only surface the banner — no grant write, same as
+      // Stripe's invoice.payment_failed.
+      profile.entitlementStatus = "billing_issue";
+      repo.upsertRevenueCatProfile(p.db, profile);
+      return { applied: true, action: "billing_issue_grace" };
+    }
+
+    default:
+      // Unlike the handled cases, this does not persist the profile — an
+      // event type we don't process shouldn't advance last_event_at and
+      // risk marking a real, later-processed event stale (same as Stripe's
+      // unhandled_type: recorded in the ledger for dedup, otherwise inert).
+      return { applied: false, action: "unhandled_type" };
+  }
 }

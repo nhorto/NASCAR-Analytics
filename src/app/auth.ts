@@ -351,6 +351,12 @@ async function handleRecoveryPost(path: string, ctx: PostCtx): Promise<Response 
     }
     const result = await accountsService.deleteAccount(p, viewer.user.userId, password);
     if (!result.ok) return deleteError(result.reason, 400);
+    // Drops every channel's grant (Stripe, RevenueCat, manual), not just the
+    // one just canceled above. There is no RevenueCat-side call to make
+    // first: unlike Stripe, RevenueCat cannot cancel a live App Store/Play
+    // Store subscription on our command — only the subscriber can, from the
+    // store itself — so dropping our own grant is the whole story for that
+    // channel (WS-J).
     billingService.revoke(p, viewer.user.userId);
     return shell(p, "Account deleted", authPages.messageContent(
       "Account deleted",

@@ -25,6 +25,7 @@ describe("readServerEnv", () => {
     enableEmailDigests: false,
     resendWebhookSecret: null,
     stripeWebhookSecret: null,
+    revenuecatWebhookSecret: null,
     pushConfigured: false,
     enablePushDispatcher: false,
       logRequests: false,
@@ -104,6 +105,7 @@ describe("readServerEnv", () => {
       "RESEND_WEBHOOK_SECRET not set — bounce/complaint suppression is disabled",
       "STRIPE_WEBHOOK_SECRET not set — Stripe billing webhooks are disabled",
       "STRIPE_SECRET_KEY not set — account deletion cannot cancel subscriptions at Stripe",
+      "REVENUECAT_WEBHOOK_SECRET not set — RevenueCat billing webhooks are disabled (WS-J, owner-gated)",
       "VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY not set — race push alerts are disabled",
     ]);
     expect(readServerEnv({}).warnings).toEqual([]);

@@ -33,7 +33,7 @@ import { dfsContent, dfsEmptyContent, dfsLockedContent } from "./pages/dfs.ts";
 import { featureEnabled } from "./gate.ts";
 import { handleDownloadRequest } from "./downloads.ts";
 import { offlineContent, PWA_ICONS, serviceWorkerSource, webManifest } from "./pwa.ts";
-import { handleWebhookRequest, handleStripeWebhookRequest } from "./webhooks.ts";
+import { handleWebhookRequest, handleStripeWebhookRequest, handleRevenueCatWebhookRequest } from "./webhooks.ts";
 import { handlePushRequest, vapidFromEnv } from "./push.ts";
 import { handleMeRequest } from "./me.ts";
 import { handleProApiRequest } from "./pro-api.ts";
@@ -377,6 +377,11 @@ export function createServer(
     log: webhookDeps.log,
   };
 
+  const revenuecatWebhookDeps = {
+    secret: cfg.revenuecatWebhookSecret,
+    log: webhookDeps.log,
+  };
+
   const authDeps = {
     email,
     baseUrl: () => cfg.appBaseUrl ?? server.url.origin,
@@ -395,6 +400,7 @@ export function createServer(
         res =
           (await handleWebhookRequest(p, req, url, webhookDeps)) ??
           (await handleStripeWebhookRequest(p, req, url, stripeWebhookDeps)) ??
+          (await handleRevenueCatWebhookRequest(p, req, url, revenuecatWebhookDeps)) ??
           (await handlePushRequest(p, req, url, viewer, pushDeps)) ??
           handleMeRequest(req, url, viewer) ??
           (await handleAuthRequest(p, req, url, viewer, authDeps)) ??

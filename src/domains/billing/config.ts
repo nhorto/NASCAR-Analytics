@@ -3,7 +3,15 @@
 /** Days of Pro kept after a failed renewal; WS-E's webhook writer applies it. */
 export const GRACE_DAYS = 3;
 
-export const PRO_SOURCES = ["subscription", "season_pass", "grant"] as const;
+export const PRO_SOURCES = [
+  "subscription",
+  "season_pass",
+  "grant",
+  // WS-J: the RevenueCat channel's labels. Distinct from the Stripe ones so
+  // support can tell which channel a user's Pro came from at a glance.
+  "iap_subscription",
+  "iap_season_pass",
+] as const;
 
 /**
  * Where a season pass entitles Pro until (spec §4 / decision D5): passes sold
@@ -17,3 +25,11 @@ export const SEASON_PASS_UNTIL = "2027-11-30T23:59:59Z";
 /** Subscription statuses that keep the entitlement extending (past_due keeps
  *  Pro through the grace window; Stripe's retries may still recover it). */
 export const ENTITLING_SUB_STATUSES = ["trialing", "active", "past_due"] as const;
+
+/**
+ * RevenueCat sends a CANCELLATION for both "auto-renew turned off" (Pro runs
+ * to the paid expiry) and "refunded through support" (Pro stops now). Only
+ * `cancel_reason` tells them apart, so the refunding reasons are named here
+ * rather than buried in the state machine.
+ */
+export const REVENUECAT_REFUND_REASONS = ["CUSTOMER_SUPPORT"] as const;

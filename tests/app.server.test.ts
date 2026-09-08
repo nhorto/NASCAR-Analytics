@@ -407,6 +407,7 @@ describe("web app", () => {
     enableEmailDigests: false,
     resendWebhookSecret: null,
     stripeWebhookSecret: null,
+    revenuecatWebhookSecret: null,
     pushConfigured: false,
     enablePushDispatcher: false,
       logRequests: false,

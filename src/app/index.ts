@@ -463,7 +463,8 @@ serve env: APP_ENV=production (strict env + HSTS + request logs), PORT,
      ENABLE_PUSH_DISPATCHER=1 + VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY (race push alerts), LOG_REQUESTS,
      RESEND_WEBHOOK_SECRET (bounce/complaint suppression at /webhooks/resend),
      STRIPE_WEBHOOK_SECRET (billing events at /webhooks/stripe),
-     STRIPE_SECRET_KEY (cancel-at-Stripe on account deletion)
+     STRIPE_SECRET_KEY (cancel-at-Stripe on account deletion),
+     REVENUECAT_WEBHOOK_SECRET (billing events at /webhooks/revenuecat, owner-gated WS-J)
 canary env: RESEND_API_KEY + ALERT_EMAIL_TO [+ EMAIL_FROM] (owner outage emails)
 email env: ENABLE_EMAIL_DIGESTS=1 (auto-send after refresh/predict), APP_BASE_URL (link base),
      RESEND_API_KEY [+ EMAIL_FROM] (without them, digests are logged, not sent)`);

@@ -5,7 +5,13 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import type { Database } from "bun:sqlite";
 import { signWebhook, verifyWebhookSignature } from "../src/providers/email.ts";
 import { signStripePayload } from "../src/providers/stripe.ts";
-import { handleWebhookRequest, handleStripeWebhookRequest, recipientOf, suppressionFor } from "../src/app/webhooks.ts";
+import {
+  handleWebhookRequest,
+  handleStripeWebhookRequest,
+  handleRevenueCatWebhookRequest,
+  recipientOf,
+  suppressionFor,
+} from "../src/app/webhooks.ts";
 import { accountsService } from "../src/domains/accounts/index.ts";
 import { testDb, seedUser } from "./seed.ts";
 
@@ -271,6 +277,96 @@ describe("stripe webhook endpoint", () => {
     expect(get.status).toBe(405);
     expect(
       await handleStripeWebhookRequest(p, stripeRequest("{}"), new URL("http://x/health"), stripeDeps),
+    ).toBeNull();
+  });
+});
+
+// --- RevenueCat endpoint (WS-J) ---
+
+describe("revenuecat webhook endpoint", () => {
+  const RC_SECRET = "rc_whsec_test";
+  const rcUrl = new URL("http://x/webhooks/revenuecat");
+  const rcDeps = { secret: RC_SECRET, now: () => NOW };
+
+  function rcBody(id: string): string {
+    return JSON.stringify({
+      event: {
+        id,
+        type: "NON_RENEWING_PURCHASE",
+        app_user_id: "42",
+        event_timestamp_ms: NOW.getTime(),
+        store: "APP_STORE",
+      },
+    });
+  }
+
+  function rcRequest(body: string, opts: { authorization?: string | null; method?: string } = {}): Request {
+    const headers: Record<string, string> = {};
+    const auth = opts.authorization === undefined ? RC_SECRET : opts.authorization;
+    if (auth !== null) headers.authorization = auth;
+    return new Request("http://x/webhooks/revenuecat", {
+      method: opts.method ?? "POST",
+      headers,
+      body: opts.method === "GET" ? undefined : body,
+    });
+  }
+
+  test("an authorized event reaches the state machine; the replay is a no-op", async () => {
+    const body = rcBody("rc_evt_wh_1");
+    const res = (await handleRevenueCatWebhookRequest(p, rcRequest(body), rcUrl, rcDeps))!;
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true, applied: true, action: "season_pass_granted" });
+
+    const replay = (await handleRevenueCatWebhookRequest(p, rcRequest(body), rcUrl, rcDeps))!;
+    expect(await replay.json()).toEqual({ ok: true, applied: false, action: "duplicate" });
+  });
+
+  test("a missing or wrong Authorization header never reaches the state machine", async () => {
+    const body = rcBody("rc_evt_wh_2");
+    const wrong = (await handleRevenueCatWebhookRequest(
+      p, rcRequest(body, { authorization: "wrong" }), rcUrl, rcDeps,
+    ))!;
+    expect(wrong.status).toBe(401);
+    expect(await wrong.json()).toEqual({ error: "invalid_authorization" });
+
+    const missing = (await handleRevenueCatWebhookRequest(
+      p, rcRequest(body, { authorization: null }), rcUrl, rcDeps,
+    ))!;
+    expect(missing.status).toBe(401);
+
+    // The event was not recorded: the same id still applies afterwards.
+    const good = (await handleRevenueCatWebhookRequest(p, rcRequest(body), rcUrl, rcDeps))!;
+    expect(await good.json()).toMatchObject({ applied: true });
+  });
+
+  test("a Bearer-prefixed Authorization header is also accepted", async () => {
+    const body = rcBody("rc_evt_wh_bearer");
+    const res = (await handleRevenueCatWebhookRequest(
+      p, rcRequest(body, { authorization: `Bearer ${RC_SECRET}` }), rcUrl, rcDeps,
+    ))!;
+    expect(res.status).toBe(200);
+  });
+
+  test("unconfigured secret answers 503; authorized garbage answers 400", async () => {
+    const off = (await handleRevenueCatWebhookRequest(
+      p, rcRequest(rcBody("rc_evt_wh_3")), rcUrl, { secret: null, now: () => NOW },
+    ))!;
+    expect(off.status).toBe(503);
+
+    const badJson = (await handleRevenueCatWebhookRequest(p, rcRequest("not json"), rcUrl, rcDeps))!;
+    expect(badJson.status).toBe(400);
+    expect(await badJson.json()).toEqual({ error: "invalid_json" });
+
+    const badShape = (await handleRevenueCatWebhookRequest(p, rcRequest("{}"), rcUrl, rcDeps))!;
+    expect(badShape.status).toBe(400);
+    expect(await badShape.json()).toEqual({ error: "malformed_event" });
+  });
+
+  test("GET is refused and other paths fall through to the site router", async () => {
+    const get = (await handleRevenueCatWebhookRequest(p, rcRequest("", { method: "GET" }), rcUrl, rcDeps))!;
+    expect(get.status).toBe(405);
+    expect(
+      await handleRevenueCatWebhookRequest(p, rcRequest("{}"), new URL("http://x/health"), rcDeps),
     ).toBeNull();
   });
 });
