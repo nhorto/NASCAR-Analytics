@@ -24,6 +24,7 @@ describe("readServerEnv", () => {
       enablePredictionsCron: false,
     enableEmailDigests: false,
     resendWebhookSecret: null,
+    stripeWebhookSecret: null,
     pushConfigured: false,
     enablePushDispatcher: false,
       logRequests: false,
@@ -101,6 +102,8 @@ describe("readServerEnv", () => {
       "LITESTREAM_REPLICA_URL not set — the db is NOT being replicated",
       "RESEND_API_KEY not set — verify/reset/alert emails will only be logged",
       "RESEND_WEBHOOK_SECRET not set — bounce/complaint suppression is disabled",
+      "STRIPE_WEBHOOK_SECRET not set — Stripe billing webhooks are disabled",
+      "STRIPE_SECRET_KEY not set — account deletion cannot cancel subscriptions at Stripe",
       "VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY not set — race push alerts are disabled",
     ]);
     expect(readServerEnv({}).warnings).toEqual([]);

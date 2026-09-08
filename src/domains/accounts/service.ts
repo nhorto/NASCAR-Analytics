@@ -242,6 +242,13 @@ export async function resetPassword(
 // --- deletion ---
 
 /** Password-confirmed, immediate (spec §6). Billing rows are the app's job. */
+/** Password re-check for destructive actions that need side effects between
+ *  the check and the delete (WS-E: cancel the Stripe subscription first). */
+export async function verifyPassword(p: P, userId: number, password: string): Promise<boolean> {
+  const record = repo.userById(p.db, userId);
+  return record !== null && (await Bun.password.verify(password, record.passwordHash));
+}
+
 export async function deleteAccount(p: P, userId: number, password: string): Promise<AuthResult> {
   const record = repo.userById(p.db, userId);
   if (!record) return { ok: false, reason: "Account not found." };
