@@ -4,6 +4,7 @@ import { StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { signOut, signOutEverywhere } from "../../lib/auth.ts";
 import { serverBase } from "../../lib/config.ts";
+import { fmtProUntil } from "../../lib/dates.ts";
 import { useViewer } from "../../lib/viewer.tsx";
 import { Button, Card, Loading, ProBadge, Screen } from "../../ui/components.tsx";
 import { colors } from "../../ui/theme.ts";
@@ -32,7 +33,7 @@ export function AccountScreen() {
               {viewer.me.pro ? <ProBadge /> : <Text style={styles.freeChip}>FREE</Text>}
               {viewer.me.pro && viewer.me.proUntil ? (
                 <Text style={styles.planDetail}>
-                  until {new Date(viewer.me.proUntil).toLocaleDateString()} ({viewer.me.proSource})
+                  until {fmtProUntil(viewer.me.proUntil)} ({viewer.me.proSource})
                 </Text>
               ) : null}
             </View>

@@ -117,7 +117,7 @@ keeps working.</p>
  */
 export function installBanner(): string {
   return `<div class="card install-card" id="install-card" hidden>
-  <div class="card-h"><h3>Install Looplab</h3></div>
+  <div class="card-h"><h2>Install Looplab</h2></div>
   <p class="note" id="install-copy">Add it to your home screen for full-screen race-day access.</p>
   <p style="margin-top:8px"><button class="install-btn" id="install-go" type="button">Install</button>
   <button class="install-dismiss" id="install-no" type="button">Not now</button></p>

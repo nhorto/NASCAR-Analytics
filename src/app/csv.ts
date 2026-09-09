@@ -16,10 +16,27 @@ export const CSV_EOL = "\r\n";
 const NEEDS_QUOTES = /[",\r\n]|^\s|\s$/;
 const FORMULA_START = /^[=+\-@\t\r]/;
 
+/**
+ * Decimal places kept for non-integer numbers.
+ *
+ * Averages arrive straight from SQL as binary-float quotients, so an avg finish
+ * of 11.3 serializes as `11.25925925925926` — fifteen digits of arithmetic
+ * noise in a file people open in Excel. Six places is well past anything the
+ * inputs support (finishes and lap counts are integers) while leaving far more
+ * precision than the site's one-decimal display, so nobody analyzing the export
+ * loses real signal. Integers are written untouched, never `1.000000`.
+ */
+export const CSV_DECIMALS = 6;
+
 /** One cell: numbers plain, null/undefined empty, strings quoted when needed. */
 export function csvCell(value: unknown): string {
   if (value === null || value === undefined) return "";
-  if (typeof value === "number") return Number.isFinite(value) ? String(value) : "";
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return "";
+    if (Number.isInteger(value)) return String(value);
+    // Round, then re-parse so trailing zeros drop: 0.5 stays "0.5".
+    return String(Number(value.toFixed(CSV_DECIMALS)));
+  }
   if (typeof value === "boolean") return value ? "true" : "false";
   let s = String(value);
   if (FORMULA_START.test(s)) s = `'${s}`;

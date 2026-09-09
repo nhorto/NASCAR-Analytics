@@ -53,12 +53,22 @@ export function createResendEmailClient(opts: {
   };
 }
 
-/** Logs instead of sending. Keeps callers unconditional. */
+/**
+ * Logs instead of sending. Keeps callers unconditional.
+ *
+ * The body is logged, not just the subject: verify/reset links only exist
+ * inside it, and without them local sign-up dead-ends at "email not verified"
+ * — which gates upgrading, so the whole paid flow becomes untestable. This
+ * client is only selected when no mail provider is configured, so a deployment
+ * that reaches it is already sending nothing.
+ */
 export function createNullEmailClient(log: (m: string) => void): EmailClient {
   return {
     configured: false,
     async send(msg) {
-      log(`email not configured — would have sent "${msg.subject}" to ${msg.to}`);
+      log(
+        `email not configured — would have sent "${msg.subject}" to ${msg.to}:\n${msg.text}`,
+      );
       return { ok: false, detail: "email not configured (RESEND_API_KEY / ALERT_EMAIL_TO unset)" };
     },
   };

@@ -1,6 +1,8 @@
 import type { RaceDetails, RaceResultWithLoop } from "../../domains/data-ingestion/types.ts";
 import type { SeasonStanding, FormLeader, SeasonMetricBoard } from "../../domains/analytics/types.ts";
 import { esc, fmt, signed, badge, card, fmtDate, withSeries, TRACK_TYPE_LABELS, ASSET_VERSION } from "../html.ts";
+import { seriesLabel } from "../layout.ts";
+import { ingestionConfig } from "../../domains/data-ingestion/index.ts";
 
 export function homeContent(data: {
   seriesId: number;
@@ -100,10 +102,17 @@ export function homeContent(data: {
   }
 
   if (parts.length === 0) {
+    // A Pro subscriber lands here whenever a series has not been ingested, so
+    // this is customer-facing copy — never operator instructions.
+    const label = seriesLabel(s);
+    const toCup =
+      s === ingestionConfig.SERIES.cup
+        ? ""
+        : ` <a href="/">Cup Series coverage →</a>`;
     parts.push(
       card(
-        "No data yet",
-        `<p class="note">Run <code>bun run backfill</code> then <code>bun run compute</code> to load the database.</p>`,
+        `No ${label} data yet`,
+        `<p class="note">We haven't loaded this series yet — it's on the way.${toCup}</p>`,
       ),
     );
   }

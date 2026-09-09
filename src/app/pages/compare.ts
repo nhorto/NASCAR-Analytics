@@ -29,7 +29,7 @@ export function compareShell(pro = false): string {
   <form class="inline filters" id="cmp-range" data-nosubmit>${seasons}</form>
   ${upsell}
   <div id="cmp-out">
-    <div class="card"><div class="card-h"><h3>Head-to-Head</h3></div>
+    <div class="card"><div class="card-h"><h2>Head-to-Head</h2></div>
     <p class="note">Pick two drivers and a season to compare raw pace, loop data, and the proprietary metrics side by side.</p></div>
   </div>
   <script src="/compare.js?v=${ASSET_VERSION}"></script>`;

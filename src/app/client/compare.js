@@ -166,7 +166,7 @@
     });
 
     if (picks.length < 2) {
-      out.innerHTML = '<div class="card"><div class="card-h"><h3>Head-to-Head</h3></div>' +
+      out.innerHTML = '<div class="card"><div class="card-h"><h2>Head-to-Head</h2></div>' +
         '<p class="note">Pick ' + (PRO ? "two to four drivers" : "two drivers") +
         ' and a season to compare raw pace, loop data, and the proprietary metrics side by side.</p></div>';
       return;
@@ -174,7 +174,7 @@
     var missing = picks.filter(function (p) { return p.stats === null; });
     var span = r.from === r.to ? String(r.from) : r.from + "–" + r.to;
     if (missing.length > 0) {
-      out.innerHTML = '<div class="card"><div class="card-h"><h3>No data</h3></div>' +
+      out.innerHTML = '<div class="card"><div class="card-h"><h2>No data</h2></div>' +
         '<p class="note">' + esc(missing.map(function (p) { return p.name; }).join(", ")) +
         " did not run points races in " + span + ".</p></div>";
       return;
@@ -187,9 +187,9 @@
         '<span style="font-family:var(--display);color:var(--muted);font-size:15px;">VS</span>' +
         '<div class="nm" style="text-align:right">' + esc(picks[1].name) + "</div></div>";
       var rows = METRICS.map(function (m) { return cmpRow(m, picks[0].stats, picks[1].stats); }).join("");
-      body = head + '<div class="card"><div class="card-h"><h3>' + esc(span) + "</h3></div>" + rows + "</div>";
+      body = head + '<div class="card"><div class="card-h"><h2>' + esc(span) + "</h2></div>" + rows + "</div>";
     } else {
-      body = '<div class="card"><div class="card-h"><h3>' + esc(span) + "</h3></div>" + cmpTable(picks) + "</div>";
+      body = '<div class="card"><div class="card-h"><h2>' + esc(span) + "</h2></div>" + cmpTable(picks) + "</div>";
     }
     out.innerHTML = exportBar(picks, r) + body;
   }

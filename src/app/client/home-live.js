@@ -24,7 +24,7 @@
       var rows = alerts.map(function (a) {
         return '<div class="alert"><div class="ai">' + (ICON[a.kind] || "•") + '</div><div class="at">' + esc(a.message) + "<time>Lap " + a.atLap + "</time></div></div>";
       }).join("");
-      wywa = '<div class="card" style="margin-top:12px"><div class="card-h"><h3>While You Were Away</h3></div>' + rows + "</div>";
+      wywa = '<div class="card" style="margin-top:12px"><div class="card-h"><h2>While You Were Away</h2></div>' + rows + "</div>";
     }
     mount.innerHTML = banner + wywa;
   }).catch(function () {});

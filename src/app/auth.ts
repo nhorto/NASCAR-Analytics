@@ -41,8 +41,21 @@ const NOTICES: Record<string, string> = {
   "prefs-saved": "Email preferences saved.",
 };
 
+/** Flash messages that report a failure. Rendered as an alert rather than a
+ *  green check: claiming a send that failed strands the account, since
+ *  verification gates upgrading and the resend button is the only way out. */
+const PROBLEMS: Record<string, string> = {
+  "check-email-failed":
+    "Account created — but we couldn't send the verification email. Try “Resend verification email” below.",
+  "verify-failed": "We couldn't send the verification email just now. Try again in a moment.",
+};
+
 function notice(url: URL): string | null {
   return NOTICES[url.searchParams.get("m") ?? ""] ?? null;
+}
+
+function problem(url: URL): string | null {
+  return PROBLEMS[url.searchParams.get("m") ?? ""] ?? null;
 }
 
 function shell(p: P, title: string, content: string, status = 200, setCookies: string[] = []): Response {
@@ -73,12 +86,19 @@ function str(v: unknown): string {
   return typeof v === "string" ? v : "";
 }
 
-async function sendAuthEmail(deps: AuthDeps, to: string, built: emails.BuiltEmail): Promise<void> {
+/** Returns whether the message actually left, so callers stop claiming sends
+ *  that failed. Never throws — a dead mail provider must not 500 the flow. */
+async function sendAuthEmail(
+  deps: AuthDeps,
+  to: string,
+  built: emails.BuiltEmail,
+): Promise<boolean> {
   const result = await deps.email.send({ to, subject: built.subject, text: built.text });
   if (!result.ok)
     console.error(
       logLine("error", "auth email not sent", { to, subject: built.subject, detail: result.detail }),
     );
+  return result.ok;
 }
 
 /** Query/form list name → the closed union, so a typo can't set a column. */
@@ -154,7 +174,7 @@ function handleGet(
     return shell(p, "Account", accountContent({
       viewer,
       csrf: csrf.token,
-      error: null,
+      error: problem(url),
       notice: notice(url),
       prefs: accountsService.emailPrefs(p, viewer.user.userId, now),
     }), 200, cookies);
@@ -232,9 +252,11 @@ async function handleCredentialPost(path: string, ctx: PostCtx): Promise<Respons
     if (!result.ok)
       return shell(p, "Sign up", authPages.signUpContent({ csrf: csrfToken, error: result.reason, email }), 400);
     const token = accountsService.createVerifyToken(p, result.user.userId, now);
-    await sendAuthEmail(deps, result.user.email, emails.verifyEmail(deps.baseUrl(), token));
+    const sent = await sendAuthEmail(deps, result.user.email, emails.verifyEmail(deps.baseUrl(), token));
     const session = accountsService.createSession(p, result.user.userId, now);
-    return redirect("/account?m=check-email", [sessionCookie(session, deps.production)]);
+    return redirect(sent ? "/account?m=check-email" : "/account?m=check-email-failed", [
+      sessionCookie(session, deps.production),
+    ]);
   }
 
   if (path === "/auth/signin") {
@@ -297,7 +319,8 @@ async function handleRecoveryPost(path: string, ctx: PostCtx): Promise<Response 
     if (!gate.allowed) return tooMany(gate.retryAfterSeconds);
     if (!viewer.user.verifiedAt) {
       const token = accountsService.createVerifyToken(p, viewer.user.userId, now);
-      await sendAuthEmail(deps, viewer.user.email, emails.verifyEmail(deps.baseUrl(), token));
+      const sent = await sendAuthEmail(deps, viewer.user.email, emails.verifyEmail(deps.baseUrl(), token));
+      if (!sent) return redirect("/account?m=verify-failed");
     }
     return redirect("/account?m=verify-sent");
   }

@@ -12,7 +12,7 @@
   var isIos = /iphone|ipad|ipod/i.test(window.navigator.userAgent);
 
   function note(html) {
-    mount.innerHTML = '<div class="card"><div class="card-h"><h3>Race alerts</h3></div>' + html + "</div>";
+    mount.innerHTML = '<div class="card"><div class="card-h"><h2>Race alerts</h2></div>' + html + "</div>";
   }
   function csrf() {
     var m = document.cookie.match(/(?:^|;\s*)csrf=([^;]+)/);
