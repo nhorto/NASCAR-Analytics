@@ -60,7 +60,7 @@ function problem(url: URL): string | null {
 
 function shell(p: P, title: string, content: string, status = 200, setCookies: string[] = []): Response {
   const res = htmlResponse(
-    page({ title, active: "home", seriesId: CUP, season: currentSeason(p, CUP), content }),
+    page({ title, active: "account", seriesId: CUP, season: currentSeason(p, CUP), content }),
     status,
   );
   for (const c of setCookies) res.headers.append("Set-Cookie", c);

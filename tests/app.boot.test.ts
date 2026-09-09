@@ -81,8 +81,7 @@ function boot(
     addEventListener: (type: string, fn: (e: unknown) => void) => {
       docListeners[type] = fn;
     },
-    querySelector: (selector: string) =>
-      selector === ".tabbar .tab-live .livedot" ? livedot : null,
+    querySelectorAll: (selector: string) => (selector === ".livedot" ? [livedot] : []),
   };
 
   const window: Record<string, unknown> = {

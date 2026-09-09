@@ -128,3 +128,24 @@ export async function fetchLive(): Promise<LiveData | null> {
     return null;
   }
 }
+
+/** Parse the Worker's cheap `/api/live/status` — just "is a race on track". */
+export function parseLiveStatus(value: unknown): boolean {
+  return typeof value === "object" && value !== null && (value as Record<string, unknown>).live === true;
+}
+
+/**
+ * The lightweight "is anything live right now" check behind the Live tab's red
+ * dot. Cheaper than the full board, so the whole-app status poller (see
+ * lib/liveStatus.tsx) can run it on a slow cadence without waking the DO's
+ * heavy path. Cup only (D16), matching fetchLive.
+ */
+export async function fetchLiveStatus(): Promise<boolean> {
+  try {
+    const res = await timedFetch(`${LIVE_API_BASE}/api/live/status?series=1`);
+    if (!res.ok) return false;
+    return parseLiveStatus(await res.json());
+  } catch {
+    return false;
+  }
+}

@@ -9,12 +9,29 @@ export function requestId(req: Request): string {
 }
 
 export type CacheClass =
-  | "health" | "asset" | "data" | "page" | "error" | "auth" | "download" | "worker";
+  | "health" | "asset" | "data" | "page" | "error" | "auth" | "download" | "worker" | "viewer";
 
 // Auth-owned routes are never cacheable anywhere (they set cookies, carry
 // per-user state, or consume single-use tokens). Unsubscribe links and the
 // provider webhook join them: both mutate state from a bare URL.
 const AUTH_PATH = /^\/(signup|signin|reset(\/|$)|verify\/|account$|auth\/|unsubscribe\/|webhooks\/)/;
+
+/**
+ * Endpoints whose **200 body differs by entitlement**. These can never be
+ * shared-cacheable, not even for an anonymous request: the free body is a
+ * different document, so any client cache will replay it to the same client
+ * after they sign in and become Pro.
+ *
+ * Found on a real device (2026-09-09 Android drive): `/api/predictions` was
+ * `public, max-age=300` while anonymous, so a viewer who subscribed kept
+ * seeing "39 more drivers with Pro" — served from the app's HTTP cache,
+ * without a request reaching the server — for up to five minutes.
+ *
+ * Endpoints that *refuse* rather than trim (403 `/api/dfs`, the series JSON)
+ * are already safe: an error response is `no-store`, and the Pro 200 carries a
+ * session cookie and so is `private`.
+ */
+const VIEWER_VARYING_PATH = /^\/api\/predictions$/;
 
 export function cacheClassFor(path: string, status: number): CacheClass {
   if (AUTH_PATH.test(path)) return "auth";
@@ -26,6 +43,7 @@ export function cacheClassFor(path: string, status: number): CacheClass {
   if (path === "/sw.js" || path === "/manifest.webmanifest") return "worker";
   if (path === "/health") return "health";
   if (path === "/style.css" || /^\/[a-z-]+\.js$/.test(path)) return "asset";
+  if (VIEWER_VARYING_PATH.test(path)) return "viewer";
   if (path.startsWith("/data/") || path.startsWith("/api/")) return "data";
   return "page";
 }
@@ -38,6 +56,7 @@ const CACHE_CONTROL: Record<CacheClass, string> = {
   error: "no-store",
   auth: "private, no-store",
   download: "private, no-store",
+  viewer: "private, no-store",
   worker: "public, max-age=0, must-revalidate",
   asset: "public, max-age=86400",
   data: "public, max-age=300",

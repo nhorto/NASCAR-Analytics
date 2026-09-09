@@ -6,12 +6,15 @@ import { signOut, signOutEverywhere } from "../../lib/auth.ts";
 import { serverBase } from "../../lib/config.ts";
 import { fmtProUntil } from "../../lib/dates.ts";
 import { useViewer } from "../../lib/viewer.tsx";
+import { useUpsell } from "../pro/UpsellSheet.tsx";
 import { Button, Card, Loading, ProBadge, Screen } from "../../ui/components.tsx";
 import { colors } from "../../ui/theme.ts";
 
 export function AccountScreen() {
   const { viewer, refresh } = useViewer();
+  const upsell = useUpsell();
   const [busy, setBusy] = useState(false);
+  const isPro = viewer.status === "signed_in" && viewer.me.pro;
 
   async function runSignOut(everywhere: boolean) {
     setBusy(true);
@@ -73,6 +76,22 @@ export function AccountScreen() {
           </View>
         </Card>
       )}
+      <Card title="LoopLab Pro">
+        {isPro ? (
+          <Text style={styles.note}>
+            Pro is active on this account. Subscription management lives on the web account page for now.
+          </Text>
+        ) : (
+          <>
+            <Text style={styles.note}>
+              All three series, the full prediction board, DFS projections, deep tools and driver alerts.
+            </Text>
+            <View style={styles.actions}>
+              <Button label="See what Pro unlocks" onPress={() => upsell()} />
+            </View>
+          </>
+        )}
+      </Card>
       <Card title="Settings">
         <Button label="Server & about" tone="quiet" onPress={() => router.push("/settings")} />
       </Card>

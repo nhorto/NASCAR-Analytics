@@ -24,6 +24,7 @@ import { exportBar } from "./html.ts";
 import { predictionsService } from "../domains/predictions/index.ts";
 import {
   METHODOLOGY_BACKTEST,
+  picksSeg,
   predictionsContent,
   predictionsEmptyContent,
   cupOnlyContent,
@@ -124,8 +125,12 @@ export function createServer(
   const predictionPages = (rest: string, seriesId: number, url: URL, viewer: Viewer): Response | null => {
     if (rest !== "/predictions" && rest !== "/predictions/methodology" && rest !== "/dfs") return null;
     const season = render.currentSeason(p, seriesId);
+    // Predictions and DFS are one "Picks" surface (2026-09-09 UX realignment):
+    // each carries its own tab identity plus a shared Predictions ⇄ DFS seg.
+    const active = rest === "/dfs" ? "dfs" : "predictions";
+    const seg = rest === "/predictions/methodology" ? "" : picksSeg(active);
     const shell = (title: string, content: string) =>
-      htmlResponse(page({ title, active: "metrics", seriesId, season, content }));
+      htmlResponse(page({ title, active, seriesId, season, pro: viewer.pro, content: seg + content }));
     if (seriesId !== SERIES.cup) return shell("Predictions", cupOnlyContent(seriesLabel(seriesId)));
     if (rest === "/predictions/methodology")
       return shell("Methodology", methodologyContent(METHODOLOGY_BACKTEST));
@@ -354,6 +359,7 @@ export function createServer(
       }
       if (rest === "/compare") return htmlResponse(render.renderCompare(p, seriesId, viewer.pro));
       if (rest === "/tracks") return htmlResponse(render.renderTracks(p, seriesId, viewer.pro));
+      if (rest === "/stats") return htmlResponse(render.renderStats(p, seriesId, viewer.pro));
       if (rest === "/live") return htmlResponse(render.renderLive(p, seriesId, viewer.pro));
 
       return notFound(seriesId, "Page");

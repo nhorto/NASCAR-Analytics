@@ -143,6 +143,32 @@ export function sparkline(values: number[], width = 340, height = 72): string {
 </svg>`;
 }
 
+/**
+ * Inline nav icons (stroke SVGs, currentColor) for the tab bar, sidenav and
+ * stats hub. Inline SVG needs no script and no CSP change (WS-I), and the
+ * shapes mirror the native app's Ionicons picks so the two surfaces match:
+ * home / radio (live) / podium (picks) / stats-chart / person-circle.
+ */
+const NAV_ICONS: Record<string, string> = {
+  home: '<path d="M3.5 10.5 12 3.5l8.5 7"/><path d="M5.5 9.5V20h13V9.5"/>',
+  live: '<circle cx="12" cy="12" r="2.4"/><path d="M7.8 7.8a6 6 0 0 0 0 8.4M16.2 7.8a6 6 0 0 1 0 8.4"/><path d="M4.9 4.9a10 10 0 0 0 0 14.2M19.1 4.9a10 10 0 0 1 0 14.2"/>',
+  picks: '<path d="M9 9.5h6V20H9z"/><path d="M3 13.5h6V20H3z"/><path d="M15 15.5h6V20h-6z"/><path d="M12 4v2.5"/>',
+  stats: '<path d="M5 20v-6M12 20V5M19 20v-9"/>',
+  account: '<circle cx="12" cy="12" r="8.6"/><circle cx="12" cy="10" r="3"/><path d="M6.8 18.6a6.4 6.4 0 0 1 10.4 0"/>',
+  predictions: '<circle cx="12" cy="12" r="8.6"/><circle cx="12" cy="12" r="4.6"/><circle cx="12" cy="12" r="0.8" fill="currentColor" stroke="none"/>',
+  dfs: '<path d="M13 3 5 13.5h5L10.5 21l8-10.5h-5z"/>',
+  recap: '<rect x="5" y="3.5" width="14" height="17" rx="2"/><path d="M9 9h6M9 13h6M9 17h3.5"/>',
+  races: '<path d="M5.5 21V3.5"/><path d="M5.5 4.5h13l-3.2 4 3.2 4h-13"/>',
+  drivers: '<circle cx="12" cy="8" r="4"/><path d="M4.5 20.5a7.5 7.5 0 0 1 15 0"/>',
+  metrics: '<path d="M12 3.5 19.5 12 12 20.5 4.5 12z"/><path d="M12 8.5 15.5 12 12 15.5 8.5 12z"/>',
+  compare: '<path d="M4 8.5h13.5M14.5 5.5l3.5 3-3.5 3"/><path d="M20 15.5H6.5M9.5 12.5l-3.5 3 3.5 3"/>',
+  tracks: '<ellipse cx="12" cy="12" rx="8.6" ry="5.6"/><ellipse cx="12" cy="12" rx="4.4" ry="2.4"/>',
+};
+
+export function navIcon(name: string): string {
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${NAV_ICONS[name] ?? ""}</svg>`;
+}
+
 /** Card with the standard accent-tick header. */
 export function card(title: string, body: string, more?: { href: string; label: string }): string {
   const moreLink = more ? `<a class="more" href="${esc(more.href)}">${esc(more.label)}</a>` : "";

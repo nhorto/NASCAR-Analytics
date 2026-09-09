@@ -1,0 +1,388 @@
+<!doctype html>
+<!-- UX realignment mockup (2026-09-09) — standalone design artifact, not a production route.
+     Companion doc: 2026-09-09-ux-realignment.md. Open directly in a browser.
+     The Free ⇄ Pro toggle swaps every gated treatment in place: navigation never
+     changes with entitlement, only lock states do. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>UX Realignment Mockup · Looplab</title>
+<style>
+  :root {
+    --bg:#0a0c10; --surface:#12151c; --surface-2:#191d26; --border:#262c38;
+    --text:#e9edf4; --muted:#8b95a6; --accent:#ffd23f; --pos:#34d399; --neg:#f87171;
+    --display:"Avenir Next Condensed","Arial Narrow","Roboto Condensed",system-ui,sans-serif;
+    --body:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#06070a; color:var(--text); font-family:var(--body); padding-bottom:80px; }
+  a { color:inherit; text-decoration:none; }
+  .num { font-variant-numeric:tabular-nums; }
+  .mut { color:var(--muted); } .pos { color:var(--pos); }
+
+  /* ————— mockup chrome (not product UI) ————— */
+  .mockbar { position:sticky; top:0; z-index:50; display:flex; align-items:center; gap:16px;
+    padding:14px 22px; background:rgba(6,7,10,.94); border-bottom:1px solid var(--border); backdrop-filter:blur(6px); }
+  .mockbar h1 { font-family:var(--display); font-size:18px; letter-spacing:.08em; text-transform:uppercase; }
+  .mockbar h1 em { font-style:normal; color:var(--accent); }
+  .mockbar .spacer { flex:1; }
+  .viewtoggle { display:flex; background:var(--surface-2); border:1px solid var(--border); border-radius:12px; padding:3px; }
+  .viewtoggle button { border:0; background:none; color:var(--muted); font:600 12px var(--body);
+    letter-spacing:.06em; text-transform:uppercase; padding:8px 18px; border-radius:9px; cursor:pointer; }
+  body:not(.pro) .viewtoggle .b-free, body.pro .viewtoggle .b-pro { background:var(--accent); color:#14150e; }
+  .section { max-width:1280px; margin:34px auto 0; padding:0 22px; }
+  .section > h2 { font-family:var(--display); font-size:14px; letter-spacing:.12em; text-transform:uppercase; color:var(--muted); margin-bottom:6px; }
+  .section > h2::before { content:""; display:inline-block; width:4px; height:11px; background:var(--accent); border-radius:2px; margin-right:8px; }
+  .section > p.note { font-size:13px; color:var(--muted); max-width:760px; line-height:1.5; margin-bottom:16px; }
+
+  /* ————— entitlement switching ————— */
+  body.pro .free-only { display:none !important; }
+  body:not(.pro) .pro-only { display:none !important; }
+  .locked-rows { position:relative; }
+  body:not(.pro) .locked-rows .lockable { filter:blur(3.5px); opacity:.55; pointer-events:none; user-select:none; }
+  .propill { display:inline-block; font:700 9px var(--body); letter-spacing:.1em; color:#14150e;
+    background:var(--accent); border-radius:5px; padding:2px 5px; vertical-align:1px; }
+  body.pro .nav .propill, body.pro .pill .lockglyph { display:none; }
+  .unlock-row { display:flex; align-items:center; justify-content:center; gap:8px; padding:10px;
+    margin-top:6px; border:1px dashed var(--border); border-radius:10px; font-size:12.5px; color:var(--muted); }
+  .unlock-row b { color:var(--accent); font-weight:600; }
+
+  /* ————— shared components (house style) ————— */
+  .card { background:var(--surface); border:1px solid var(--border); border-radius:16px; padding:14px; }
+  .card-h { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:10px; }
+  .card-h h3 { font-family:var(--display); font-size:14px; text-transform:uppercase; letter-spacing:.1em; color:var(--muted); font-weight:600; }
+  .card-h h3::before { content:""; display:inline-block; width:4px; height:11px; background:var(--accent); border-radius:2px; margin-right:8px; }
+  .card-h .more { font-size:11.5px; color:var(--muted); }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th { font-size:9.5px; letter-spacing:.09em; text-transform:uppercase; color:var(--muted); text-align:left; padding:4px 6px; font-weight:600; }
+  td { padding:6px; border-top:1px solid #1d222c; font-variant-numeric:tabular-nums; }
+  th.r, td.r { text-align:right; }
+  .seg { display:flex; background:var(--surface-2); border:1px solid var(--border); border-radius:12px; padding:3px; }
+  .seg a { flex:1; text-align:center; font-size:11px; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); padding:8px 0; border-radius:9px; }
+  .seg a.on { background:var(--accent); color:#14150e; font-weight:700; }
+  .btn { display:block; text-align:center; background:var(--accent); color:#14150e; font:700 13px var(--body);
+    border:0; border-radius:11px; padding:11px; width:100%; cursor:pointer; }
+  .btn.quiet { background:var(--surface-2); color:var(--text); border:1px solid var(--border); }
+  .btn[disabled] { opacity:.55; }
+  .livedot { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--neg); margin-left:6px; }
+
+  /* ————— A. desktop web frame ————— */
+  .browser { border:1px solid var(--border); border-radius:14px; overflow:hidden; background:var(--bg); }
+  .browser-top { display:flex; align-items:center; gap:8px; background:#0d1016; border-bottom:1px solid var(--border); padding:9px 14px; }
+  .browser-top i { width:10px; height:10px; border-radius:50%; background:var(--surface-2); display:inline-block; }
+  .browser-top .url { flex:1; text-align:center; font-size:11.5px; color:var(--muted); background:var(--surface); border-radius:7px; padding:4px 0; }
+  .desktop { display:grid; grid-template-columns:232px 1fr; min-height:640px; }
+  .sidebar { border-right:1px solid var(--border); background:#0d1016; padding:18px 14px; display:flex; flex-direction:column; gap:16px; }
+  .wordmark { font-family:var(--display); font-weight:700; font-size:21px; letter-spacing:.06em; text-transform:uppercase; }
+  .wordmark em { font-style:normal; color:var(--accent); }
+  .nav { display:flex; flex-direction:column; gap:2px; }
+  .nav .grp { font-size:9.5px; letter-spacing:.12em; text-transform:uppercase; color:#5c6575; margin:12px 10px 4px; }
+  .nav a { display:flex; align-items:center; gap:10px; font-size:13.5px; color:var(--muted); padding:8px 10px; border-radius:9px; }
+  .nav a span.ic { width:18px; text-align:center; font-size:14px; }
+  .nav a.on { background:var(--surface-2); color:var(--text); box-shadow:inset 2px 0 0 var(--accent); }
+  .nav a:hover { color:var(--text); }
+  .nav a .propill { margin-left:auto; }
+  .sidebar .foot { margin-top:auto; border-top:1px solid var(--border); padding-top:12px; font-size:12.5px; color:var(--muted); display:flex; align-items:center; gap:9px; }
+  .sidebar .foot .avatar { width:26px; height:26px; border-radius:50%; background:var(--surface-2); border:1px solid var(--border);
+    display:flex; align-items:center; justify-content:center; font-size:13px; }
+  .main { padding:20px 24px 28px; }
+  .main-h { display:flex; align-items:center; gap:12px; margin-bottom:16px; }
+  .main-h h2 { font-family:var(--display); font-size:19px; letter-spacing:.05em; text-transform:uppercase; font-weight:700; }
+  .season-pill { font-size:11.5px; color:var(--muted); border:1px solid var(--border); border-radius:999px; padding:4px 11px; }
+  .dash { display:grid; grid-template-columns:1.5fr 1fr; gap:14px; align-items:start; }
+  .col { display:flex; flex-direction:column; gap:14px; }
+  .livebanner { display:flex; align-items:center; gap:10px; background:var(--surface); border:1px solid var(--border);
+    border-left:3px solid var(--neg); border-radius:12px; padding:11px 14px; font-size:13px; margin-bottom:14px; }
+  .livebanner b { color:var(--neg); font-family:var(--display); letter-spacing:.08em; }
+
+  /* ————— B. phone frames ————— */
+  .phones { display:flex; gap:22px; flex-wrap:wrap; align-items:flex-start; }
+  .phonewrap { width:300px; }
+  .phonewrap > h4 { font-size:12px; color:var(--muted); font-weight:600; margin:0 0 8px 4px; letter-spacing:.04em; }
+  .phone { width:300px; height:600px; background:var(--bg); border:1px solid #2a3140; border-radius:28px; overflow:hidden;
+    display:flex; flex-direction:column; position:relative; box-shadow:0 12px 40px rgba(0,0,0,.5); }
+  .p-head { display:flex; align-items:center; justify-content:space-between; padding:16px 16px 10px; }
+  .p-head .t { font-family:var(--display); font-size:16px; letter-spacing:.07em; text-transform:uppercase; font-weight:700; }
+  .p-body { flex:1; overflow:hidden; padding:0 12px; display:flex; flex-direction:column; gap:10px; }
+  .p-tabs { display:flex; border-top:1px solid var(--border); background:#0d1016; }
+  .p-tabs a { flex:1; text-align:center; padding:9px 0 13px; font-size:9px; letter-spacing:.05em; text-transform:uppercase; color:var(--muted); }
+  .p-tabs a span { display:block; font-size:16px; margin-bottom:2px; }
+  .p-tabs a.on { color:var(--accent); }
+  .pill-row { display:flex; gap:7px; }
+  .pill { flex:1; text-align:center; font-size:11px; letter-spacing:.05em; text-transform:uppercase; color:var(--muted);
+    border:1px solid var(--border); border-radius:10px; padding:8px 0; background:var(--surface); }
+  .pill.on { background:var(--accent); color:#14150e; font-weight:700; border-color:var(--accent); }
+  .hubrow { display:flex; align-items:center; gap:11px; background:var(--surface); border:1px solid var(--border); border-radius:13px; padding:12px 13px; }
+  .hubrow .ic { font-size:16px; width:22px; text-align:center; }
+  .hubrow .tx b { display:block; font-size:13.5px; font-weight:600; }
+  .hubrow .tx span { font-size:11px; color:var(--muted); }
+  .hubrow .chev { margin-left:auto; color:var(--muted); }
+  .sheetdim { position:absolute; inset:0; background:rgba(4,5,8,.62); }
+  .sheet { position:absolute; left:0; right:0; bottom:0; background:var(--surface); border:1px solid var(--border);
+    border-radius:20px 20px 0 0; padding:16px 16px 20px; }
+  .sheet .grab { width:36px; height:4px; border-radius:2px; background:var(--border); margin:0 auto 12px; }
+  .sheet h5 { font-family:var(--display); font-size:16px; letter-spacing:.07em; text-transform:uppercase; margin-bottom:8px; }
+  .sheet h5 em { font-style:normal; color:var(--accent); }
+  .sheet ul { list-style:none; margin:10px 0 14px; display:flex; flex-direction:column; gap:7px; }
+  .sheet li { font-size:12.5px; color:var(--text); display:flex; gap:8px; }
+  .sheet li::before { content:"✓"; color:var(--pos); font-weight:700; }
+  .sheet .fine { font-size:10.5px; color:var(--muted); margin-top:9px; line-height:1.45; text-align:center; }
+</style>
+</head>
+<body>
+
+<div class="mockbar">
+  <h1>Loop<em>lab</em> · UX realignment mockup</h1>
+  <span class="mut" style="font-size:12px">Toggle entitlement — navigation stays identical, only lock states change:</span>
+  <div class="spacer"></div>
+  <div class="viewtoggle">
+    <button class="b-free" onclick="document.body.classList.remove('pro')">Free viewer</button>
+    <button class="b-pro" onclick="document.body.classList.add('pro')">Pro viewer</button>
+  </div>
+</div>
+
+<!-- ============================ A. DESKTOP WEB ============================ -->
+<div class="section">
+  <h2>A · Desktop web (≥ 900px breakpoint — mobile web keeps today's bottom-tab shell)</h2>
+  <p class="note">The 520px phone column becomes a sidebar layout on wide screens. The sidebar groups
+  (Race weekend / Results / Stats / Tools) are the shared information architecture — the app's tabs are
+  a condensed form of the same groups. Predictions and DFS finally get navigation slots.</p>
+
+  <div class="browser">
+    <div class="browser-top"><i></i><i></i><i></i><div class="url">looplab.app — 2026 Season</div></div>
+    <div class="desktop">
+
+      <aside class="sidebar">
+        <a class="wordmark" href="#">Loop<em>lab</em></a>
+        <nav class="seg" style="font-size:0">
+          <a class="on" href="#">Cup</a>
+          <a href="#">Xfinity<span class="free-only lockglyph"> 🔒</span></a>
+          <a href="#">Trucks<span class="free-only lockglyph"> 🔒</span></a>
+        </nav>
+        <nav class="nav">
+          <a class="on" href="#"><span class="ic">⌂</span>Home</a>
+          <div class="grp">Race weekend</div>
+          <a href="#"><span class="ic">◉</span>Live<i class="livedot"></i></a>
+          <a href="#"><span class="ic">◇</span>Predictions</a>
+          <a href="#"><span class="ic">⚡</span>DFS <span class="free-only propill">PRO</span></a>
+          <div class="grp">Results</div>
+          <a href="#"><span class="ic">❑</span>Recap</a>
+          <a href="#"><span class="ic">⚑</span>Races</a>
+          <div class="grp">Stats</div>
+          <a href="#"><span class="ic">◔</span>Drivers</a>
+          <a href="#"><span class="ic">◈</span>Metrics</a>
+          <a href="#"><span class="ic">≡</span>Standings</a>
+          <div class="grp">Tools</div>
+          <a href="#"><span class="ic">⇄</span>Compare</a>
+          <a href="#"><span class="ic">◎</span>Track types</a>
+          <a href="#"><span class="ic">⇩</span>CSV export <span class="free-only propill">PRO</span></a>
+        </nav>
+        <div class="foot">
+          <span class="avatar">⦿</span>
+          <span class="free-only">Sign in · <b style="color:var(--accent)">Go Pro</b></span>
+          <span class="pro-only">nick@… · <span class="propill">PRO</span></span>
+        </div>
+      </aside>
+
+      <div class="main">
+        <div class="main-h">
+          <h2>Cup Series</h2>
+          <span class="season-pill num">2026 Season</span>
+        </div>
+        <div class="livebanner"><b>● LIVE</b> Bristol Night Race — Lap 341/500 · <span class="mut">Open the live board →</span></div>
+        <div class="dash">
+          <div class="col">
+            <div class="card">
+              <div class="card-h"><h3>Last race — Kansas</h3><a class="more" href="#">Full recap →</a></div>
+              <table>
+                <tr><th>Fin</th><th>Driver</th><th class="r">Start</th><th class="r">Adj PE</th><th class="r">Rating</th></tr>
+                <tr><td>1</td><td>K. Larson</td><td class="r">3</td><td class="r pos">+.041</td><td class="r">138.2</td></tr>
+                <tr><td>2</td><td>C. Bell</td><td class="r">7</td><td class="r pos">+.028</td><td class="r">121.6</td></tr>
+                <tr><td>3</td><td>W. Byron</td><td class="r">1</td><td class="r">+.006</td><td class="r">117.9</td></tr>
+                <tr><td>4</td><td>T. Reddick</td><td class="r">12</td><td class="r pos">+.033</td><td class="r">109.4</td></tr>
+                <tr><td>5</td><td>R. Blaney</td><td class="r">5</td><td class="r" style="color:var(--neg)">−.012</td><td class="r">104.8</td></tr>
+              </table>
+            </div>
+            <div class="card">
+              <div class="card-h"><h3>Championship picture</h3><a class="more" href="#">Standings →</a></div>
+              <table>
+                <tr><th></th><th>Driver</th><th class="r">Pts</th><th class="r">Wins</th><th class="r">±</th></tr>
+                <tr><td>1</td><td>W. Byron</td><td class="r">892</td><td class="r">4</td><td class="r mut">—</td></tr>
+                <tr><td>2</td><td>K. Larson</td><td class="r">874</td><td class="r">3</td><td class="r pos">▲1</td></tr>
+                <tr><td>3</td><td>C. Bell</td><td class="r">851</td><td class="r">3</td><td class="r" style="color:var(--neg)">▼1</td></tr>
+                <tr><td>4</td><td>D. Hamlin</td><td class="r">812</td><td class="r">2</td><td class="r mut">—</td></tr>
+              </table>
+            </div>
+          </div>
+          <div class="col">
+            <div class="card">
+              <div class="card-h"><h3>Bristol — model picks</h3><a class="more" href="#">All →</a></div>
+              <div class="locked-rows">
+                <table>
+                  <tr><th>Driver</th><th class="r">Win</th><th class="r">Top 5</th></tr>
+                  <tr><td>K. Larson</td><td class="r">18.4%</td><td class="r">54%</td></tr>
+                  <tr><td>C. Bell</td><td class="r">14.1%</td><td class="r">49%</td></tr>
+                  <tr><td>W. Byron</td><td class="r">11.7%</td><td class="r">44%</td></tr>
+                  <tr class="lockable"><td>D. Hamlin</td><td class="r">9.2%</td><td class="r">38%</td></tr>
+                  <tr class="lockable"><td>T. Reddick</td><td class="r">7.8%</td><td class="r">35%</td></tr>
+                </table>
+                <div class="unlock-row free-only">🔒 34 more drivers · <b>Unlock with Pro</b></div>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-h"><h3>Beyond the box score</h3><a class="more" href="#">Metrics →</a></div>
+              <table>
+                <tr><th>Adj pass efficiency</th><th class="r"></th></tr>
+                <tr><td>T. Reddick</td><td class="r pos">+.037</td></tr>
+                <tr><td>K. Larson</td><td class="r pos">+.031</td></tr>
+                <tr><td>C. Elliott</td><td class="r pos">+.024</td></tr>
+              </table>
+            </div>
+            <div class="card">
+              <div class="card-h"><h3>DFS board <span class="free-only propill">PRO</span></h3></div>
+              <p class="free-only" style="font-size:12.5px;color:var(--muted);line-height:1.5">DraftKings &amp; FanDuel
+                projected points for every entered driver, refreshed after qualifying.
+                <b style="color:var(--accent)">Go Pro →</b></p>
+              <table class="pro-only">
+                <tr><th>Driver</th><th class="r">DK proj</th></tr>
+                <tr><td>K. Larson</td><td class="r">48.2</td></tr>
+                <tr><td>C. Bell</td><td class="r">44.6</td></tr>
+                <tr><td>D. Hamlin</td><td class="r">41.9</td></tr>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- ============================ B. APP ============================ -->
+<div class="section">
+  <h2>B · Native app — the Pro tab becomes intent-named tabs + inline locks</h2>
+  <p class="note">New tab bar: <b>Home · Live · Picks · Stats · Account</b>. Predictions, DFS, Compare and
+  Track types live where a fan would look for them; entitlement renders as locked rows and one shared
+  upsell sheet. Toggle Free/Pro above — the tabs never change, the locks do. Server-side gating
+  (<code>/api/me</code>, <code>hiddenCount</code>, 403 <code>pro_required</code>) is untouched.</p>
+
+  <div class="phones">
+
+    <!-- Phone 1: Picks / Predictions -->
+    <div class="phonewrap">
+      <h4>1 · “Picks” tab — predictions (free: top-3 real, rest blurred)</h4>
+      <div class="phone">
+        <div class="p-head"><span class="t">Picks</span><span class="season-pill num">Bristol · Sat</span></div>
+        <div class="p-body">
+          <div class="pill-row">
+            <span class="pill on">Predictions</span>
+            <span class="pill">DFS<span class="free-only"> 🔒</span></span>
+          </div>
+          <div class="card">
+            <div class="card-h"><h3>Win / Top-5 / Top-10</h3><a class="more" href="#">Method →</a></div>
+            <div class="locked-rows">
+              <table>
+                <tr><th>Driver</th><th class="r">Win</th><th class="r">T5</th><th class="r">T10</th></tr>
+                <tr><td>K. Larson</td><td class="r">18.4</td><td class="r">54</td><td class="r">76</td></tr>
+                <tr><td>C. Bell</td><td class="r">14.1</td><td class="r">49</td><td class="r">72</td></tr>
+                <tr><td>W. Byron</td><td class="r">11.7</td><td class="r">44</td><td class="r">69</td></tr>
+                <tr class="lockable"><td>D. Hamlin</td><td class="r">9.2</td><td class="r">38</td><td class="r">63</td></tr>
+                <tr class="lockable"><td>T. Reddick</td><td class="r">7.8</td><td class="r">35</td><td class="r">61</td></tr>
+                <tr class="lockable"><td>R. Blaney</td><td class="r">6.9</td><td class="r">33</td><td class="r">58</td></tr>
+                <tr class="lockable"><td>C. Elliott</td><td class="r">5.4</td><td class="r">28</td><td class="r">54</td></tr>
+              </table>
+              <div class="unlock-row free-only">🔒 34 more · <b>Unlock with Pro</b></div>
+            </div>
+          </div>
+          <p class="mut" style="font-size:10.5px;line-height:1.5">Generated Thu 16:00 · refreshed after qualifying.
+          Free forever: the model's top three.</p>
+        </div>
+        <div class="p-tabs">
+          <a href="#"><span>⌂</span>Home</a><a href="#"><span>●</span>Live</a>
+          <a class="on" href="#"><span>◇</span>Picks</a><a href="#"><span>◈</span>Stats</a><a href="#"><span>○</span>Account</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phone 2: Stats hub -->
+    <div class="phonewrap">
+      <h4>2 · “Stats” tab — hub for drivers, boards &amp; tools</h4>
+      <div class="phone">
+        <div class="p-head"><span class="t">Stats</span><span class="season-pill num">2026</span></div>
+        <div class="p-body">
+          <div class="pill-row">
+            <span class="pill on">Cup</span>
+            <span class="pill">Xfinity<span class="free-only lockglyph"> 🔒</span></span>
+            <span class="pill">Trucks<span class="free-only lockglyph"> 🔒</span></span>
+          </div>
+          <div class="hubrow"><span class="ic">≡</span><span class="tx"><b>Standings</b><span>Playoff picture &amp; cut line</span></span><span class="chev">›</span></div>
+          <div class="hubrow"><span class="ic">◔</span><span class="tx"><b>Drivers</b><span>Profiles, race logs, careers</span></span><span class="chev">›</span></div>
+          <div class="hubrow"><span class="ic">◈</span><span class="tx"><b>Metric leaders</b><span>Adj pass efficiency · Closer score</span></span><span class="chev">›</span></div>
+          <div class="hubrow"><span class="ic">⇄</span><span class="tx"><b>Compare</b><span>Two drivers free · four across series <span class="free-only propill">PRO</span></span></span><span class="chev">›</span></div>
+          <div class="hubrow"><span class="ic">◎</span><span class="tx"><b>Track types</b><span>Cup free · all series <span class="free-only propill">PRO</span></span></span><span class="chev">›</span></div>
+          <p class="mut" style="font-size:10.5px;line-height:1.5;padding:0 3px">Series pills stay visible for
+          everyone — a locked series opens the upsell sheet, matching the web teaser gate.</p>
+        </div>
+        <div class="p-tabs">
+          <a href="#"><span>⌂</span>Home</a><a href="#"><span>●</span>Live</a>
+          <a href="#"><span>◇</span>Picks</a><a class="on" href="#"><span>◈</span>Stats</a><a href="#"><span>○</span>Account</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Phone 3: upsell sheet (free) / DFS unlocked (pro) -->
+    <div class="phonewrap">
+      <h4 class="free-only">3 · Tap any lock → one shared upsell sheet</h4>
+      <h4 class="pro-only">3 · Same screen for Pro — DFS just works</h4>
+      <div class="phone">
+        <div class="p-head"><span class="t">Picks</span><span class="season-pill num">Bristol · Sat</span></div>
+        <div class="p-body">
+          <div class="pill-row">
+            <span class="pill">Predictions</span>
+            <span class="pill on">DFS</span>
+          </div>
+          <div class="card">
+            <div class="card-h"><h3>DraftKings projections</h3></div>
+            <div class="locked-rows">
+              <table>
+                <tr><th>Driver</th><th class="r">Proj pts</th><th class="r">Dom</th></tr>
+                <tr class="lockable"><td>K. Larson</td><td class="r">48.2</td><td class="r">21.4</td></tr>
+                <tr class="lockable"><td>C. Bell</td><td class="r">44.6</td><td class="r">17.2</td></tr>
+                <tr class="lockable"><td>D. Hamlin</td><td class="r">41.9</td><td class="r">14.8</td></tr>
+                <tr class="lockable"><td>W. Byron</td><td class="r">40.7</td><td class="r">13.9</td></tr>
+                <tr class="lockable"><td>T. Reddick</td><td class="r">38.3</td><td class="r">11.6</td></tr>
+              </table>
+            </div>
+            <p class="pro-only mut" style="font-size:10.5px;margin-top:8px">Lineup scratchpad: tap drivers to total projected points.</p>
+          </div>
+        </div>
+        <div class="free-only">
+          <div class="sheetdim"></div>
+          <div class="sheet">
+            <div class="grab"></div>
+            <h5>Loop<em>lab</em> Pro</h5>
+            <ul>
+              <li>Full prediction board, every driver</li>
+              <li>DK &amp; FD projections + scratchpad</li>
+              <li>Xfinity &amp; Trucks — every stat and board</li>
+              <li>4-driver compare across series &amp; seasons</li>
+              <li>Driver alerts on race day</li>
+            </ul>
+            <button class="btn" disabled>Purchases coming to the app</button>
+            <button class="btn quiet" style="margin-top:8px">Already Pro? Sign in</button>
+            <p class="fine">Entitlement is read from your account — Pro from any purchase unlocks everywhere.</p>
+          </div>
+        </div>
+        <div class="p-tabs">
+          <a href="#"><span>⌂</span>Home</a><a href="#"><span>●</span>Live</a>
+          <a class="on" href="#"><span>◇</span>Picks</a><a href="#"><span>◈</span>Stats</a><a href="#"><span>○</span>Account</a>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

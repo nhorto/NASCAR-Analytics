@@ -42,6 +42,23 @@ describe("cache control", () => {
     expect(cacheControlFor("/", 200)).toBe("public, max-age=300, stale-while-revalidate=600");
     expect(cacheControlFor("/nope", 404)).toBe("no-store");
   });
+
+  test("an endpoint whose 200 body varies by entitlement is never shared-cacheable", () => {
+    // Regression (2026-09-09 Android drive): /api/predictions trims the field
+    // for a free viewer and returns the whole board for Pro, both as 200. When
+    // the anonymous response was `public, max-age=300`, the app's own HTTP
+    // cache replayed the *free* body to the same user after they signed in and
+    // became Pro — they kept seeing "39 more drivers with Pro" for five
+    // minutes, with no request reaching the server.
+    expect(cacheClassFor("/api/predictions", 200)).toBe("viewer");
+    expect(cacheControlFor("/api/predictions", 200)).toBe("private, no-store");
+    // …including when no session cookie is present, which is the leaking case.
+    expect(cacheControlFor("/api/predictions", 200, { privateViewer: false })).toBe(
+      "private, no-store",
+    );
+    // Endpoints that refuse instead of trimming were already safe.
+    expect(cacheControlFor("/api/dfs", 403)).toBe("no-store");
+  });
 });
 
 describe("securityHeaders", () => {

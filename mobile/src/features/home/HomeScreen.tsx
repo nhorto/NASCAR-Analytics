@@ -20,8 +20,10 @@ export function HomeScreen() {
 
   const load = useCallback(async () => {
     const base = await serverBase();
-    const [live, stats] = await Promise.all([fetchLive(), fetchStats(base)]);
-    setData({ live, stats });
+    // Home is always Cup, which is never Pro-locked and (in practice) never
+    // empty — collapse both non-data verdicts into the card's fallback copy.
+    const [live, stats] = await Promise.all([fetchLive(), fetchStats(base, 1)]);
+    setData({ live, stats: typeof stats === "string" ? null : stats });
   }, []);
 
   useFocusEffect(

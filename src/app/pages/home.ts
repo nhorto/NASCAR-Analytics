@@ -117,6 +117,8 @@ export function homeContent(data: {
     );
   }
   // Live banner mount (revealed client-side by /home-live.js only when a session
-  // is on track) sits above everything; the digest renders under it.
-  return `<div id="live-home"></div>\n${parts.join("\n")}\n<script src="/home-live.js?v=${ASSET_VERSION}"></script>`;
+  // is on track) sits above everything; the digest renders under it. The
+  // dash-grid wrapper is `display: contents` below the desktop breakpoint, so
+  // the phone layout is untouched; ≥900px it flows the cards into two columns.
+  return `<div id="live-home"></div>\n<div class="dash-grid">${parts.join("\n")}</div>\n<script src="/home-live.js?v=${ASSET_VERSION}"></script>`;
 }

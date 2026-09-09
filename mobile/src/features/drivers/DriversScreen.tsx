@@ -5,30 +5,47 @@ import { FlatList, Pressable, RefreshControl, StyleSheet, Text, TextInput, View 
 import { router, useFocusEffect } from "expo-router";
 import { serverBase } from "../../lib/config.ts";
 import { useReload } from "../../lib/reload.ts";
+import { useSeries } from "../../lib/series.tsx";
 import { ErrorNote, Loading, Screen } from "../../ui/components.tsx";
+import { SeriesPills } from "../pro/SeriesPills.tsx";
 import { colors } from "../../ui/theme.ts";
 import { fetchDrivers, type DriverSummary } from "./api.ts";
 import { driverListRows } from "./model.ts";
 
 export function DriversScreen() {
+  const { series } = useSeries();
   const [drivers, setDrivers] = useState<DriverSummary[] | null | undefined>(undefined);
   const [filter, setFilter] = useState("");
 
   const load = useCallback(async () => {
-    setDrivers(await fetchDrivers(await serverBase(), ""));
-  }, []);
+    setDrivers(await fetchDrivers(await serverBase(), "", series));
+  }, [series]);
 
+  // Reload whenever the selected series changes (not only on first mount).
   useFocusEffect(
     useCallback(() => {
-      if (drivers === undefined || drivers === null) void load();
-    }, [drivers, load]),
+      void load();
+    }, [load]),
   );
   const { refreshing, onRefresh } = useReload(load);
 
-  if (drivers === undefined) return <Loading label="Loading drivers…" />;
+  const pills = (
+    <View style={styles.pills}>
+      <SeriesPills />
+    </View>
+  );
+
+  if (drivers === undefined)
+    return (
+      <Screen>
+        {pills}
+        <Loading label="Loading drivers…" />
+      </Screen>
+    );
   if (drivers === null)
     return (
       <Screen>
+        {pills}
         <ErrorNote message="Could not reach the server." onRetry={() => void load()} />
       </Screen>
     );
@@ -36,6 +53,7 @@ export function DriversScreen() {
   const rows = driverListRows(drivers, filter);
   return (
     <Screen scroll={false}>
+      {pills}
       <TextInput
         style={styles.search}
         placeholder="Search drivers"
@@ -75,6 +93,7 @@ export function DriversScreen() {
 }
 
 const styles = StyleSheet.create({
+  pills: { paddingHorizontal: 14, paddingTop: 12 },
   search: {
     margin: 14,
     marginBottom: 6,

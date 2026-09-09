@@ -107,6 +107,7 @@ export async function exportSite(dbPath = "data/nascar.db", log?: Log): Promise<
     await write(`${prefix}/compare`, render.renderCompare(p, s));
     await write(`${prefix}/tracks`, render.renderTracks(p, s));
     await write(`${prefix}/live`, render.renderLive(p, s));
+    await write(`${prefix}/stats`, render.renderStats(p, s));
 
     // Weekly recap: the series' "this week" entry point, plus one per current-season
     // race with results (un-prefixed, race_id is global). Bounded to the current

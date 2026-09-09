@@ -65,8 +65,11 @@
       })
       .then(function (status) {
         if (!status || !status.live) return;
-        var el = document.querySelector(".tabbar .tab-live .livedot");
-        if (el) el.hidden = false;
+        // Both navs carry a dot: the mobile tabbar's Live tab and the desktop
+        // sidenav's Live entry (2026-09-09 UX realignment).
+        document.querySelectorAll(".livedot").forEach(function (el) {
+          el.hidden = false;
+        });
       })
       .catch(function () {});
   }
