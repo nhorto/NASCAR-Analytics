@@ -30,9 +30,14 @@ The site is generated from `data/nascar.db` — a ~160MB SQLite file that is **g
    bun run export
    bunx wrangler pages deploy dist --project-name=looplab
    ```
-   The first run creates the `looplab` project and prints the live URL
-   (`https://looplab.pages.dev`). Wrangler opens a browser to authenticate — that
-   login is yours; it can't be automated here.
+   **Already done** — the `looplab` project exists in the
+   `nhorton@fabricationis.com` account. Note the live URL is
+   **`https://looplab-arh.pages.dev`**, not `looplab.pages.dev`: the bare
+   `looplab` subdomain was already claimed by an unrelated project, so
+   Cloudflare appended a suffix at creation. The *project name* is still
+   `looplab`, so `--project-name=looplab` is correct — only the public hostname
+   carries the suffix. Don't "correct" the URL back. Wrangler opens a browser to
+   authenticate — that login is yours; it can't be automated here.
 
 ## Every update (after a race weekend)
 
