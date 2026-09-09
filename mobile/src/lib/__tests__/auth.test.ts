@@ -34,8 +34,19 @@ describe("classifyAuthResponse", () => {
 
   test("a 200 re-render WITH a form error is not success", () => {
     // Reset-request always 200s (enumeration-safe); a signup re-render can too
-    // after a redirect quirk. The error text decides.
-    expect(classifyAuthResponse(200, "/account", "Something failed")).toMatchObject({ ok: false });
+    // after a redirect quirk. The error text decides — on an *auth* page.
+    expect(classifyAuthResponse(200, "/signup", "Something failed")).toMatchObject({ ok: false });
+  });
+
+  test("landing on /account is success even when that page carries a form error", () => {
+    // Regression (2026-09-09 Android drive): the signed-in account page always
+    // renders "Email not verified — required before upgrading" as a
+    // form-error, and verification mail cannot be sent yet (A4), so every real
+    // account hit this. Reading it as a rejection reported a successful
+    // sign-in as failure AND made it conclusive, skipping the /api/me
+    // fallback — the app stayed signed out with a session on the server.
+    const landed = classifyAuthResponse(200, "/account", "Email not verified — required before upgrading.");
+    expect(landed).toEqual({ ok: true });
   });
 
   test("429 and 403 map to rate_limited and csrf", () => {

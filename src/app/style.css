@@ -28,9 +28,10 @@ a { color: inherit; text-decoration: none; }
 .season-pill { font-size: 12px; color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 5px 11px; }
 .screen { padding: 0 14px 96px; display: flex; flex-direction: column; gap: 12px; }
 .tabbar { display: flex; border-top: 1px solid var(--border); background: #0d1016; position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); width: 100%; max-width: 520px; z-index: 5; }
-.tabbar a { flex: 1; text-align: center; padding: 10px 0 14px; font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.tabbar a { flex: 1; text-align: center; padding: 10px 0 14px; font-size: 10px; letter-spacing: .05em; text-transform: uppercase; color: var(--muted); }
 .tabbar a.on { color: var(--accent); }
-.tabbar a span { display: block; font-size: 17px; margin-bottom: 2px; }
+.tabbar a span { display: block; margin-bottom: 3px; }
+.tabbar a span svg { width: 21px; height: 21px; display: block; margin: 0 auto; }
 
 /* components */
 .card { background: var(--surface); border: 1px solid var(--border); border-radius: 16px; padding: 14px; }
@@ -115,13 +116,10 @@ form.inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 /* ============ LIVE race companion (Phase 3) ============ */
 :root { --live: #ff4d4f; } /* LIVE indicator only — never decorative */
 
-/* 8-tab bar: shrink so labels don't collide on small phones */
-.tabbar a { font-size: 9.5px; letter-spacing: .02em; padding: 10px 0 13px; }
-.tabbar a span { font-size: 16px; }
 .tabbar a.tab-live { position: relative; }
-.tabbar a.tab-live .livedot { position: absolute; top: 7px; left: 50%; margin-left: 7px; width: 6px; height: 6px; border-radius: 50%; background: var(--live); box-shadow: 0 0 0 0 rgba(255,77,79,.6); animation: livepulse 1.8s infinite; }
+.tabbar a.tab-live .livedot { position: absolute; top: 7px; left: 50%; margin-left: 9px; width: 6px; height: 6px; border-radius: 50%; background: var(--live); box-shadow: 0 0 0 0 rgba(255,77,79,.6); animation: livepulse 1.8s infinite; }
 @keyframes livepulse { 0% { box-shadow: 0 0 0 0 rgba(255,77,79,.55); } 70% { box-shadow: 0 0 0 7px rgba(255,77,79,0); } 100% { box-shadow: 0 0 0 0 rgba(255,77,79,0); } }
-@media (prefers-reduced-motion: reduce) { .tabbar a.tab-live .livedot, .livechip i { animation: none; } }
+@media (prefers-reduced-motion: reduce) { .tabbar a.tab-live .livedot, .snav .livedot, .livechip i { animation: none; } }
 
 .livechip { display: inline-flex; align-items: center; gap: 6px; font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--live); font-weight: 700; }
 .livechip i { width: 7px; height: 7px; border-radius: 50%; background: var(--live); animation: livepulse 1.8s infinite; }
@@ -253,8 +251,6 @@ form.inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .tdot.pos { background: var(--pos); } .tdot.warn { background: var(--accent); } .tdot.neg { background: var(--neg); }
 
 /* accounts + gating (WS-D) */
-.account-link { font-size: 18px; color: var(--muted); text-decoration: none; line-height: 1; padding: 4px 2px; }
-.account-link:hover { color: var(--text); }
 .auth-form { display: flex; flex-direction: column; gap: 10px; margin: 10px 0 6px; }
 .auth-form label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; color: var(--muted); }
 .auth-form input { background: var(--surface-2); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 9px 11px; font-size: 14px; font-family: var(--body); }
@@ -299,8 +295,53 @@ form.inline { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
    screen-reader-operable, and needs no inline onclick (WS-I / CSP). */
 .linkish { background: none; border: none; padding: 0; font: inherit; color: var(--accent); cursor: pointer; text-decoration: underline; }
 
+/* ============ 2026-09-09 UX realignment ============ */
+
+/* Picks surface: Predictions ⇄ DFS switch shared by /predictions and /dfs */
+.picks-seg { margin-bottom: 2px; }
+
+/* /stats hub rows (the mobile Stats tab's landing page) */
+.hubrow { display: flex; align-items: center; gap: 12px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 13px 14px; }
+.hubrow svg { width: 20px; height: 20px; color: var(--muted); flex: none; }
+.hubrow .tx b { display: block; font-size: 14px; font-weight: 600; }
+.hubrow .tx .sub { font-size: 11.5px; color: var(--muted); }
+.hubrow .chev { margin-left: auto; color: var(--muted); font-size: 16px; }
+.hubrow:hover { border-color: #39404d; }
+
+/* Home dashboard wrapper: inert on phones, a 2-col grid on desktop */
+.dash-grid { display: contents; }
+
+/* Desktop sidenav — hidden below the breakpoint */
+.sidenav { display: none; flex-direction: column; gap: 14px; padding: 20px 14px 16px; background: #0d1016; border-right: 1px solid var(--border); position: sticky; top: 0; height: 100dvh; overflow-y: auto; }
+.side-top { display: flex; align-items: center; justify-content: space-between; padding: 0 6px; }
+.side-series a { font-size: 11px; letter-spacing: .05em; padding: 8px 0; }
+.side-series .slock { font-size: 8px; margin-left: 4px; vertical-align: 1px; }
+.snav { display: flex; flex-direction: column; gap: 1px; }
+.snav .grp { font-size: 9.5px; letter-spacing: .12em; text-transform: uppercase; color: #5c6575; margin: 13px 10px 5px; }
+.snav a { display: flex; align-items: center; gap: 10px; font-size: 13.5px; color: var(--muted); padding: 8px 10px; border-radius: 9px; }
+.snav a svg { width: 18px; height: 18px; flex: none; }
+.snav a:hover { color: var(--text); }
+.snav a.on { background: var(--surface-2); color: var(--text); box-shadow: inset 2px 0 0 var(--accent); }
+.snav a .livedot { width: 6px; height: 6px; border-radius: 50%; background: var(--live); margin-left: 2px; animation: livepulse 1.8s infinite; }
+.propill { margin-left: auto; font-size: 9px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: #14150e; background: var(--accent); border-radius: 5px; padding: 2px 5px; }
+.sidenav .foot { margin-top: auto; border-top: 1px solid var(--border); padding: 12px 6px 0; display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12.5px; }
+.foot-account { display: flex; align-items: center; gap: 8px; color: var(--muted); }
+.foot-account svg { width: 18px; height: 18px; }
+.foot-account:hover { color: var(--text); }
+.gopro { color: var(--accent); font-size: 12px; font-weight: 600; white-space: nowrap; }
+
+@media (min-width: 900px) {
+  .shell { max-width: 1280px; display: grid; grid-template-columns: 236px minmax(0, 1fr); border-left: none; border-right: none; }
+  .sidenav { display: flex; }
+  .appbar, .series-switch, .tabbar { display: none; }
+  .screen { padding: 26px 32px 48px; max-width: 960px; width: 100%; }
+  /* Two balanced columns without row-alignment holes; cards never split. */
+  .dash-grid { display: block; columns: 2; column-gap: 12px; }
+  .dash-grid > * { break-inside: avoid; margin-bottom: 12px; }
+}
+
 @media print {
-  .appbar, .series-switch, .tabbar, .dfs-toggle, .teaser-lock, .export-bar, .linkish { display: none !important; }
+  .appbar, .series-switch, .tabbar, .sidenav, .dfs-toggle, .teaser-lock, .export-bar, .linkish { display: none !important; }
   body, .shell, .card { background: #fff !important; color: #000 !important; border-color: #ccc !important; }
   .card { box-shadow: none !important; }
   .note a { text-decoration: none; color: #000; }

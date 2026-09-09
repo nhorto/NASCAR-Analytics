@@ -96,14 +96,25 @@ export function useLatestSeason(): { season: number | null | undefined; retry: (
   return { season, retry };
 }
 
-export async function fetchStats(base: string): Promise<StatsData | null> {
+/**
+ * "locked" = the server 403'd this series for a non-Pro viewer (defense in
+ * depth; SeriesPills normally prevents a free viewer from asking).
+ * "empty"  = the server answered, but this series has not been ingested yet
+ * (404). Distinct from `null` (unreachable) so the screen can say which one
+ * is true instead of blaming the network for missing data.
+ */
+export type StatsResult = StatsData | null | "locked" | "empty";
+
+export async function fetchStats(base: string, seriesId = 1): Promise<StatsResult> {
   const season = await fetchLatestSeason(base);
   if (season === null) return null;
   try {
     const [standingsRes, metricsRes] = await Promise.all([
-      timedFetch(`${base}/api/standings/${season}?series=1`),
-      timedFetch(`${base}/api/metrics?series=1&season=${season}`),
+      timedFetch(`${base}/api/standings/${season}?series=${seriesId}`),
+      timedFetch(`${base}/api/metrics?series=${seriesId}&season=${season}`),
     ]);
+    if (standingsRes.status === 403) return "locked";
+    if (standingsRes.status === 404) return "empty";
     if (!standingsRes.ok) return null;
     const standings = parseStandings(await standingsRes.json());
     const metricsBody = metricsRes.ok ? await metricsRes.json() : null;

@@ -17,6 +17,11 @@ export const METHODOLOGY_BACKTEST = {
     "Calibration is inside ±5 points on six of seven probability bins; the seventh (60–70%, n=39) sits 5.2 off — within one standard error of exact. Win odds firm up after qualifying: the Thursday form-only run is honest about being weaker on outright winners.",
 } as const;
 
+/** The Picks surface's Predictions ⇄ DFS switch, shared by both pages. */
+export function picksSeg(current: "predictions" | "dfs"): string {
+  return `<nav class="seg picks-seg"><a href="/predictions" class="${current === "predictions" ? "on" : ""}">Predictions</a><a href="/dfs" class="${current === "dfs" ? "on" : ""}">DFS</a></nav>`;
+}
+
 export interface PredictionsView {
   raceName: string;
   season: number;

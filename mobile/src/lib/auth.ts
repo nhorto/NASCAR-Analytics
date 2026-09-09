@@ -39,7 +39,15 @@ export function classifyAuthResponse(
   finalPath: string,
   formError: string | null,
 ): AuthResult {
-  if (status === 303 || (status === 200 && formError === null && finalPath.startsWith("/account"))) {
+  // Landing on /account IS the success signal: it is a protected page, so an
+  // anonymous request bounces to /signin and never gets here. Its own content
+  // must not be read as an auth rejection — the signed-in page carries a
+  // form-error paragraph ("Email not verified — required before upgrading")
+  // for every unverified account, and while verification email cannot be sent
+  // yet (A4) that is *every* real account. Treating it as a rejection made a
+  // successful sign-in report failure and skip the /api/me fallback, which is
+  // what the 2026-09-09 Android drive hit.
+  if (status === 303 || (status === 200 && finalPath.startsWith("/account"))) {
     return { ok: true };
   }
   if (status === 401) return { ok: false, reason: "invalid_credentials", detail: formError };

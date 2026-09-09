@@ -15,6 +15,7 @@ import { compareShell } from "./pages/compare.ts";
 import { tracksShell } from "./pages/tracks.ts";
 import { liveShell } from "./pages/live.ts";
 import { metricsContent } from "./pages/metrics.ts";
+import { statsHubContent } from "./pages/stats.ts";
 import { careerContent } from "./pages/career.ts";
 import { recapContent } from "./pages/recap.ts";
 
@@ -266,6 +267,18 @@ export function renderTracks(p: P, seriesId: number, pro: ViewerPro = null): str
     season: currentSeason(p, seriesId),
     pro: pro === true,
     content: tracksShell(),
+  });
+}
+
+/** The mobile Stats tab's hub — links to every section the 5-tab bar demoted. */
+export function renderStats(p: P, seriesId: number, pro: ViewerPro = null): string {
+  return page({
+    title: "Stats",
+    active: "stats",
+    seriesId,
+    season: currentSeason(p, seriesId),
+    pro: pro === true,
+    content: statsHubContent(seriesId),
   });
 }
 

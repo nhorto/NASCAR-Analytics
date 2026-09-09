@@ -43,14 +43,15 @@ Established in the mockup; UI code must reuse these rather than invent new ones:
 - **Sparkline** — inline SVG polyline, green stroke, dot + value on latest point
 - **Segmented control** — pill container, active segment filled with accent
 - **Trend pill** — small rounded badge, ▲/▼ with tinted background
-- **Phone chrome** — top app bar (wordmark + season pill), bottom 5-tab bar (Home / Drivers / Races / Compare / Tracks)
+- **Phone chrome** — top app bar (wordmark + season pill), bottom 5-tab bar (Home / Live / Picks / Stats / Account) with inline-SVG icons; a red pulsing dot on Live when a race is on track
+- **Desktop chrome (≥900px)** — a left sidenav replaces the app bar + tab bar: wordmark, series switch, grouped nav (Race weekend / Results / Stats / Tools), and an account/Go-Pro footer. Content widens; Home flows into two columns. See [UX realignment](design-docs/2026-09-09-ux-realignment.md).
 - **Series switcher** — a segmented control (Cup / Xfinity / Trucks) directly under the app bar. This is the *primary* navigation axis (which garage), orthogonal to the section tabs (which view). Reuses `.seg`; active segment filled with accent. Carried in the URL via `?series=`.
 
 ## Two navigation axes
 
 The app has two independent axes, and the layout keeps them visually separate so neither is mistaken for the other:
-- **Series** (Cup / Xfinity / Trucks) — top, segmented, under the app bar.
-- **Section** (Home / Drivers / Races / Compare / Tracks) — bottom tab bar.
+- **Series** (Cup / Xfinity / Trucks) — top, segmented, under the app bar (or at the top of the desktop sidenav).
+- **Section** — the five mobile tabs (Home / Live / Picks / Stats / Account) or, on desktop, the full grouped sidenav. The five tabs are groups: Picks holds Predictions ⇄ DFS; Stats is a hub landing (`/stats`) linking Recap, Races, Drivers, Metrics, Compare, Track types. Each page maps to one tab-group for highlighting (`TAB_GROUP` in layout.ts); the desktop sidenav highlights the exact page.
 Switching series lands on the same section's index for the new series; switching section preserves the current series.
 
 Series lives in the URL **path** (`/`, `/xfinity`, `/trucks`), not a query param, so the site exports to static files (one per series) for Cloudflare Pages. The two interactive views — Compare and Track Explorer — render client-side from shipped JSON but reuse these exact component classes, so they look identical to the server-rendered pages.

@@ -1,7 +1,12 @@
 // Settings: which server the app talks to (there is no product domain until
 // D2), plus about text. Deliberately small.
+//
+// The Save button sits below the input, so with the keyboard up it was covered
+// and a tap landed on the keyboard instead (2026-09-09 device drive, finding
+// #3). The field now submits on return and the card is keyboard-aware, so the
+// button is never the only way to save.
 import { useEffect, useState } from "react";
-import { StyleSheet, Text, TextInput } from "react-native";
+import { KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput } from "react-native";
 import { DEFAULT_SERVER_BASE, serverBase, setServerBase } from "../../lib/config.ts";
 import { useViewer } from "../../lib/viewer.tsx";
 import { Button, Card, Screen } from "../../ui/components.tsx";
@@ -24,7 +29,11 @@ export function SettingsScreen() {
 
   return (
     <Screen>
-      <Card title="Server">
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        keyboardVerticalOffset={90}
+      >
+        <Card title="Server">
         <Text style={styles.note}>
           The server this app reads stats and your account from. Default: {DEFAULT_SERVER_BASE}
         </Text>
@@ -34,12 +43,17 @@ export function SettingsScreen() {
           onChangeText={setValue}
           autoCapitalize="none"
           autoCorrect={false}
+          keyboardType="url"
+          returnKeyType="done"
+          onSubmitEditing={() => void save()}
           placeholder={DEFAULT_SERVER_BASE}
           placeholderTextColor={colors.muted}
+          accessibilityLabel="Server address"
         />
         {saved ? <Text style={styles.saved}>{saved}</Text> : null}
         <Button label="Save" onPress={() => void save()} />
-      </Card>
+        </Card>
+      </KeyboardAvoidingView>
       <Card title="About">
         <Text style={styles.note}>
           LoopLab (working name) — NASCAR loop-data analytics. Free: every Cup stat and the live

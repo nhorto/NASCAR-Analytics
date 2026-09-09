@@ -2,6 +2,8 @@
 
 | Doc | Status | Description |
 |-----|--------|-------------|
+| [2026-09-09-ux-realignment.md](2026-09-09-ux-realignment.md) | Implemented 2026-09-09 | UX realignment: a desktop sidebar breakpoint for the web (mobile web/PWA keeps the bottom-tab shell) and an app retab (Home · Live · Picks · Stats · Account) that deletes the Pro junk-drawer tab in favor of inline lock states + one shared upsell sheet. Gating verdicts stay server-side. |
+| [2026-09-09-ux-realignment-mockup.html](2026-09-09-ux-realignment-mockup.html) | Proposed | UX realignment mockup — desktop web dashboard with grouped sidebar, plus three phone frames (Picks/predictions, Stats hub, upsell sheet), with a Free ⇄ Pro toggle proving navigation never changes with entitlement. Standalone offline HTML. |
 | [2026-09-08-brand-exploration-v3.html](2026-09-08-brand-exploration-v3.html) | Proposed | Four generated raster tire/track concepts informed by the user's real tire photos; live name/tagline editor on a blank tire master, phone previews, original PNG downloads, and composed PNG/SVG exports. Self-contained offline HTML, rebuilt with `bun scripts/build-brand-v3.ts`. [Original assets and prompts](brand-v3-assets/PROMPTS.md). |
 | [2026-09-08-brand-exploration.html](2026-09-08-brand-exploration.html) | Proposed | Offline naming and logo studio: six SVG directions (including a lettered tire badge), five names, three palettes, custom-name editing, dark/light/one-color lockups, phone and app placement previews, and SVG/1024px PNG concept downloads. Open the HTML directly in a browser. Name availability is unverified; production branding is unchanged. |
 | [core-beliefs.md](core-beliefs.md) | Active | Core product beliefs |

@@ -1,6 +1,18 @@
 // Live payload parsing + board view-model, over a fixture shaped like the
 // Worker's /api/live (src/domains/live/types.ts in the server repo).
 import { describe, expect, test } from "bun:test";
+import { parseLiveStatus } from "../api.ts";
+
+describe("parseLiveStatus", () => {
+  test("true only when the payload says live:true", () => {
+    expect(parseLiveStatus({ live: true })).toBe(true);
+    expect(parseLiveStatus({ live: false })).toBe(false);
+    expect(parseLiveStatus({})).toBe(false);
+    expect(parseLiveStatus(null)).toBe(false);
+    expect(parseLiveStatus("live")).toBe(false);
+  });
+});
+
 import { parseLivePayload } from "../api.ts";
 import { formatGap, liveModel, staleness } from "../model.ts";
 
