@@ -2,7 +2,7 @@
 // outcome classification over (status, final path, form error) is the part
 // that must be exactly right — and the part that can rot silently.
 import { describe, expect, test } from "bun:test";
-import { classifyAuthResponse, extractFormError, parseMe } from "../auth.ts";
+import { classifyAuthResponse, extractFormError, inconclusive, parseMe } from "../auth.ts";
 import { parseSetCookie, splitSetCookie } from "../cookies.ts";
 import { normalizeBase } from "../config.ts";
 
@@ -41,6 +41,33 @@ describe("classifyAuthResponse", () => {
   test("429 and 403 map to rate_limited and csrf", () => {
     expect(classifyAuthResponse(429, "", null)).toMatchObject({ ok: false, reason: "rate_limited" });
     expect(classifyAuthResponse(403, "", null)).toMatchObject({ ok: false, reason: "csrf" });
+  });
+});
+
+describe("inconclusive (decides whether to confirm against /api/me)", () => {
+  test("a successful sign-in that bounced to /signin is inconclusive, not a rejection", () => {
+    // The observed bug: POST /auth/signin 303 (session created) -> GET /account
+    // goes out before RN applies the cookie -> 303 -> GET /signin 200, no error.
+    expect(inconclusive(classifyAuthResponse(200, "/signin", null))).toBe(true);
+  });
+
+  test("the server's own refusals are conclusive and must not be second-guessed", () => {
+    expect(inconclusive(classifyAuthResponse(401, "/auth/signin", "Invalid email or password."))).toBe(false);
+    expect(inconclusive(classifyAuthResponse(429, "", null))).toBe(false);
+    expect(inconclusive(classifyAuthResponse(403, "", null))).toBe(false);
+  });
+
+  test("a rejection carrying the server's words is conclusive", () => {
+    // Signing up with a taken address while already signed in as someone else
+    // must stay a failure — /api/me would otherwise report the old session.
+    const taken = "An account with that email already exists — sign in instead.";
+    expect(inconclusive(classifyAuthResponse(400, "/auth/signup", taken))).toBe(false);
+    expect(inconclusive(classifyAuthResponse(200, "/account", "Something failed"))).toBe(false);
+  });
+
+  test("success is never inconclusive", () => {
+    expect(inconclusive(classifyAuthResponse(303, "", null))).toBe(false);
+    expect(inconclusive(classifyAuthResponse(200, "/account", null))).toBe(false);
   });
 });
 

@@ -3,11 +3,17 @@
 // form-encoded + PRG + CSRF double-submit; this client rides the platform
 // cookie jar for the session (credentials: "include") and echoes the csrf
 // cookie it read from an auth GET's Set-Cookie header. RN cannot reliably do
-// manual redirects, so success is classified from the *final* response after
-// the 303 is followed (a redirect to /account or /signin?m=…).
+// manual redirects, so the POST outcome is classified from the *final*
+// response after the 303 is followed (a redirect to /account or /signin?m=…).
 //
-// Pure helpers (classifyAuthResponse, extractFormError) are unit tested; the
-// fetch wrappers are thin.
+// That classification is not trustworthy on its own for the two calls that
+// establish a session. RN applies Set-Cookie asynchronously, so the hop to
+// /account can go out anonymous and bounce back to /signin — turning a
+// successful sign-in into a "rejected" with nothing to show the user. Those
+// two confirm against /api/me instead; see postSessionForm.
+//
+// Pure helpers (classifyAuthResponse, extractFormError, inconclusive) are unit
+// tested; the fetch wrappers are thin.
 import { timedFetch } from "./http.ts";
 import { parseSetCookie } from "./cookies.ts";
 import { getItem, setItem } from "./storage.ts";
@@ -89,12 +95,41 @@ async function postFormWithRetry(base: string, path: string, fields: Record<stri
   return postForm(base, path, fields);
 }
 
+/**
+ * True when the POST's outcome is "we could not tell", as opposed to the
+ * server saying no. A real rejection always arrives as its own reason (401,
+ * 429, 403) or carries the server's form-error text; `rejected` with nothing
+ * to show the user is the ambiguous case.
+ */
+export function inconclusive(result: AuthResult): boolean {
+  return !result.ok && result.reason === "rejected" && result.detail === null;
+}
+
+/**
+ * Sign-in and sign-up establish a session, and only the server knows whether
+ * one now exists. RN applies `Set-Cookie` asynchronously, so the redirect hop
+ * to /account can leave anonymous, bounce to /signin, and make a *successful*
+ * sign-in look like a rejection with nothing to report. When the POST is
+ * inconclusive, ask the one endpoint that knows. This mirrors what the account
+ * screen already does after sign-out: trust /api/me, not the redirect chain.
+ */
+async function postSessionForm(
+  base: string,
+  path: string,
+  fields: Record<string, string>,
+): Promise<AuthResult> {
+  const result = await postFormWithRetry(base, path, fields);
+  if (!inconclusive(result)) return result;
+  const me = await fetchMe(base);
+  return me.status === "signed_in" ? { ok: true } : result;
+}
+
 export function signIn(base: string, email: string, password: string): Promise<AuthResult> {
-  return postFormWithRetry(base, "/auth/signin", { email, password });
+  return postSessionForm(base, "/auth/signin", { email, password });
 }
 
 export function signUp(base: string, email: string, password: string): Promise<AuthResult> {
-  return postFormWithRetry(base, "/auth/signup", { email, password });
+  return postSessionForm(base, "/auth/signup", { email, password });
 }
 
 export function requestReset(base: string, email: string): Promise<AuthResult> {
