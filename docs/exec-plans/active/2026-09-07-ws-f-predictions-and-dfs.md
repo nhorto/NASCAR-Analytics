@@ -130,6 +130,8 @@ One new domain plus app wiring:
 ## Remaining (owner/calendar-gated)
 
 - Observe the Thursday + Saturday crons over a real race weekend on the
-  deployed server (acceptance box 2) — needs A2/Fly deploy.
+  deployed server (acceptance box 2). The server is deployed (Railway,
+  2026-09-09) with the predictions crons armed, so this now needs only a real
+  race weekend to pass through it.
 - Validate the DK/FD point values in `config/dfs/*.json` with the two
   recruited DFS players before launch weekend (tech-debt logged).

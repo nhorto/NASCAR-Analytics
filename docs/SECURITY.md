@@ -82,7 +82,7 @@
 
 - The only PII is the account email address. Payments are handled by Stripe
   (WS-E); no card data will be stored.
-- Encryption at rest is the host's (Fly volume); the app does not encrypt the
+- Encryption at rest is the host's (Railway volume); the app does not encrypt the
   email column itself.
 - Account deletion is immediate and password-confirmed.
 

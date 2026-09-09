@@ -38,7 +38,7 @@ describe("wrangler", () => {
 
 describe("runtime dependencies stay minimal", () => {
   test("exactly one production dependency", () => {
-    // The site server runs on a Fly machine with the db on a volume; every
+    // The site server runs on a Railway container with the db on a volume; every
     // runtime dependency is something that can break a deploy at 12:00 UTC.
     expect(Object.keys(pkg.dependencies)).toEqual(["hyparquet"]);
   });

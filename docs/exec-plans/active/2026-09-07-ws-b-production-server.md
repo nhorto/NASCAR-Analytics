@@ -2,6 +2,11 @@
 
 **Status:** ACTIVE — build detail for workstream WS-B of
 [the launch plan](2026-09-07-production-and-paid-launch.md) (§5 WS-B, weeks 2–3).
+> **Host superseded 2026-09-08:** D10's Fly.io is now **Railway** — see
+> [WS-B2](2026-09-08-ws-b2-railway-migration.md), which is the source of truth
+> for *where* this runs. Everything below about what the server *does* still
+> stands; the Fly references are kept as the history of how it was built.
+
 Decisions D10 (Fly.io, SQLite on a volume, Litestream), D18 (refresh moves
 in-process) govern. Acceptance boxes live in the launch plan; this file tracks
 the build detail and what is owner-gated.
