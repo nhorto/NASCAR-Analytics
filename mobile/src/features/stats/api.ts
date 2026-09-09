@@ -1,8 +1,9 @@
-// Standings + proprietary-metric leaderboards. The latest season comes from
-// /health (the server exposes it there), so the app never hardcodes a year.
-import { useCallback, useEffect, useState } from "react";
-import { serverBase } from "../../lib/config.ts";
+// Standings + proprietary-metric leaderboards. The season they are read for
+// comes from lib/season.ts (which asks /health), so the app never hardcodes a
+// year. Fetch + parse only — no React — so these parsers stay testable under
+// plain `bun test`.
 import { timedFetch } from "../../lib/http.ts";
+import { fetchLatestSeason } from "../../lib/season.ts";
 
 export interface StandingRow {
   driverId: number;
@@ -62,38 +63,6 @@ export function parseMetricBoard(value: unknown, key: "adjPass" | "closer"): Met
     if (typeof r.driverId !== "number" || typeof r.fullName !== "string") return [];
     return [{ driverId: r.driverId, fullName: r.fullName, value: num(r.value), rank: num(r.rank) }];
   });
-}
-
-export async function fetchLatestSeason(base: string): Promise<number | null> {
-  try {
-    const res = await timedFetch(`${base}/health`);
-    if (!res.ok) return null;
-    const body = (await res.json()) as Record<string, unknown>;
-    return typeof body.latestSeason === "number" ? body.latestSeason : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Bootstrap hook for screens that need the latest season before they can
- * render their own controls (Compare, the track explorer). Distinguishes
- * "still loading" from "the fetch failed" — without this, a network hiccup
- * on first mount left those screens spinning forever with no way to recover.
- */
-export function useLatestSeason(): { season: number | null | undefined; retry: () => void } {
-  const [season, setSeason] = useState<number | null | undefined>(undefined);
-
-  const retry = useCallback(() => {
-    setSeason(undefined);
-    void (async () => setSeason(await fetchLatestSeason(await serverBase())))();
-  }, []);
-
-  useEffect(() => {
-    retry();
-  }, [retry]);
-
-  return { season, retry };
 }
 
 export async function fetchStats(base: string): Promise<StatsData | null> {

@@ -7,11 +7,11 @@
 import { useCallback, useEffect, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { serverBase } from "../../lib/config.ts";
+import { useLatestSeason } from "../../lib/useLatestSeason.ts";
 import { usePro } from "../../lib/viewer.tsx";
 import { Button, Card, ErrorNote, Loading, Screen, Segmented, Stepper } from "../../ui/components.tsx";
 import { colors } from "../../ui/theme.ts";
 import { fetchDrivers, fetchDriverSeasons, type DriverSummary, type SeasonStatsRow } from "../drivers/api.ts";
-import { useLatestSeason } from "../stats/api.ts";
 import { ProLock } from "../pro/ProLock.tsx";
 import { aggregateSeasons, coerceRange, compareTable, type ComparePick } from "./model.ts";
 
