@@ -95,6 +95,7 @@ export function page(opts: {
   </header>
   <nav class="series-switch seg">${seriesSwitch}</nav>
   <main class="screen">
+<h1 class="sr-only">${esc(opts.title)}</h1>
 ${installBanner()}
 ${opts.content}
   </main>
@@ -118,6 +119,6 @@ export function notFoundPage(seriesId: number, season: number | null, what: stri
     active: "home",
     seriesId,
     season,
-    content: `<div class="card"><div class="card-h"><h3>404</h3></div><p class="note">${esc(what)} not found.</p><p class="note" style="margin-top:8px"><a href="${withSeries("/", seriesId)}">← Back home</a></p></div>`,
+    content: `<div class="card"><div class="card-h"><h2>404</h2></div><p class="note">${esc(what)} not found.</p><p class="note" style="margin-top:8px"><a href="${withSeries("/", seriesId)}">← Back home</a></p></div>`,
   });
 }

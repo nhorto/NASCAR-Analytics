@@ -21,6 +21,13 @@ describe("csv encoding", () => {
     expect(csvCell("Chase Elliott")).toBe("Chase Elliott");
     expect(csvCell(12)).toBe("12");
     expect(csvCell(4.5)).toBe("4.5");
+    // SQL hands back binary-float quotients; Excel should not show the noise.
+    expect(csvCell(11.25925925925926)).toBe("11.259259");
+    expect(csvCell(100.50111111111116)).toBe("100.501111");
+    expect(csvCell(0.7979471316085489)).toBe("0.797947");
+    // Integers stay integers — no "12.000000".
+    expect(csvCell(-3)).toBe("-3");
+    expect(csvCell(0)).toBe("0");
     expect(csvCell(true)).toBe("true");
   });
 

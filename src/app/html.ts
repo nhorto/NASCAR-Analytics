@@ -146,7 +146,7 @@ export function sparkline(values: number[], width = 340, height = 72): string {
 /** Card with the standard accent-tick header. */
 export function card(title: string, body: string, more?: { href: string; label: string }): string {
   const moreLink = more ? `<a class="more" href="${esc(more.href)}">${esc(more.label)}</a>` : "";
-  return `<div class="card"><div class="card-h"><h3>${esc(title)}</h3>${moreLink}</div>${body}</div>`;
+  return `<div class="card"><div class="card-h"><h2>${esc(title)}</h2>${moreLink}</div>${body}</div>`;
 }
 
 export function statChips(chips: Array<{ label: string; value: string }>): string {
@@ -161,11 +161,21 @@ export function barRow(label: string, width: number, value: string, tone?: "good
   return `<div class="bar-row"><span class="lbl">${esc(label)}</span><span class="bar"><i class="${tone ?? ""}" style="width:${w}%"></i></span><span class="num val">${value}</span></div>`;
 }
 
+/** Date-only strings ("2027-12-31") parse as UTC midnight, so formatting them
+ *  in local time shows the previous day anywhere west of UTC — a Pro expiry of
+ *  Dec 31 read as "Dec 30". Those keep their calendar date; timestamps stay local. */
+const DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
+
 export function fmtDate(iso: string | null): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return d.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    ...(DATE_ONLY.test(iso) ? { timeZone: "UTC" } : {}),
+  });
 }
 
 export const TRACK_TYPE_LABELS: Record<string, string> = {

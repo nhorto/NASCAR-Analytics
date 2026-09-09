@@ -141,7 +141,7 @@
 
     var body;
     if (rows.length === 0) {
-      body = '<div class="card"><div class="card-h"><h3>No data</h3></div>' +
+      body = '<div class="card"><div class="card-h"><h2>No data</h2></div>' +
         '<p class="note">No drivers meet the filters for this track type.</p></div>';
     } else {
       var trs = rows.slice(0, 25).map(function (l, i) {
@@ -153,8 +153,8 @@
           (l.wins > 0 ? '<b class="pos">' + l.wins + "</b>" : '<span class="mut">0</span>') +
           '</td><td class="r"><b>' + metric + "</b></td></tr>";
       }).join("");
-      body = '<div class="card"><div class="card-h"><h3>' + esc(typeLabel) + " · " + esc(sortLabel) +
-        '</h3></div><table><tr><th>#</th><th>Driver</th><th class="r">Starts</th><th class="r">W</th>' +
+      body = '<div class="card"><div class="card-h"><h2>' + esc(typeLabel) + " · " + esc(sortLabel) +
+        '</h2></div><table><tr><th>#</th><th>Driver</th><th class="r">Starts</th><th class="r">W</th>' +
         '<th class="r">' + esc(sortLabel) + "</th></tr>" + trs + "</table></div>";
     }
 
@@ -162,7 +162,7 @@
       '<div class="seg seg-tracks">' + seg + "</div>" + form + exportBar() +
       '<div class="filter-row"><span class="note num">' + state.from + "–" + state.to +
       ' · points races</span><span class="note">' + sortLinks + "</span></div>" + body +
-      '<div class="card"><div class="card-h"><h3>About these numbers</h3></div>' +
+      '<div class="card"><div class="card-h"><h2>About these numbers</h2></div>' +
       '<p class="note">Every column comes from official loop data nobody else surfaces by track type. ' +
       "<b>Adj Pass Efficiency</b>: green-flag passing vs the average car at the same running position. " +
       "<b>Closer</b>: closing-lap position change vs expectation.</p></div>";

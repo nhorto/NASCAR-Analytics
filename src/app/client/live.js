@@ -244,7 +244,7 @@
       var d = cls === "pos" ? "▲" + x.delta : "▼" + Math.abs(x.delta);
       return '<div class="m"><span class="d ' + cls + ' num">' + d + "</span>" + badge(x.carNumber, x.manufacturer, 24) + " " + esc(lastName(x.driverName)) + "</div>";
     }
-    var moversCard = '<div class="card"><div class="card-h"><h3>Movers · Last 10 Laps</h3></div><div class="split2">' +
+    var moversCard = '<div class="card"><div class="card-h"><h2>Movers · Last 10 Laps</h2></div><div class="split2">' +
       '<div class="mlist"><div class="drill-h" style="margin:0 0 2px">Gaining</div>' +
       (m.gaining.length ? m.gaining.map(function (x) { return moverItem(x, "pos"); }).join("") : '<p class="note">—</p>') + "</div>" +
       '<div class="mlist"><div class="drill-h" style="margin:0 0 2px">Fading</div>' +
@@ -256,14 +256,14 @@
         '<span class="mut">vs</span>' + badge(b.bCar, null, 24) + " " + esc(lastName(b.bName)) + ' <span class="mut" style="font-size:11px">P' + b.bPos + "</span>" +
         '<span class="gap2 num">' + b.gap.toFixed(2) + "s " + (b.closing ? "▼" : "▲") + "</span></div>";
     }).join("") : '<p class="note">No side-by-side battles under ' + "0.4s right now.</p>";
-    var battlesCard = '<div class="card"><div class="card-h"><h3>Battles Now</h3><span class="more">within 0.4s</span></div>' + battleRows + "</div>";
+    var battlesCard = '<div class="card"><div class="card-h"><h2>Battles Now</h2><span class="more">within 0.4s</span></div>' + battleRows + "</div>";
 
     var leaders = data.fieldLeaders || [];
     var leaderRows = leaders.length ? leaders.map(function (f) {
       return '<div class="mrow"><span class="lbl">' + esc(f.label) + '</span><span class="bar"><i class="good" style="width:88%"></i></span>' +
         '<span class="val">' + esc(lastName(f.driverName)) + " " + fmtLeader(f) + "</span></div>";
     }).join("") : '<p class="note">Metrics populate once green-flag passing starts.</p>';
-    var leadersCard = '<div class="card"><div class="card-h"><h3>Field Loop Leaders · Live</h3></div>' + leaderRows +
+    var leadersCard = '<div class="card"><div class="card-h"><h2>Field Loop Leaders · Live</h2></div>' + leaderRows +
       '<p class="note" style="margin-top:6px">Live estimate = live feed × our weekly baselines. Swaps to the official value when loopstats finalizes.</p></div>';
 
     return chips + moversCard + battlesCard + leadersCard;
@@ -312,19 +312,19 @@
         '<div class="stint"><i class="' + (past ? "old" : "") + '" style="width:' + stintFill + '%"></i></div>' +
         '<span class="st num' + (past ? " neg" : "") + '">' + (recent ? "pitted L" + c.lastGreenPitLap : "L" + c.estimatedNextPitLap + '<small>·est</small>') + "</span></div>";
     }).join("") : '<p class="note">Pit-cycle estimates appear once cars start making green-flag stops.</p>';
-    var cycleCard = '<div class="card"><div class="card-h"><h3>Green-Flag Pit Cycle</h3><span class="more">typical run</span></div>' +
+    var cycleCard = '<div class="card"><div class="card-h"><h2>Green-Flag Pit Cycle</h2><span class="more">typical run</span></div>' +
       '<p class="note" style="margin:-2px 0 8px"><span class="pos">Green→yellow</span> = into the run; <span class="neg">red</span> = past the typical pit window. Just-pitted cars greyed.</p>' +
       '<div class="cyc">' + cycleRows + "</div></div>";
 
     var callouts = undercutCallouts(data, byId);
-    var undercutCard = '<div class="card"><div class="card-h"><h3>Undercut Watch</h3></div>' +
+    var undercutCard = '<div class="card"><div class="card-h"><h2>Undercut Watch</h2></div>' +
       (callouts.length ? callouts.join("") : '<p class="note">No clear undercut situations right now — check back after the next cycle of stops.</p>') + "</div>";
 
     var ctx = strategyContext(data);
     // At low-tire-deg tracks a "tire falloff" chart is noise — suppress the fake precision.
     var tier = data.trackStrategy && data.trackStrategy.tireTier;
     var falloff = tier === "low"
-      ? '<div class="card"><div class="card-h"><h3>Tire Falloff</h3></div><p class="note">' +
+      ? '<div class="card"><div class="card-h"><h2>Tire Falloff</h2></div><p class="note">' +
         esc((data.snapshot && data.snapshot.trackName) || "This track") +
         ' shows little tire falloff — pace here is set by the draft, fuel, and track position, not worn tires.</p></div>'
       : tireFalloffChart(data, byId, tier);
@@ -360,7 +360,7 @@
     // Top running contenders' recent lap-speed. This is an OBSERVED pace read
     // (fuel burn + tires + traffic), not modeled tire wear — the caption says so.
     var contenders = data.snapshot.drivers.filter(function (d) { return d.running && (d.spdTrend || []).filter(function (v) { return v != null; }).length >= 3; }).slice(0, 4);
-    if (!contenders.length) return '<div class="card"><div class="card-h"><h3>Pace Trend · Leaders</h3></div><p class="note">Pace lines build as green-flag laps accumulate.</p></div>';
+    if (!contenders.length) return '<div class="card"><div class="card-h"><h2>Pace Trend · Leaders</h2></div><p class="note">Pace lines build as green-flag laps accumulate.</p></div>';
     var palette = ["#34d399", "#ffd23f", "#4b83f0", "#f87171"];
     var all = [];
     contenders.forEach(function (d) { (d.spdTrend || []).forEach(function (v) { if (v != null) all.push(v); }); });
@@ -382,7 +382,7 @@
     var cap = tier === "high"
       ? "Recent lap speed per contender. This is a high tire-deg track, so a falling line is largely worn tires — a car sliding down is due to pit."
       : "Recent lap speed per contender — an observed pace read (fuel burn + tires + traffic), not tire wear alone. A falling line means a car is losing pace.";
-    return '<div class="card"><div class="card-h"><h3>Pace Trend · Leaders</h3></div>' +
+    return '<div class="card"><div class="card-h"><h2>Pace Trend · Leaders</h2></div>' +
       '<svg viewBox="0 0 ' + W + " " + H + '" width="100%" height="' + H + '"><polyline fill="none" stroke="#2a3140" stroke-width="1" points="0,78 ' + W + ',78"/>' + lines + "</svg>" +
       '<div style="margin-top:4px">' + legend + "</div>" +
       '<p class="note" style="margin-top:4px">' + cap + "</p></div>";
@@ -404,7 +404,7 @@
     var drivers = data.snapshot.drivers;
     var opts = drivers.slice().sort(function (a, b) { return String(a.driverName).localeCompare(b.driverName); })
       .map(function (d) { return '<option value="' + d.driverId + '"' + (String(d.driverId) === String(state.followId) ? " selected" : "") + ">" + esc(d.driverName) + " (#" + esc(d.carNumber) + ")</option>"; }).join("");
-    var picker = '<div class="card"><div class="card-h"><h3>Follow a driver</h3></div>' +
+    var picker = '<div class="card"><div class="card-h"><h2>Follow a driver</h2></div>' +
       '<select id="follow-sel"><option value="">Pick your driver…</option>' + opts + "</select></div>";
 
     var me = null;
@@ -429,10 +429,10 @@
       // Prioritise the followed driver's own events, keep globals too.
       feed = feed.filter(function (a) { return a.driverId == null || String(a.driverId) === String(state.followId) || ["caution", "green", "stage_end", "lead_change"].indexOf(a.kind) >= 0; });
     }
-    var feedCard = '<div class="card"><div class="card-h"><h3>' + (me ? "His Race · Alert Feed" : "Race Feed") + "</h3></div>" +
+    var feedCard = '<div class="card"><div class="card-h"><h2>' + (me ? "His Race · Alert Feed" : "Race Feed") + "</h2></div>" +
       (feed.length ? feed.map(alertRow).join("") : '<p class="note">Alerts appear as the race unfolds — lead changes, cautions, big moves, pit stops.</p>') + "</div>";
 
-    var prefCard = '<div class="card"><div class="card-h"><h3>Alerts I Get</h3></div><div class="pit-line" id="alert-prefs">' +
+    var prefCard = '<div class="card"><div class="card-h"><h2>Alerts I Get</h2></div><div class="pit-line" id="alert-prefs">' +
       prefTag("moves", "Position changes", prefs.moves !== false) +
       prefTag("pit", "Pit in/out", prefs.pit !== false) +
       prefTag("flag", "Caution & restart", prefs.flag !== false) +
@@ -464,7 +464,7 @@
     var next = "";
     if (nr && (nr.name || nr.startTimeUtc)) {
       var when = nr.startTimeUtc ? fmtWhen(nr.startTimeUtc) : "";
-      next = '<div class="card"><div class="card-h"><h3>Next Up</h3></div>' +
+      next = '<div class="card"><div class="card-h"><h2>Next Up</h2></div>' +
         '<div class="h-sub" style="color:var(--text);font-weight:600">' + esc(nr.name || "Next race") + "</div>" +
         '<div class="note">' + [esc(nr.trackName || ""), when].filter(Boolean).join(" · ") + "</div></div>";
     }

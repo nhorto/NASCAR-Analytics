@@ -308,3 +308,70 @@ describe("account deletion", () => {
     }
   });
 });
+
+// A mail provider that is down must not be reported to the user as a send.
+// Verification gates upgrading, so a silent failure strands the account.
+describe("email send failures are reported, not claimed", () => {
+  let downServer: Server<undefined>;
+  let downBase: string;
+
+  beforeAll(() => {
+    downServer = createServer(providers, 0, undefined, {
+      email: {
+        configured: true,
+        send: async () => ({ ok: false, detail: "resend HTTP 500: down" }),
+      },
+    });
+    downBase = downServer.url.toString().replace(/\/$/, "");
+  });
+
+  afterAll(() => downServer.stop(true));
+
+  async function postTo(jar: Jar, ip: string, path: string, fields: Record<string, string>) {
+    const res = await fetch(`${downBase}${path}`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Cookie: Object.entries(jar).map(([k, v]) => `${k}=${v}`).join("; "),
+        "X-Forwarded-For": ip,
+      },
+      body: new URLSearchParams({ csrf: jar.csrf ?? "", ...fields }),
+      redirect: "manual",
+    });
+    absorb(jar, res);
+    return res;
+  }
+
+  test("sign-up says the verification email failed instead of 'check your email'", async () => {
+    const jar: Jar = {};
+    const ip = "203.0.113.90";
+    absorb(jar, await fetch(`${downBase}/signup`, { headers: { "X-Forwarded-For": ip } }));
+    const res = await postTo(jar, ip, "/auth/signup", { email: "maildown@example.com", password: PW });
+
+    // The account and session are still real — only the claim changes.
+    expect(res.status).toBe(303);
+    expect(res.headers.get("Location")).toBe("/account?m=check-email-failed");
+    expect(jar.session).toBeDefined();
+    expect(accountsService.findUserByEmail(providers, "maildown@example.com")).not.toBeNull();
+
+    const account = await fetch(`${downBase}${res.headers.get("Location")}`, {
+      headers: { Cookie: `session=${jar.session}`, "X-Forwarded-For": ip },
+    });
+    const html = await account.text();
+    // Rendered as an alert, not a green check — it is a failure.
+    expect(html).toContain(`class="note form-error" role="alert">⚠ Account created — but we couldn't send`);
+    expect(html).not.toContain("We sent a verification link");
+  });
+
+  test("resend-verify reports the failure too", async () => {
+    const jar: Jar = {};
+    const ip = "203.0.113.91";
+    absorb(jar, await fetch(`${downBase}/signup`, { headers: { "X-Forwarded-For": ip } }));
+    await postTo(jar, ip, "/auth/signup", { email: "maildown2@example.com", password: PW });
+    absorb(jar, await fetch(`${downBase}/account`, {
+      headers: { Cookie: `session=${jar.session}`, "X-Forwarded-For": ip },
+    }));
+    const res = await postTo(jar, ip, "/auth/resend-verify", {});
+    expect(res.headers.get("Location")).toBe("/account?m=verify-failed");
+  });
+});
