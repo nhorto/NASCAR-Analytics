@@ -54,7 +54,7 @@ the static Cup export when the origin is down (WS-B acceptance: within 60 s):
         throw new Error(`origin ${res.status}`);
       } catch {
         const url = new URL(req.url);
-        url.hostname = env.PAGES_HOST; // e.g. looplab.pages.dev
+        url.hostname = env.PAGES_HOST; // e.g. looplab-arh.pages.dev
         return fetch(new Request(url, req));
       }
     },
