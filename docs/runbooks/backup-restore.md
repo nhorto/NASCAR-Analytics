@@ -40,11 +40,11 @@ Normally unnecessary — a new machine restores itself on boot. If the volume is
 corrupt while the machine lives:
 
 ```sh
-fly ssh console
+railway ssh
 litestream restore -o /data/nascar.db.new "$LITESTREAM_REPLICA_URL"
 mv /data/nascar.db.new /data/nascar.db && rm -f /data/nascar.db-wal /data/nascar.db-shm
 exit
-fly machine restart <machine-id>
+railway redeploy          # restarts the container onto the repaired volume
 ```
 
 To restore to a point in time (bad refresh, corrupted write):

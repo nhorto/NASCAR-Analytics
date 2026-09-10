@@ -96,7 +96,8 @@ useful even if the second slips:
       two devices and a Lighthouse run need the deployed HTTPS origin (A2/A6).
 - [ ] A test user receives the pit/caution/stage/finish alerts for their
       driver during the soak race with no duplicates.
-      **Owner/calendar-gated** — needs the Fly deploy *and* a live race.
+      **Owner/calendar-gated** — the deploy exists (Railway, 2026-09-09); this
+      still needs the VAPID keys set as Railway variables *and* a live race.
 
 ## Out of scope (named so it is not silently dropped)
 
@@ -133,7 +134,7 @@ useful even if the second slips:
 
 ## Remaining (owner/calendar-gated)
 
-- VAPID keys (`bun run src/app/index.ts gen:vapid`) set as Fly secrets, then
+- VAPID keys (`bun run src/app/index.ts gen:vapid`) set as Railway variables, then
   `ENABLE_PUSH_DISPATCHER=1`. Both ship off.
 - The install check on a real iPhone and Android device + a Lighthouse run
   (needs A2/A6: the deployed origin over HTTPS).

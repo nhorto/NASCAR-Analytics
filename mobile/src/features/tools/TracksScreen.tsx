@@ -8,10 +8,10 @@ import { StyleSheet, Text, View } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { serverBase } from "../../lib/config.ts";
 import { useReload } from "../../lib/reload.ts";
+import { useLatestSeason } from "../../lib/useLatestSeason.ts";
 import { usePro } from "../../lib/viewer.tsx";
 import { Card, ErrorNote, Loading, Screen, Segmented, Stepper } from "../../ui/components.tsx";
 import { colors } from "../../ui/theme.ts";
-import { useLatestSeason } from "../stats/api.ts";
 import { ProLock } from "../pro/ProLock.tsx";
 import { fetchTrackBoard, TRACK_TYPES, type TrackResult, type TrackType } from "./api.ts";
 import {

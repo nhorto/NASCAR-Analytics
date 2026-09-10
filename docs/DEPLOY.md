@@ -1,8 +1,8 @@
 # Deploying to Cloudflare Pages
 
-> **2026-09-07:** this describes the static deployment, which remains the
-> **read-only fallback** under the launch plan. The production server
-> (Fly.io, dynamic) is scaffolded — see
+> **2026-09-09:** this describes the static deployment, which remains the
+> **read-only fallback** under the launch plan. The production server is
+> **live on Railway** (D10 as amended by WS-B2) — see
 > [docs/runbooks/deploy.md](runbooks/deploy.md) for its deploy procedure.
 
 The site is a **static export** served from Cloudflare Pages. Every page is pre-rendered from the local database; the two interactive pages (compare, track explorer) run client-side from shipped JSON. No server, no runtime, free hosting.

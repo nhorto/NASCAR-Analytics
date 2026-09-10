@@ -86,8 +86,11 @@ This is the same trap that made `looplab` show up in ~20 files. Don't repeat it.
 
 ## Owner-gated (not me)
 
-1. Add a payment method to Railway — it will not run an always-on service with a
-   volume without one.
+1. **Add a payment method to Railway.** Partly wrong at plan time: the Trial
+   plan *did* let the service and a volume be created and deployed. What it
+   caps is the size — 500 MB max per volume, against the 3 GB this needs — and
+   the $5 of included usage is what is currently paying for an always-on
+   container, so it runs out on its own in a few weeks.
 2. Create the R2 bucket `nascar-db` + an R2 API token with read/write. Hand back
    the **bucket name and endpoint**; the access key and secret go straight into
    `railway variables`, not into chat.
@@ -95,16 +98,42 @@ This is the same trap that made `looplab` show up in ~20 files. Don't repeat it.
 
 ## Build checklist
 
-- [ ] `railway init` / `railway link` the project, service created from the repo
-- [ ] `.railway/railway.ts` authored; `railway config plan` clean
-- [ ] Volume mounted at `/data`, verified after a restart
-- [ ] First `railway up` deploy green; `/health` returns `{"ok":true}`
-- [ ] `railway variables` set: `LITESTREAM_REPLICA_URL`, `CLOUDFLARE_API_TOKEN`, `APP_BASE_URL`, plus the WS-B set as they exist
-- [ ] `bun run restore-drill` passes against the R2 replica
-- [ ] `docs/runbooks/deploy.md` rewritten and followed end-to-end by the owner once
-- [ ] `docs/DEPLOY.md`, `ARCHITECTURE.md`, `index.ts` help text updated
-- [ ] `fly.toml` deleted; D10 restated in the launch plan
-- [ ] Full test suite green (architecture tests included)
+- [x] `railway init` / `railway link` the project, service created from the repo
+      ✅ 2026-09-09 — project `nascar-analytics`, service `web`, environment
+      `production`, region `us-east4`, GitHub-sourced from `main`.
+- [x] `.railway/railway.ts` authored; `railway config plan` clean ✅ 2026-09-09.
+- [x] Volume mounted at `/data` ✅ 2026-09-09 — **at 500 MB, not 3 GB**: the
+      Trial plan hard-caps `maxSizeMB` at 500 and an over-cap apply fails the
+      whole change set with no per-resource reason. `APP.volumeSizeMB` becomes
+      3072 the moment a payment method exists (`allowOnlineResize` is on, so it
+      grows in place). **Restart-persistence verified** 2026-09-09: forced a
+      redeploy, waited for a genuinely new container (uptime counter reset —
+      the first check after `railway redeploy` still answers from the *old*
+      container and proves nothing), and `/health` still reported
+      `latestSeason: 2026, racesWithResults: 29`.
+- [x] First deploy green; `/health` returns `{"ok":true}` ✅ 2026-09-09 —
+      https://web-production-fd3c38.up.railway.app, built from the repo
+      Dockerfile, full WS-I security-header set confirmed on the live response,
+      the four crons armed, Pro gating verified live (`/xfinity/drivers` serves
+      the teaser, `/api/drivers?series=2` → 403 `pro_required`).
+- [x] Database seeded ✅ 2026-09-09 — Cup 2024–2026 backfilled and computed on
+      the volume (113 races, 3718 results, 3744 loop rows; 137 MB of 434 MB
+      used, 71 MB of it `data/raw`). That ratio is the evidence for the 3 GB
+      spec: three series × eight seasons does not fit in 500 MB.
+- [ ] `railway variables` set: `LITESTREAM_REPLICA_URL`, `CLOUDFLARE_API_TOKEN`,
+      plus the WS-B set as they exist. **Not done** — every one is a value only
+      the owner holds. `APP_BASE_URL` is already correct without a secret: it
+      resolves from `${{RAILWAY_PUBLIC_DOMAIN}}` at deploy time.
+- [ ] `bun run restore-drill` passes against the R2 replica. **Blocked** — no
+      bucket. Litestream is not replicating; the entrypoint says so loudly on
+      every boot and the server runs unreplicated.
+- [x] `docs/runbooks/deploy.md` rewritten ✅ 2026-09-09 — Railway throughout,
+      including the two silent-failure shapes (`volumeMounts` keyed by mount
+      path; never set a start command over the Dockerfile ENTRYPOINT).
+      Not yet followed end-to-end by the owner.
+- [x] `docs/DEPLOY.md`, `ARCHITECTURE.md`, `index.ts` help text updated ✅.
+- [x] `fly.toml` deleted; D10 restated in the launch plan ✅ 2026-09-09.
+- [x] Full test suite green (architecture tests included) ✅ 2026-09-09.
 
 ## Sequencing note
 

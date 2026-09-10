@@ -25,6 +25,9 @@ describe("readServerEnv", () => {
     enableEmailDigests: false,
     resendWebhookSecret: null,
     stripeWebhookSecret: null,
+      stripeSecretKey: null,
+      stripePriceMonthly: null,
+      stripePriceSeason: null,
     revenuecatWebhookSecret: null,
     pushConfigured: false,
     enablePushDispatcher: false,
@@ -95,6 +98,27 @@ describe("readServerEnv", () => {
     expect(logs.config.logRequests).toBe(false);
   });
 
+  test("a Stripe key with no price ids warns that nothing can be bought", () => {
+    // The exact state between owner steps: the Stripe account exists (E1 done)
+    // but no products have been created, so /pricing can render no button.
+    const { warnings } = readServerEnv({ APP_ENV: "production", STRIPE_SECRET_KEY: "sk_test_x" });
+    expect(warnings).toContain(
+      "STRIPE_PRICE_MONTHLY/STRIPE_PRICE_SEASON not set — Stripe is configured but no plan can be bought (launch plan E1)",
+    );
+    expect(warnings.some((w) => w.startsWith("STRIPE_SECRET_KEY"))).toBe(false);
+  });
+
+  test("one price id is enough to stop the no-plan warning", () => {
+    const { warnings, config } = readServerEnv({
+      APP_ENV: "production",
+      STRIPE_SECRET_KEY: "sk_test_x",
+      STRIPE_PRICE_SEASON: "price_season",
+    });
+    expect(warnings.some((w) => w.startsWith("STRIPE_PRICE_MONTHLY"))).toBe(false);
+    expect(config.stripePriceSeason).toBe("price_season");
+    expect(config.stripePriceMonthly).toBeNull();
+  });
+
   test("production warns about absent optional capabilities; dev stays quiet", () => {
     const prod = readServerEnv({ APP_ENV: "production" });
     expect(prod.warnings).toEqual([
@@ -104,7 +128,7 @@ describe("readServerEnv", () => {
       "RESEND_API_KEY not set — verify/reset/alert emails will only be logged",
       "RESEND_WEBHOOK_SECRET not set — bounce/complaint suppression is disabled",
       "STRIPE_WEBHOOK_SECRET not set — Stripe billing webhooks are disabled",
-      "STRIPE_SECRET_KEY not set — account deletion cannot cancel subscriptions at Stripe",
+      "STRIPE_SECRET_KEY not set — no web checkout or billing portal, and account deletion cannot cancel subscriptions at Stripe",
       "REVENUECAT_WEBHOOK_SECRET not set — RevenueCat billing webhooks are disabled (WS-J, owner-gated)",
       "VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY not set — race push alerts are disabled",
     ]);

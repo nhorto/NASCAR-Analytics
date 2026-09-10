@@ -28,7 +28,7 @@ replaces the old one.
 | D7 | Legal docs | Drafted in-repo, one lawyer hour to review before launch | Lawyer booked in week 3, review in week 4 |
 | D8 | Feed-loss policy | Pause monthly billing + extend passes after 14 consecutive dark days; owner to revisit before 2027 | Low exposure because live is free |
 | D9 | Payments | Monthly + season pass + trial; no lifetime deal | |
-| D10 | Hosting | One Bun container on Fly.io (Railway as alternate), SQLite on a volume, Litestream backups | Least ops; the code runs as written |
+| D10 | Hosting | ~~One Bun container on Fly.io (Railway as alternate)~~ **Superseded 2026-09-08 by owner directive: Railway.** One Bun container on **Railway**, SQLite on a `/data` volume, Litestream backups | Least ops; the code runs as written. Build detail in [WS-B2](2026-09-08-ws-b2-railway-migration.md); deployed and serving 2026-09-09 |
 | D11 | Sign-in | Email + password (argon2id), emailed reset links; no social sign-in | |
 | D12 | Cloudflare account | New personal account for this product; DNS + static fallback + (until migrated) the live Worker move there | Separates from Fabrication IS |
 | D13 | Who builds | Claude sessions build; owner does accounts/logins and reviews | Several sessions a week assumed |
@@ -66,7 +66,7 @@ workstream's acceptance list below checked off in this file.
 ## 4. Architecture target (what changes)
 
 ```
-Cloudflare (new account)           Fly.io app (Bun, one container)
+Cloudflare (new account)           Railway service (Bun, one container)
   DNS for the product domain         server.ts: site + API + auth + billing + gating
   Static Cup fallback (Pages)   →    SQLite on a volume  ──Litestream──▶ B2/R2 backup
   looplab-live Worker (D17)          cron: weekly refresh (D18), daily canary,
@@ -124,7 +124,7 @@ a build list, and acceptance criteria. IDs are referenced from the schedule.
 Owner steps:
 - A1 Create the new Cloudflare account; invite the FabIS account's Pages
   project + Worker for transfer, or accept a fresh deploy there.
-- A2 Create Fly.io account; add a payment method.
+- A2 ~~Create Fly.io account~~ → **Railway** (D10 amended). Account created 2026-09-09; ⚠ **a payment method is still outstanding** — the Trial plan caps a volume at 500 MB against the 3 GB the full archive needs, and the $5 trial credit is what is currently paying for the always-on container.
 - A3 Create Stripe account (individual); complete identity verification
   (takes days, start now).
 - A4 Create Resend account; Plausible account (or approve self-hosted Umami).
@@ -164,6 +164,13 @@ Build:
   Actions `--no-deploy` flip (D18) is **deliberately deferred** until the
   server refresh is verified — flipping earlier would re-freeze the public
   site (see the implementation plan's "Sequencing").
+- ~~Deploy to the host~~ ✅ 2026-09-09 (WS-B2, Railway) — `.railway/railway.ts`
+  applied, `/data` volume attached, service live over HTTPS at
+  `web-production-fd3c38.up.railway.app` with the full WS-I header set, crons
+  armed, Cup 2024–2026 backfilled + computed on the volume (`/health` reports
+  `latestSeason: 2026`). Still open on this box: no replica bucket (Litestream
+  is **not** replicating), no product domain (D2/A6), 500 MB volume against the
+  3 GB spec (Railway Trial cap — needs the payment method).
 - Static export retained as **read-only fallback**: the refresh already
   publishes `dist/` to Cloudflare Pages on every run; the
   origin-unhealthy fallback wiring is documented in
@@ -262,7 +269,7 @@ Acceptance:
 ### WS-E Billing (week 4)
 
 Owner steps: E1 Stripe products/prices created (after D2 names them);
-E2 Stripe Tax enabled; E3 webhook endpoint secret installed in Fly secrets.
+E2 Stripe Tax enabled; E3 webhook endpoint secret installed via `railway variables --set`.
 
 Build:
 - `billing` domain: Checkout session creation (monthly with 7-day trial,
@@ -276,7 +283,14 @@ Build:
   signature verification, and account deletion cancelling the live
   subscription at Stripe before deleting (spec §6). Checkout session
   creation, Portal links, and the pricing CTAs still wait on E1–E3.
-- `/pricing`, upgrade CTAs, post-checkout landing, past-due banner.
+- ~~`/pricing`, upgrade CTAs, post-checkout landing, past-due banner.~~
+  ✅ 2026-09-10 — see [WS-E part 2](2026-09-10-ws-e-checkout.md). Checkout
+  Session + Customer Portal creation, `/billing/checkout`, `/billing/portal`,
+  `/billing/return`, real pricing CTAs gated on what is actually sellable, and
+  the account page's billing card with the past-due banner. Price ids come
+  from the environment, so the code is complete and inert until E1 creates the
+  products. These routes write no entitlement — the webhook remains the only
+  writer.
 - Legal pages rendered from `docs/legal/*.md`; linked at checkout.
 
 Acceptance:
@@ -419,7 +433,7 @@ Acceptance:
       downloads it at all.
 - [ ] Security review, dependency + secrets audit against the real
       deployment, rate-limit tuning under real traffic, restore re-drill on
-      the Fly volume, 5× race-day load test, error alerting to owner email.
+      the Railway volume, 5× race-day load test, error alerting to owner email.
       *(All need the deployed origin and real secrets — A1–A6.)*
 - [ ] Launch checklist (§9) walked live with the owner.
 

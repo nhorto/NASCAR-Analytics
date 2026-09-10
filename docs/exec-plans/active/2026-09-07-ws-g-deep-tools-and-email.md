@@ -168,7 +168,7 @@ No new domain. Three app-layer capabilities plus an accounts slice:
 - **A4 (Resend account + verified sending domain)** for the recap/preview
   acceptance run and for `RESEND_WEBHOOK_SECRET` (bounce suppression is inert
   until it is set — the endpoint answers 503 rather than trusting unsigned
-  input). `ENABLE_EMAIL_DIGESTS` stays `0` in fly.toml until then.
+  input). `ENABLE_EMAIL_DIGESTS` stays `0` in `.railway/railway.ts` until then.
 - A real bounce/complaint replay from the Resend dashboard to confirm the
   payload field names (logged as tech debt).
 - A double-click open of one exported CSV in Excel/Numbers (structure is

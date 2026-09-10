@@ -284,6 +284,7 @@ describe("account deletion", () => {
     try {
       // Stripe down: the account (and its paying subscription) must survive.
       providers.stripe = {
+        ...createNullStripe(),
         configured: true,
         cancelSubscription: async () => ({ ok: false, detail: "stripe HTTP 500: boom" }),
       };
@@ -294,6 +295,7 @@ describe("account deletion", () => {
 
       // Stripe up: cancel exactly the live subscription, then delete.
       providers.stripe = {
+        ...createNullStripe(),
         configured: true,
         cancelSubscription: async (id) => (canceled.push(id), { ok: true, detail: "canceled" }),
       };

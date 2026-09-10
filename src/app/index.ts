@@ -299,7 +299,7 @@ switch (command) {
   }
   case "gen:vapid": {
     // WS-H: mint the application-server identity for Web Push. Run once; put
-    // the private key in `fly secrets set`, never in the repo.
+    // the private key in `railway variables --set`, never in the repo.
     const { generateVapidKeys } = await import("../providers/webpush.ts");
     const subject = argString("--subject") ?? "mailto:alerts@example.com";
     const keys = await generateVapidKeys(subject);
@@ -307,7 +307,7 @@ switch (command) {
     console.log(`VAPID_PRIVATE_KEY=${keys.privateKey}`);
     console.log(`VAPID_SUBJECT=${keys.subject}`);
     console.log(`\nThe public key is safe to ship to browsers. Keep the private key secret:`);
-    console.log(`  fly secrets set VAPID_PRIVATE_KEY=… VAPID_PUBLIC_KEY=… VAPID_SUBJECT=…`);
+    console.log(`  railway variables --set VAPID_PRIVATE_KEY=… --set VAPID_PUBLIC_KEY=… --set VAPID_SUBJECT=…`);
     break;
   }
   case "email": {
