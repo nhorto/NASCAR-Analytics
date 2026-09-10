@@ -283,7 +283,14 @@ Build:
   signature verification, and account deletion cancelling the live
   subscription at Stripe before deleting (spec §6). Checkout session
   creation, Portal links, and the pricing CTAs still wait on E1–E3.
-- `/pricing`, upgrade CTAs, post-checkout landing, past-due banner.
+- ~~`/pricing`, upgrade CTAs, post-checkout landing, past-due banner.~~
+  ✅ 2026-09-10 — see [WS-E part 2](2026-09-10-ws-e-checkout.md). Checkout
+  Session + Customer Portal creation, `/billing/checkout`, `/billing/portal`,
+  `/billing/return`, real pricing CTAs gated on what is actually sellable, and
+  the account page's billing card with the past-due banner. Price ids come
+  from the environment, so the code is complete and inert until E1 creates the
+  products. These routes write no entitlement — the webhook remains the only
+  writer.
 - Legal pages rendered from `docs/legal/*.md`; linked at checkout.
 
 Acceptance:

@@ -134,3 +134,133 @@ describe("cancelSubscription", () => {
     expect((await client.cancelSubscription("sub_1")).ok).toBe(true);
   });
 });
+
+describe("checkout + portal session creation", () => {
+  /** Captures exactly what would go over the wire to Stripe. */
+  function capturing(response: Response) {
+    const calls: Array<{ url: string; body: URLSearchParams; auth: string | null }> = [];
+    const client = createStripeClient({
+      secretKey: "sk_test_123",
+      fetchImpl: (async (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
+        calls.push({
+          url: String(url),
+          body: new URLSearchParams(String(init?.body ?? "")),
+          auth: new Headers(init?.headers).get("Authorization"),
+        });
+        return response;
+      }) as typeof fetch,
+    });
+    return { client, calls };
+  }
+
+  const ok = (url: string) => new Response(JSON.stringify({ url }), { status: 200 });
+
+  test("a subscription checkout sends the shape applyCheckoutCompleted parses back", async () => {
+    const { client, calls } = capturing(ok("https://checkout.stripe.com/c/pay/cs_test"));
+    const res = await client.createCheckoutSession({
+      priceId: "price_monthly",
+      mode: "subscription",
+      clientReferenceId: "42",
+      customerEmail: "buyer@example.com",
+      trialPeriodDays: 7,
+      successUrl: "https://app.test/billing/return",
+      cancelUrl: "https://app.test/pricing?m=checkout-canceled",
+    });
+    expect(res).toEqual({ ok: true, url: "https://checkout.stripe.com/c/pay/cs_test" });
+
+    const call = calls[0]!;
+    expect(call.url).toBe("https://api.stripe.com/v1/checkout/sessions");
+    expect(call.auth).toBe("Bearer sk_test_123");
+    // Nested keys are form-encoded by hand (no SDK), so pin them exactly.
+    expect(call.body.get("mode")).toBe("subscription");
+    expect(call.body.get("line_items[0][price]")).toBe("price_monthly");
+    expect(call.body.get("line_items[0][quantity]")).toBe("1");
+    expect(call.body.get("client_reference_id")).toBe("42");
+    expect(call.body.get("subscription_data[trial_period_days]")).toBe("7");
+    expect(call.body.get("customer_email")).toBe("buyer@example.com");
+    expect(call.body.get("automatic_tax[enabled]")).toBe("true");
+  });
+
+  test("a season pass omits trial data entirely — Stripe rejects it on mode=payment", async () => {
+    const { client, calls } = capturing(ok("https://checkout.stripe.com/c/pay/cs_pass"));
+    await client.createCheckoutSession({
+      priceId: "price_season",
+      mode: "payment",
+      clientReferenceId: "7",
+      trialPeriodDays: null,
+      successUrl: "https://app.test/billing/return",
+      cancelUrl: "https://app.test/pricing",
+    });
+    expect(calls[0]!.body.get("mode")).toBe("payment");
+    expect(calls[0]!.body.has("subscription_data[trial_period_days]")).toBe(false);
+  });
+
+  test("a known customer suppresses customer_email — Stripe rejects both together", async () => {
+    const { client, calls } = capturing(ok("https://checkout.stripe.com/c/pay/cs_ret"));
+    await client.createCheckoutSession({
+      priceId: "price_monthly",
+      mode: "subscription",
+      clientReferenceId: "9",
+      customerId: "cus_existing",
+      customerEmail: "returning@example.com",
+      trialPeriodDays: 7,
+      successUrl: "https://app.test/billing/return",
+      cancelUrl: "https://app.test/pricing",
+    });
+    expect(calls[0]!.body.get("customer")).toBe("cus_existing");
+    expect(calls[0]!.body.has("customer_email")).toBe(false);
+  });
+
+  test("an API error and a bodiless 200 both fail rather than returning a bad url", async () => {
+    const failing = capturing(new Response("no such price", { status: 400 }));
+    const err = await failing.client.createCheckoutSession({
+      priceId: "price_missing",
+      mode: "subscription",
+      clientReferenceId: "1",
+      successUrl: "https://app.test/r",
+      cancelUrl: "https://app.test/c",
+    });
+    expect(err.ok).toBe(false);
+    if (!err.ok) expect(err.detail).toContain("stripe HTTP 400");
+
+    // A 200 with no `url` would otherwise redirect the buyer to "undefined".
+    const empty = capturing(new Response(JSON.stringify({ id: "cs_x" }), { status: 200 }));
+    const res = await empty.client.createCheckoutSession({
+      priceId: "price_monthly",
+      mode: "subscription",
+      clientReferenceId: "1",
+      successUrl: "https://app.test/r",
+      cancelUrl: "https://app.test/c",
+    });
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.detail).toContain("no session url");
+  });
+
+  test("the portal posts the customer and a return url", async () => {
+    const { client, calls } = capturing(ok("https://billing.stripe.com/p/session/live_x"));
+    const res = await client.createPortalSession({
+      customerId: "cus_abc",
+      returnUrl: "https://app.test/account",
+    });
+    expect(res).toEqual({ ok: true, url: "https://billing.stripe.com/p/session/live_x" });
+    expect(calls[0]!.url).toBe("https://api.stripe.com/v1/billing_portal/sessions");
+    expect(calls[0]!.body.get("customer")).toBe("cus_abc");
+    expect(calls[0]!.body.get("return_url")).toBe("https://app.test/account");
+  });
+
+  test("the null client refuses both rather than throwing, so routes stay unconditional", async () => {
+    const client = createNullStripe();
+    const checkout = await client.createCheckoutSession({
+      priceId: "p",
+      mode: "subscription",
+      clientReferenceId: "1",
+      successUrl: "https://app.test/r",
+      cancelUrl: "https://app.test/c",
+    });
+    expect(checkout).toEqual({ ok: false, detail: "stripe not configured" });
+    expect(await client.createPortalSession({ customerId: "c", returnUrl: "https://app.test/a" })).toEqual({
+      ok: false,
+      detail: "stripe not configured",
+    });
+  });
+});

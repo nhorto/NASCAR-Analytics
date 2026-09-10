@@ -3,6 +3,14 @@
 /** Days of Pro kept after a failed renewal; WS-E's webhook writer applies it. */
 export const GRACE_DAYS = 3;
 
+/**
+ * Free-trial length on the monthly plan (spec §4 / D5). Passed to Stripe at
+ * checkout as `subscription_data[trial_period_days]` — the trial is Stripe's
+ * and reaches us as a `trialing` subscription event, so nothing local ever
+ * writes a trial entitlement.
+ */
+export const TRIAL_DAYS = 7;
+
 export const PRO_SOURCES = [
   "subscription",
   "season_pass",

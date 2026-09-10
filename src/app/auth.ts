@@ -1,5 +1,6 @@
 // Auth + account routes (WS-D): GET pages and POST actions for sign-up,
-// verify, sign-in, sign-out, reset, delete, /account, /pricing. Successful
+// verify, sign-in, sign-out, reset, delete, /account. (/pricing and checkout
+// moved to billing.ts with WS-E.) Successful
 // POSTs redirect (303, PRG); failures re-render the form with the reason.
 // Every POST checks the CSRF double-submit pair; sign-in/sign-up/reset are
 // rate-limited per spec §6.
@@ -13,7 +14,6 @@ import { logLine } from "./http.ts";
 import { ensureCsrf, csrfOk, sessionCookie, clearSessionCookie, clientIp, type Viewer } from "./viewer.ts";
 import * as authPages from "./pages/auth.ts";
 import { accountContent } from "./pages/account.ts";
-import { pricingContent } from "./pages/pricing.ts";
 import { unsubscribeContent } from "./pages/unsubscribe.ts";
 import * as emails from "./emails.ts";
 import type { EmailKind } from "../domains/accounts/index.ts";
@@ -39,6 +39,7 @@ const NOTICES: Record<string, string> = {
   "check-email": "Account created. We sent a verification link to your email.",
   "verify-sent": "Verification email sent.",
   "prefs-saved": "Email preferences saved.",
+  "already-pro": "You're already Pro — no need to buy again.",
 };
 
 /** Flash messages that report a failure. Rendered as an alert rather than a
@@ -48,6 +49,12 @@ const PROBLEMS: Record<string, string> = {
   "check-email-failed":
     "Account created — but we couldn't send the verification email. Try “Resend verification email” below.",
   "verify-failed": "We couldn't send the verification email just now. Try again in a moment.",
+  // WS-E: refusals redirected here from the billing routes, which have no page
+  // of their own to render an error on.
+  "verify-first": "Verify your email address before upgrading — resend the link below.",
+  "no-billing-account":
+    "No web billing account to manage. If you subscribed in the mobile app, manage it in your device's subscription settings.",
+  "portal-failed": "We couldn't open the billing portal just now. Try again in a moment.",
 };
 
 function notice(url: URL): string | null {
@@ -177,6 +184,7 @@ function handleGet(
       error: problem(url),
       notice: notice(url),
       prefs: accountsService.emailPrefs(p, viewer.user.userId, now),
+      billingProfile: billingService.profileFor(p, viewer.user.userId),
     }), 200, cookies);
   }
 
@@ -201,7 +209,6 @@ function handleGet(
       kind, token: m[1]!, csrf: csrf.token, resubscribed: false,
     }), 200, cookies);
   }
-  if (path === "/pricing") return shell(p, "Pricing", pricingContent(viewer));
   return null;
 }
 
@@ -352,6 +359,7 @@ async function handleRecoveryPost(path: string, ctx: PostCtx): Promise<Response 
       shell(p, "Account", accountContent({
         viewer, csrf: csrfToken, error: reason, notice: null,
         prefs: accountsService.emailPrefs(p, viewer.user!.userId, now),
+        billingProfile: billingService.profileFor(p, viewer.user!.userId),
       }), status);
     const password = str(form.get("password"));
     if (!(await accountsService.verifyPassword(p, viewer.user.userId, password)))

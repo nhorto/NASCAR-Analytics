@@ -18,6 +18,7 @@ import { emailClientFromEnv, type EmailClient } from "../providers/email.ts";
 import { resolveViewer, hasSessionCookie, type Viewer } from "./viewer.ts";
 import { seriesGated, raceGated, jsonRequestBlocked, PRO_REQUIRED_BODY } from "./gate.ts";
 import { handleAuthRequest } from "./auth.ts";
+import { handleBillingRequest } from "./billing.ts";
 import { teaserContent } from "./pages/teaser.ts";
 import { page, seriesLabel } from "./layout.ts";
 import { exportBar } from "./html.ts";
@@ -388,6 +389,15 @@ export function createServer(
     production: cfg.production,
   };
 
+  const billingDeps = {
+    // Stripe redirects the buyer back to these, so they must be absolute and
+    // must be the origin the user is actually on.
+    baseUrl: () => cfg.appBaseUrl ?? server.url.origin,
+    priceMonthly: cfg.stripePriceMonthly,
+    priceSeason: cfg.stripePriceSeason,
+    production: cfg.production,
+  };
+
   const server = Bun.serve({
     port,
     async fetch(req) {
@@ -403,6 +413,7 @@ export function createServer(
           (await handleRevenueCatWebhookRequest(p, req, url, revenuecatWebhookDeps)) ??
           (await handlePushRequest(p, req, url, viewer, pushDeps)) ??
           handleMeRequest(req, url, viewer) ??
+          (await handleBillingRequest(p, req, url, viewer, billingDeps)) ??
           (await handleAuthRequest(p, req, url, viewer, authDeps)) ??
           route(url, viewer, req.method);
       } catch (err) {

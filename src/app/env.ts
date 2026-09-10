@@ -27,6 +27,14 @@ export interface ServerConfig {
   /** Stripe webhook signing secret (entitlement source of truth, WS-E).
    *  Null leaves /webhooks/stripe answering 503 instead of trusting input. */
   stripeWebhookSecret: string | null;
+  /** Stripe REST API key (WS-E). Null leaves the null client, which reports
+   *  every checkout/portal attempt as unavailable rather than throwing. */
+  stripeSecretKey: string | null;
+  /** Stripe Price ids (WS-E). Stripe-generated, so they cannot live in the
+   *  repo and do not exist until the owner creates the products (E1). A plan
+   *  whose price id is missing is simply not offered. */
+  stripePriceMonthly: string | null;
+  stripePriceSeason: string | null;
   /** RevenueCat webhook shared secret (the second entitlement writer, WS-J).
    *  Null leaves /webhooks/revenuecat answering 503 instead of trusting
    *  input; unset until the owner has a RevenueCat account (J1). */
@@ -144,7 +152,13 @@ export function readServerEnv(env: Env): ServerEnvResult {
     if (!env.STRIPE_WEBHOOK_SECRET)
       warnings.push("STRIPE_WEBHOOK_SECRET not set — Stripe billing webhooks are disabled");
     if (!env.STRIPE_SECRET_KEY)
-      warnings.push("STRIPE_SECRET_KEY not set — account deletion cannot cancel subscriptions at Stripe");
+      warnings.push(
+        "STRIPE_SECRET_KEY not set — no web checkout or billing portal, and account deletion cannot cancel subscriptions at Stripe",
+      );
+    else if (!env.STRIPE_PRICE_MONTHLY && !env.STRIPE_PRICE_SEASON)
+      warnings.push(
+        "STRIPE_PRICE_MONTHLY/STRIPE_PRICE_SEASON not set — Stripe is configured but no plan can be bought (launch plan E1)",
+      );
     if (!env.REVENUECAT_WEBHOOK_SECRET)
       warnings.push("REVENUECAT_WEBHOOK_SECRET not set — RevenueCat billing webhooks are disabled (WS-J, owner-gated)");
     if (!env.VAPID_PUBLIC_KEY || !env.VAPID_PRIVATE_KEY)
@@ -165,6 +179,9 @@ export function readServerEnv(env: Env): ServerEnvResult {
       enableEmailDigests: enableEmailDigests ?? false,
       resendWebhookSecret: env.RESEND_WEBHOOK_SECRET || null,
       stripeWebhookSecret: env.STRIPE_WEBHOOK_SECRET || null,
+      stripeSecretKey: env.STRIPE_SECRET_KEY || null,
+      stripePriceMonthly: env.STRIPE_PRICE_MONTHLY || null,
+      stripePriceSeason: env.STRIPE_PRICE_SEASON || null,
       revenuecatWebhookSecret: env.REVENUECAT_WEBHOOK_SECRET || null,
       pushConfigured: Boolean(env.VAPID_PUBLIC_KEY && env.VAPID_PRIVATE_KEY),
       enablePushDispatcher: enablePushDispatcher ?? false,
