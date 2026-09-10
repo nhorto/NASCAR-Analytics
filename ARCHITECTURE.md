@@ -16,7 +16,8 @@ src/
 │   ├── http.ts              Pure HTTP hardening helpers: request ids, per-route Cache-Control (private for cookie-bearing requests), CSP/HSTS security headers, gzip, JSON log lines
 │   ├── viewer.ts            Per-request Viewer (session cookie → accounts user + billing Pro status), cookie builders, CSRF double-submit, client IP — the accounts×billing composition point (WS-D)
 │   ├── gate.ts              PURE gating verdicts: series/race teaser gates, Pro feature flags, series-JSON blocking (WS-D)
-│   ├── auth.ts              Auth + account routes: /signup /signin /reset /verify /account /pricing + POST /auth/* (PRG, CSRF-checked, rate-limited) (WS-D)
+│   ├── auth.ts              Auth + account routes: /signup /signin /reset /verify /account + POST /auth/* (PRG, CSRF-checked, rate-limited) (WS-D)
+│   ├── billing.ts           /pricing + POST /billing/checkout, /billing/portal, GET /billing/return — Stripe Checkout + Customer Portal handoff (WS-E). Writes no entitlement: the webhook is the only writer
 │   ├── me.ts                GET /api/me: the one JSON view of the signed-in viewer + entitlement, for the native app (WS-J)
 │   ├── pro-api.ts           GET /api/predictions + /api/dfs: JSON views of the WS-F Pro content, carrying the same gating verdicts as the pages (WS-J)
 │   ├── csv.ts               PURE CSV encoding (RFC 4180 quoting, CRLF, UTF-8 BOM, formula-injection guard) + streamed download responses (WS-G)
@@ -85,7 +86,7 @@ src/
 │   │   ├── repo.ts          users / sessions / auth_tokens / auth_attempts reads+writes (token hashes only)
 │   │   ├── service.ts       argon2id via Bun.password, rolling sessions, single-use tokens, sliding-window rate limiter; enumeration-safe failures
 │   │   └── index.ts         Barrel
-│   ├── billing/             Entitlement model (spec §7) — WS-D slice  [PARTIAL: reads + manual grants; Stripe webhooks are WS-E]
+│   ├── billing/             Entitlement model (spec §7): per-channel grant ledger, Stripe + RevenueCat webhook state machines, manual grants
 │   │   ├── types.ts         ProSource, Entitlement, ProStatus
 │   │   ├── config.ts        Grace days, sources
 │   │   ├── repo.ts          entitlements upsert/read/delete
@@ -289,7 +290,7 @@ export interface Providers {
 - No odds integration (deferred — see exec plan)
 - ~~No user authentication~~ built 2026-09-07 (WS-D) — see "Accounts + gating" above
 - **Prediction entry lists are a heuristic** (drivers from the last 3 completed points races — no entry-list feed is ingested), and the **DK/FD point values in `config/dfs/*.json` are unverified against the live platforms** (owner + DFS players validate before launch weekend). Xfinity/Trucks predictions are a post-launch fast-follow (D16). `/predictions` and `/dfs` have no nav tab yet — reachable by URL and from the methodology/pricing cross-links; nav placement is a WS-H polish decision
-- **No payments yet**: accounts + gating exist (WS-D), but there is no Stripe checkout/portal/webhooks — Pro can only be granted manually (`bun run grant`); `/pricing` says "checkout opens soon". WS-E builds the billing state machine. Account deletion does not yet cancel a Stripe subscription (none can exist yet)
+- **Payments are built but not switched on**: Checkout, Customer Portal, both webhook state machines (Stripe + RevenueCat) and the entitlement ledger all exist and are tested. What is missing is owner configuration — `STRIPE_SECRET_KEY` and the Stripe-generated `STRIPE_PRICE_MONTHLY`/`STRIPE_PRICE_SEASON` (launch plan E1–E3). Until those are set, `/pricing` deliberately renders no buy button and says "checkout opens soon", and Pro can only be granted manually (`bun run grant`). No purchase path has ever run against real Stripe
 - **The mobile app has content but no commerce and no device proof** (WS-J stages 1–2; the Pro content screens landed 2026-09-08): no IAP (RevenueCat needs owner steps J1/J2), no native push (J5), no EAS/store config, and **it has never run on a device or a simulator** — every layer beneath the UI is tested and smoke-checked against the real database, but no screen has been seen rendered. Still absent from the app: Xfinity/Trucks browsing, CSV export (a download opens outside the app and leaves the session cookie behind), and races-index/recap screens (those pages have no JSON API). Sign-in relies on the platform cookie jar following the server's PRG redirects; if a real device breaks that assumption the fallback is the additive native-session endpoint named in the WS-J sub-plan
 - The **static export still contains all three series** — it predates gating and is today's live free site; it must be restricted to Cup (the "static Cup fallback" of the launch plan) at launch cutover, not before (tech-debt tracker)
 - **Digest email is built but has never been sent for real** — no Resend account yet (A4), so the recap/preview acceptance runs are owner-gated; with `ENABLE_EMAIL_DIGESTS=1` and no key every digest is a *recorded failure* (retryable on the next run, by design). Bounce suppression is inert until `RESEND_WEBHOOK_SECRET` is set (the endpoint answers 503 rather than trusting unsigned input), and the Resend webhook payload shape is written from their docs, never seen live
